@@ -1,0 +1,5 @@
+{
+  "name": "Smart Invoice Extractor",
+  "description": "An intelligent invoice processor that extracts key data from PDFs, handles deduplication using persistent memory, and exports to formatted CSV.",
+  "requestFramePermissions": []
+}
