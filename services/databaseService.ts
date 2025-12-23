@@ -1,13 +1,38 @@
 
 import { InvoiceData, UserProfile, UserActivity } from '../types';
 
-// En production sur Render, l'API sera sur le même domaine ou un domaine spécifique
-// Cette logique permet de basculer dynamiquement.
 const API_URL = window.location.hostname === 'localhost' 
   ? 'http://localhost:3000/api' 
   : `${window.location.origin}/api`; 
 
 export const dbService = {
+  // --- AUTHENTIFICATION ---
+  async registerUser(user: any): Promise<UserProfile> {
+    const response = await fetch(`${API_URL}/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(user)
+    });
+    if (!response.ok) {
+      const err = await response.json();
+      throw new Error(err.error || "Erreur lors de la création du compte.");
+    }
+    return await response.json();
+  },
+
+  async login(username: string, password: string): Promise<UserProfile> {
+    const response = await fetch(`${API_URL}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password })
+    });
+    if (!response.ok) {
+      const err = await response.json();
+      throw new Error(err.error || "Échec de l'authentification.");
+    }
+    return await response.json();
+  },
+
   // --- FACTURES ---
   async saveInvoice(invoice: InvoiceData): Promise<boolean> {
     try {

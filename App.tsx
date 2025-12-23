@@ -55,25 +55,24 @@ const App: React.FC = () => {
   const currentUserProfile = useMemo(() => users.find(u => u.username === currentUser), [users, currentUser]);
   const isAdmin = currentUserProfile?.role === 'ADMIN';
 
-  // Chargement Initial (Backend ou Local)
+  // Chargement Initial
   useEffect(() => {
     const loadData = async () => {
+      const dbUsers = await dbService.getAllUsers();
+      setUsers(dbUsers);
+
       if (currentUser) {
-        const dbUsers = await dbService.getAllUsers();
-        setUsers(dbUsers);
-        
-        const dbInvoices = await dbService.getInvoices(currentUser, isAdmin ? 'ADMIN' : 'USER');
+        const foundUser = dbUsers.find(u => u.username === currentUser);
+        const userRole = foundUser?.role || 'USER';
+        const dbInvoices = await dbService.getInvoices(currentUser, userRole);
         setAllInvoices(dbInvoices);
         
         const keys = dbInvoices.map(inv => createDedupKey(inv.supplier, inv.invoiceNumber));
         setMemory(new Set(keys));
-      } else {
-        const localUsers = localStorage.getItem('smart-invoice-users');
-        if (localUsers) setUsers(JSON.parse(localUsers));
       }
     };
     loadData();
-  }, [currentUser, isAdmin]);
+  }, [currentUser]);
 
   // Sauvegarde persistante (Local fallback)
   useEffect(() => { 
@@ -130,7 +129,7 @@ const App: React.FC = () => {
         } else {
             setAllInvoices(prev => [...prev, { ...inv, erpStatus: ErpStatus.PENDING }]);
             setMemory(prev => new Set(prev).add(uniqueKey));
-            dbService.saveInvoice(inv); // Sync Backend
+            dbService.saveInvoice(inv);
             
             addLog(`Extraite : ${inv.invoiceNumber}`, 'success');
             
@@ -176,45 +175,33 @@ const App: React.FC = () => {
         onLogin={(u) => {
           setCurrentUser(u.username);
           localStorage.setItem('invoice-session-active-user', u.username);
-          handleLoginUpdate(u.username);
+          // Re-fetch users to get fresh roles from server
+          dbService.getAllUsers().then(setUsers);
         }} 
         users={users} 
-        onRegister={(un, pw, sq, sa) => {
-          handleRegister(un, pw, sq, sa);
-        }} 
+        onRegister={handleRegister} 
         onResetPassword={(u, p) => setUsers(prev => prev.map(usr => usr.username === u ? { ...usr, password: p } : usr))} 
       />
     );
   }
 
-  function handleLoginUpdate(un: string) {
-    setUsers(prev => prev.map(u => {
-      if (u.username === un) {
-        return {
-          ...u,
-          stats: { ...u.stats, lastLogin: new Date().toISOString() },
-          loginHistory: [new Date().toISOString(), ...(u.loginHistory || [])].slice(0, 50)
+  async function handleRegister(un: string, pw: string, sq: string, sa: string) {
+    try {
+        const isMaster = MASTER_ADMINS.includes(un.toLowerCase().trim());
+        const newUserPayload = { 
+            username: un, 
+            password: pw, 
+            role: (users.length === 0 || isMaster) ? 'ADMIN' : 'USER',
+            security_question: sq,
+            security_answer: sa
         };
-      }
-      return u;
-    }));
-    addActivity(un, "Connexion");
-  }
-
-  function handleRegister(un: string, pw: string, sq: string, sa: string) {
-    const isMaster = MASTER_ADMINS.includes(un.toLowerCase().trim());
-    const newUser: UserProfile = { 
-      username: un, password: pw, 
-      role: (users.length === 0 || isMaster) ? 'ADMIN' : 'USER', 
-      createdAt: new Date().toISOString(), 
-      stats: { extractRequests: 0, totalTokens: 0, lastActive: new Date().toISOString() },
-      loginHistory: [new Date().toISOString()],
-      activityLog: [{ id: crypto.randomUUID(), timestamp: new Date().toISOString(), action: "Création compte" }],
-      securityQuestion: sq, securityAnswer: sa 
-    };
-    setUsers(prev => [...prev, newUser]);
-    setCurrentUser(un);
-    localStorage.setItem('invoice-session-active-user', un);
+        const createdUser = await dbService.registerUser(newUserPayload);
+        setUsers(prev => [...prev, createdUser]);
+        setCurrentUser(un);
+        localStorage.setItem('invoice-session-active-user', un);
+    } catch (e: any) {
+        alert(e.message);
+    }
   }
 
   return (
