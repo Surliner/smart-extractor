@@ -11,27 +11,58 @@ const port = process.env.PORT || 3000;
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: {
-    rejectUnauthorized: false // Requis pour Render/Heroku
+    rejectUnauthorized: false
   }
 });
+
+// --- INITIALISATION AUTOMATIQUE ---
+const initDb = async () => {
+  console.log("Initialisation de la base de données...");
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS users (
+          username TEXT PRIMARY KEY,
+          password TEXT,
+          role TEXT DEFAULT 'USER',
+          stats JSONB DEFAULT '{}',
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS invoices (
+          id UUID PRIMARY KEY,
+          owner TEXT REFERENCES users(username) ON DELETE CASCADE,
+          data JSONB,
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS activities (
+          id UUID PRIMARY KEY,
+          username TEXT REFERENCES users(username) ON DELETE CASCADE,
+          action TEXT,
+          details TEXT,
+          timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    console.log("Base de données prête.");
+  } catch (err) {
+    console.error("Erreur d'initialisation DB:", err);
+  }
+};
 
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 
 // --- ROUTES API ---
 
-// 1. Récupérer les factures
 app.get('/api/invoices', async (req, res) => {
   const { user, role } = req.query;
   try {
     let query = 'SELECT data FROM invoices';
     let params = [];
-    
     if (role !== 'ADMIN') {
       query += ' WHERE owner = $1';
       params.push(user);
     }
-    
     const result = await pool.query(query, params);
     res.json(result.rows.map(r => r.data));
   } catch (err) {
@@ -39,7 +70,6 @@ app.get('/api/invoices', async (req, res) => {
   }
 });
 
-// 2. Sauvegarder une facture
 app.post('/api/invoices', async (req, res) => {
   const invoice = req.body;
   try {
@@ -51,31 +81,25 @@ app.post('/api/invoices', async (req, res) => {
   }
 });
 
-// 3. Synchroniser les utilisateurs et activités
 app.post('/api/users/sync', async (req, res) => {
   const { username, stats, activity } = req.body;
   try {
-    // Mise à jour ou création de l'utilisateur
     await pool.query(
       'INSERT INTO users (username, stats) VALUES ($1, $2) ON CONFLICT (username) DO UPDATE SET stats = $2',
       [username, stats]
     );
-    
-    // Enregistrement de l'activité
     if (activity) {
       await pool.query(
-        'INSERT INTO activities (id, username, action, details, timestamp) VALUES ($1, $2, $3, $4, $5)',
+        'INSERT INTO activities (id, username, action, details, timestamp) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (id) DO NOTHING',
         [activity.id, username, activity.action, activity.details, activity.timestamp]
       );
     }
-    
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// 4. Admin : Liste des utilisateurs
 app.get('/api/admin/users', async (req, res) => {
   try {
     const result = await pool.query('SELECT username, stats, role, created_at FROM users');
@@ -85,12 +109,13 @@ app.get('/api/admin/users', async (req, res) => {
   }
 });
 
-// Servir les fichiers statiques du frontend (Vite/React)
 app.use(express.static(path.join(__dirname, 'dist')));
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
 
-app.listen(port, () => {
-  console.log(`Server running on port ${port}`);
+// Lancement
+app.listen(port, async () => {
+  console.log(`Serveur démarré sur le port ${port}`);
+  await initDb();
 });
