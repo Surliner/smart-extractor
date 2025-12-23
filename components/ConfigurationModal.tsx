@@ -1,8 +1,67 @@
 
-import React, { useState, useRef } from 'react';
-// Added ArrowDownLeft to the lucide-react imports to fix the 'Cannot find name' error.
-import { Settings, Save, X, Server, Database, FileSpreadsheet, Plus, Trash2, Edit2, GripVertical, ChevronDown, Upload, CloudLightning, ShieldCheck, Search, FileDown, Table, Layers, ArrowDownLeft } from 'lucide-react';
+import React, { useState, useRef, useMemo } from 'react';
+import { Settings, Save, X, Server, Database, FileSpreadsheet, Plus, Trash2, Edit2, GripVertical, ChevronDown, Upload, CloudLightning, ShieldCheck, Search, FileDown, Table, Layers, ArrowDownLeft, BookOpen, Info, HelpCircle, Code } from 'lucide-react';
 import { ErpConfig, LookupTable, ExportTemplate, PartnerMasterData, SageX3Config, ExportColumn } from '../types';
+
+// --- DICTIONNAIRE DES CHAMPS DISPONIBLES ---
+const FIELD_GROUPS = [
+  {
+    name: 'Identification Document',
+    fields: [
+      { id: 'invoiceNumber', label: 'Numéro de Facture', bt: 'BT-1', desc: 'Identifiant unique du document' },
+      { id: 'invoiceDate', label: 'Date de Facture', bt: 'BT-2', desc: 'Date d\'émission au format JJ/MM/AAAA' },
+      { id: 'invoiceType', label: 'Type de Document', bt: 'BT-3', desc: 'Facture ou Avoir' },
+      { id: 'currency', label: 'Devise', bt: 'BT-5', desc: 'Code ISO (EUR, USD...)' },
+    ]
+  },
+  {
+    name: 'Fournisseur (Vendeur)',
+    fields: [
+      { id: 'supplier', label: 'Nom Fournisseur', bt: 'BT-27', desc: 'Raison sociale complète' },
+      { id: 'supplierSiret', label: 'SIRET Fournisseur', bt: 'BT-29', desc: 'Identifiant 14 chiffres' },
+      { id: 'supplierVat', label: 'TVA Fournisseur', bt: 'BT-31', desc: 'Numéro de TVA intracommunautaire' },
+      { id: 'supplierErpCode', label: 'Code Tiers ERP', bt: 'N/A', desc: 'Code mapping Sage/ERP' },
+    ]
+  },
+  {
+    name: 'Client (Acheteur)',
+    fields: [
+      { id: 'buyerName', label: 'Nom Client', bt: 'BT-44', desc: 'Raison sociale de votre entreprise' },
+      { id: 'buyerSiret', label: 'SIRET Client', bt: 'BT-47', desc: 'Votre SIRET' },
+      { id: 'buyerVat', label: 'TVA Client', bt: 'BT-48', desc: 'Votre numéro de TVA' },
+    ]
+  },
+  {
+    name: 'Totaux Financiers',
+    fields: [
+      { id: 'amountExclVat', label: 'Montant Total HT', bt: 'BT-109', desc: 'Base imposable hors taxes' },
+      { id: 'totalVat', label: 'Total TVA', bt: 'BT-110', desc: 'Somme des taxes calculées' },
+      { id: 'amountInclVat', label: 'Montant Total TTC', bt: 'BT-112', desc: 'Net à payer' },
+      { id: 'globalDiscount', label: 'Remise Globale', bt: 'BT-107', desc: 'Remise pied de facture HT' },
+    ]
+  },
+  {
+    name: 'Lignes de Détail',
+    fields: [
+      { id: 'articleId', label: 'Référence Article', bt: 'BT-155', desc: 'Code produit ou service' },
+      { id: 'description', label: 'Désignation Ligne', bt: 'BT-154', desc: 'Libellé complet de la ligne' },
+      { id: 'quantity', label: 'Quantité', bt: 'BT-129', desc: 'Nombre d\'unités' },
+      { id: 'unitPrice', label: 'Prix Unitaire Net', bt: 'BT-146', desc: 'Prix après remise ligne' },
+      { id: 'amount', label: 'Total Ligne HT', bt: 'BT-131', desc: 'Quantité x Prix Net' },
+      { id: 'taxRate', label: 'Taux TVA Ligne', bt: 'BT-152', desc: 'Ex: 20.00' },
+    ]
+  },
+  {
+    name: 'Paiement & Divers',
+    fields: [
+      { id: 'iban', label: 'IBAN', bt: 'BT-84', desc: 'Coordonnées bancaires extraites' },
+      { id: 'bic', label: 'BIC / SWIFT', bt: 'BT-85', desc: 'Code banque' },
+      { id: 'paymentMethod', label: 'Mode Paiement', bt: 'BT-82', desc: 'Virement, Chèque, etc.' },
+      { id: 'dueDate', label: 'Date d\'échéance', bt: 'BT-9', desc: 'Date limite de règlement' },
+      { id: 'originalFilename', label: 'Nom du Fichier', bt: 'N/A', desc: 'Fichier PDF d\'origine' },
+    ]
+  }
+];
 
 interface ConfigurationModalProps {
   isOpen: boolean;
@@ -24,7 +83,7 @@ export const ConfigurationModal: React.FC<ConfigurationModalProps> = ({
   templates, onSaveTemplates,
   masterData, onSaveMasterData
 }) => {
-  const [activeTab, setActiveTab] = useState<'erp' | 'masterdata' | 'templates' | 'lookups'>('erp');
+  const [activeTab, setActiveTab] = useState<'erp' | 'masterdata' | 'templates' | 'lookups' | 'glossary'>('erp');
   const [localErp, setLocalErp] = useState<ErpConfig>(erpConfig);
   const [localMasterData, setLocalMasterData] = useState<PartnerMasterData[]>(masterData);
   const [localTemplates, setLocalTemplates] = useState<ExportTemplate[]>(templates);
@@ -63,7 +122,7 @@ export const ConfigurationModal: React.FC<ConfigurationModalProps> = ({
   const addColumn = (tplId: string) => {
     const tpl = localTemplates.find(t => t.id === tplId);
     if (!tpl) return;
-    const newCols = [...tpl.columns, { header: 'Nouveau', type: 'field', value: 'notes' } as ExportColumn];
+    const newCols = [...tpl.columns, { header: 'Nouveau Champ', type: 'field', value: 'supplier' } as ExportColumn];
     updateTemplate(tplId, { columns: newCols });
   };
 
@@ -122,6 +181,7 @@ export const ConfigurationModal: React.FC<ConfigurationModalProps> = ({
 
         <div className="flex-1 flex overflow-hidden">
           <div className="w-72 bg-slate-50 border-r border-slate-200 p-6 space-y-2 shrink-0 overflow-y-auto custom-scrollbar">
+             <TabButton icon={BookOpen} label="Glossaire Champs" active={activeTab === 'glossary'} onClick={() => setActiveTab('glossary')} />
              <TabButton icon={CloudLightning} label="Connecteur Sage X3" active={activeTab === 'erp'} onClick={() => setActiveTab('erp')} />
              <TabButton icon={Database} label="Master Data Tiers" active={activeTab === 'masterdata'} onClick={() => setActiveTab('masterdata')} />
              <TabButton icon={FileSpreadsheet} label="Export Templates" active={activeTab === 'templates'} onClick={() => setActiveTab('templates')} />
@@ -129,6 +189,43 @@ export const ConfigurationModal: React.FC<ConfigurationModalProps> = ({
           </div>
 
           <div className="flex-1 p-10 overflow-y-auto bg-white custom-scrollbar">
+            
+            {activeTab === 'glossary' && (
+              <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-300">
+                <div className="bg-slate-900 text-white p-8 rounded-[2rem] shadow-xl">
+                    <div className="flex items-center space-x-4 mb-4">
+                        <BookOpen className="w-8 h-8 text-indigo-400" />
+                        <h3 className="text-2xl font-black tracking-tight">Glossaire Technique Factur-X</h3>
+                    </div>
+                    <p className="text-slate-400 text-sm font-bold max-w-2xl leading-relaxed">
+                        Ce lexique liste tous les points de données extraits par l'IA Gemini. Utilisez ces noms de champs dans vos modèles d'export et vos tables de transcodage.
+                    </p>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    {FIELD_GROUPS.map(group => (
+                        <div key={group.name} className="space-y-4">
+                            <h4 className="text-[11px] font-black text-indigo-600 uppercase tracking-[0.2em] border-b-2 border-indigo-50 pb-2">{group.name}</h4>
+                            <div className="space-y-3">
+                                {group.fields.map(field => (
+                                    <div key={field.id} className="p-4 bg-slate-50 rounded-2xl border border-slate-100 group hover:border-indigo-200 transition-all">
+                                        <div className="flex justify-between items-start mb-1">
+                                            <span className="font-black text-slate-900 text-sm">{field.label}</span>
+                                            <span className="text-[9px] font-mono font-bold bg-white border border-slate-200 px-2 py-0.5 rounded text-slate-500">{field.bt}</span>
+                                        </div>
+                                        <div className="flex items-center space-x-2 mt-1">
+                                            <code className="text-[10px] bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded font-black">{field.id}</code>
+                                            <span className="text-[10px] text-slate-500 font-bold truncate">/ {field.desc}</span>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    ))}
+                </div>
+              </div>
+            )}
+
             {activeTab === 'erp' && (
               <div className="max-w-2xl space-y-8 animate-in fade-in slide-in-from-right-4 duration-300">
                 <div className="bg-indigo-600 text-white p-6 rounded-[2rem] shadow-xl shadow-indigo-100">
@@ -268,28 +365,72 @@ export const ConfigurationModal: React.FC<ConfigurationModalProps> = ({
                               newCols[cIdx].type = e.target.value as any;
                               updateTemplate(tpl.id, { columns: newCols });
                             }} className="w-full bg-slate-50 px-3 py-2 rounded-lg text-xs font-black outline-none border border-transparent focus:border-indigo-600 appearance-none">
-                              <option value="field">Champ</option>
+                              <option value="field">Champ IA</option>
                               <option value="static">Statique</option>
                               <option value="composite">Composé</option>
+                              <option value="lookup">Transcodage</option>
                             </select>
                           </div>
-                          <div className="col-span-5">
-                            <input value={col.value} onChange={(e) => {
-                              const newCols = [...tpl.columns];
-                              newCols[cIdx].value = e.target.value;
-                              updateTemplate(tpl.id, { columns: newCols });
-                            }} className="w-full bg-slate-50 px-3 py-2 rounded-lg text-xs font-bold font-mono outline-none border border-transparent focus:border-indigo-600" />
+                          <div className="col-span-5 flex items-center space-x-2">
+                            {col.type === 'field' || col.type === 'lookup' ? (
+                                <div className="relative w-full">
+                                    <select 
+                                        value={col.value} 
+                                        onChange={(e) => {
+                                            const newCols = [...tpl.columns];
+                                            newCols[cIdx].value = e.target.value;
+                                            updateTemplate(tpl.id, { columns: newCols });
+                                        }} 
+                                        className="w-full bg-indigo-50 px-3 py-2 rounded-lg text-xs font-black outline-none border-2 border-indigo-100 focus:border-indigo-600 text-indigo-700 appearance-none"
+                                    >
+                                        <option value="">-- Choisir un champ --</option>
+                                        {FIELD_GROUPS.map(g => (
+                                            <optgroup key={g.name} label={g.name}>
+                                                {g.fields.map(f => (
+                                                    <option key={f.id} value={f.id}>{f.label} ({f.bt})</option>
+                                                ))}
+                                            </optgroup>
+                                        ))}
+                                    </select>
+                                    <ChevronDown className="w-4 h-4 text-indigo-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                                </div>
+                            ) : (
+                                <input 
+                                    value={col.value} 
+                                    onChange={(e) => {
+                                        const newCols = [...tpl.columns];
+                                        newCols[cIdx].value = e.target.value;
+                                        updateTemplate(tpl.id, { columns: newCols });
+                                    }} 
+                                    placeholder={col.type === 'composite' ? '{{supplier}} - {{invoiceNumber}}' : 'Valeur fixe'}
+                                    className="w-full bg-slate-50 px-3 py-2 rounded-lg text-xs font-bold font-mono outline-none border border-transparent focus:border-indigo-600" 
+                                />
+                            )}
+                            {col.type === 'lookup' && (
+                                <select
+                                    value={col.lookupTableId || ''}
+                                    onChange={(e) => {
+                                        const newCols = [...tpl.columns];
+                                        newCols[cIdx].lookupTableId = e.target.value;
+                                        updateTemplate(tpl.id, { columns: newCols });
+                                    }}
+                                    className="bg-purple-50 px-3 py-2 rounded-lg text-[10px] font-black text-purple-700 border-2 border-purple-100"
+                                >
+                                    <option value="">Table ?</option>
+                                    {localLookups.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                                </select>
+                            )}
                           </div>
                           <div className="col-span-2 text-right">
                             <button onClick={() => {
                               const newCols = tpl.columns.filter((_, i) => i !== cIdx);
                               updateTemplate(tpl.id, { columns: newCols });
-                            }} className="p-2 text-slate-300 hover:text-rose-500"><Trash2 className="w-4 h-4" /></button>
+                            }} className="p-2 text-slate-300 hover:text-rose-500 transition-all"><Trash2 className="w-4 h-4" /></button>
                           </div>
                         </div>
                       ))}
-                      <button onClick={() => addColumn(tpl.id)} className="w-full py-4 border-2 border-dashed border-slate-200 rounded-2xl text-[10px] font-black uppercase text-slate-400 tracking-widest hover:border-indigo-300 hover:text-indigo-600 transition-all flex items-center justify-center">
-                        <Plus className="w-4 h-4 mr-2" /> Ajouter une colonne
+                      <button onClick={() => addColumn(tpl.id)} className="w-full py-4 border-2 border-dashed border-slate-200 rounded-2xl text-[10px] font-black uppercase text-slate-400 tracking-widest hover:border-indigo-300 hover:text-indigo-600 transition-all flex items-center justify-center bg-slate-50/50">
+                        <Plus className="w-4 h-4 mr-2" /> Ajouter une colonne d'export
                       </button>
                     </div>
                   </div>
@@ -306,35 +447,40 @@ export const ConfigurationModal: React.FC<ConfigurationModalProps> = ({
                   </button>
                 </div>
                 {localLookups.map(table => (
-                   <div key={table.id} className="p-8 border-2 border-slate-200 rounded-[2.5rem] bg-white space-y-4">
-                      <div className="flex justify-between">
-                         <input value={table.name} onChange={(e) => setLocalLookups(localLookups.map(l => l.id === table.id ? {...l, name: e.target.value} : l))} className="text-lg font-black outline-none border-b-2 border-transparent focus:border-indigo-600" />
-                         <button onClick={() => setLocalLookups(localLookups.filter(l => l.id !== table.id))} className="text-rose-500 p-2"><Trash2 className="w-5 h-5" /></button>
+                   <div key={table.id} className="p-8 border-2 border-slate-200 rounded-[2.5rem] bg-white space-y-4 shadow-sm">
+                      <div className="flex justify-between items-center mb-4">
+                         <div className="flex items-center space-x-3">
+                            <Table className="w-5 h-5 text-indigo-600" />
+                            <input value={table.name} onChange={(e) => setLocalLookups(localLookups.map(l => l.id === table.id ? {...l, name: e.target.value} : l))} className="text-lg font-black outline-none border-b-2 border-transparent focus:border-indigo-600" />
+                         </div>
+                         <button onClick={() => setLocalLookups(localLookups.filter(l => l.id !== table.id))} className="text-rose-500 p-2 hover:bg-rose-50 rounded-xl transition-all"><Trash2 className="w-5 h-5" /></button>
                       </div>
-                      <div className="grid grid-cols-2 gap-4">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                          {table.entries.map((entry, eIdx) => (
-                           <div key={eIdx} className="flex items-center space-x-2">
-                              <input placeholder="Source" value={entry.key} onChange={(e) => {
+                           <div key={eIdx} className="flex items-center space-x-2 bg-slate-50 p-2 rounded-xl border border-slate-100">
+                              <input placeholder="Clé Source (ex: 20.0)" value={entry.key} onChange={(e) => {
                                 const newEnt = [...table.entries];
                                 newEnt[eIdx].key = e.target.value;
                                 setLocalLookups(localLookups.map(l => l.id === table.id ? {...l, entries: newEnt} : l));
-                              }} className="flex-1 bg-slate-50 px-3 py-2 rounded-lg text-xs font-black" />
-                              <ArrowDownLeft className="w-4 h-4 text-indigo-400 -rotate-90" />
-                              <input placeholder="Cible" value={entry.value} onChange={(e) => {
+                              }} className="flex-1 bg-white px-3 py-2 rounded-lg text-xs font-black border border-slate-200 outline-none focus:border-indigo-600" />
+                              <ArrowDownLeft className="w-4 h-4 text-indigo-400 -rotate-90 shrink-0" />
+                              <input placeholder="Cible (ex: TVA20)" value={entry.value} onChange={(e) => {
                                 const newEnt = [...table.entries];
                                 newEnt[eIdx].value = e.target.value;
                                 setLocalLookups(localLookups.map(l => l.id === table.id ? {...l, entries: newEnt} : l));
-                              }} className="flex-1 bg-indigo-50 px-3 py-2 rounded-lg text-xs font-black text-indigo-700" />
+                              }} className="flex-1 bg-indigo-50 px-3 py-2 rounded-lg text-xs font-black text-indigo-700 border border-indigo-100 outline-none focus:border-indigo-600" />
                               <button onClick={() => {
                                  const newEnt = table.entries.filter((_, i) => i !== eIdx);
                                  setLocalLookups(localLookups.map(l => l.id === table.id ? {...l, entries: newEnt} : l));
-                              }}><X className="w-4 h-4 text-slate-300" /></button>
+                              }} className="p-1 hover:text-rose-500"><X className="w-4 h-4" /></button>
                            </div>
                          ))}
                          <button onClick={() => {
                             const newEnt = [...table.entries, { key: '', value: '' }];
                             setLocalLookups(localLookups.map(l => l.id === table.id ? {...l, entries: newEnt} : l));
-                         }} className="col-span-2 py-3 border-2 border-dashed border-slate-200 rounded-xl text-[10px] font-black uppercase text-slate-400">Ajouter Entrée</button>
+                         }} className="md:col-span-2 py-4 border-2 border-dashed border-slate-200 rounded-xl text-[10px] font-black uppercase text-slate-400 hover:border-indigo-300 hover:text-indigo-600 transition-all">
+                             Ajouter un transcodage (Mapping)
+                         </button>
                       </div>
                    </div>
                 ))}
