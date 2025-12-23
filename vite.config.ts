@@ -5,8 +5,8 @@ import react from '@vitejs/plugin-react';
 export default defineConfig({
   plugins: [react()],
   define: {
-    // Permet d'utiliser process.env.API_KEY dans le frontend comme demandé par le SDK Gemini
-    'process.env': process.env
+    // Injection sécurisée de la clé API
+    'process.env.API_KEY': JSON.stringify(process.env.API_KEY)
   },
   build: {
     outDir: 'dist',
