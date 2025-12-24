@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { UploadCloud, Loader2, Cpu, LogOut, Settings, Zap, Users, CloudLightning } from 'lucide-react';
+import { UploadCloud, Loader2, Cpu, LogOut, Settings, Zap, Users, CloudLightning, ShieldCheck } from 'lucide-react';
 import { extractInvoiceData } from './services/geminiService';
 import { dbService } from './services/databaseService';
 import { InvoiceData, ErpStatus, ProcessingLog, ErpConfig, UserProfile, UserRole, PartnerMasterData, LookupTable, ExportTemplate, XmlMappingProfile } from './types';
@@ -8,6 +8,7 @@ import { ProcessingLogs } from './components/ProcessingLogs';
 import { InvoiceTable } from './components/InvoiceTable';
 import { LoginScreen } from './components/LoginScreen';
 import { ConfigurationModal } from './components/ConfigurationModal';
+import { UserManagement } from './components/UserManagement';
 
 const createDedupKey = (supplier: string, invoiceNumber: string) => {
   const normSupplier = supplier.toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -17,11 +18,14 @@ const createDedupKey = (supplier: string, invoiceNumber: string) => {
 
 const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<string | null>(localStorage.getItem('invoice-session-active-user'));
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
   const [allInvoices, setAllInvoices] = useState<InvoiceData[]>([]);
   const [memory, setMemory] = useState<Set<string>>(new Set());
   const [logs, setLogs] = useState<ProcessingLog[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showConfig, setShowConfig] = useState(false);
+  const [showUserMgmt, setShowUserMgmt] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [processProgress, setProcessProgress] = useState({ current: 0, total: 0 });
   
@@ -50,9 +54,17 @@ const App: React.FC = () => {
     return saved ? JSON.parse(saved) : [];
   });
 
+  // Fetch initial data
   useEffect(() => {
     if (currentUser) {
-      dbService.getInvoices(currentUser, 'ADMIN').then(dbInvoices => {
+      // Re-fetch current profile to get role
+      dbService.getAllUsers().then(users => {
+        setAllUsers(users);
+        const me = users.find(u => u.username === currentUser);
+        if (me) setUserProfile(me);
+      });
+
+      dbService.getInvoices(currentUser, userProfile?.role || 'USER').then(dbInvoices => {
         setAllInvoices(dbInvoices);
         const keys = dbInvoices.map(inv => createDedupKey(inv.supplier, inv.invoiceNumber));
         setMemory(new Set(keys));
@@ -79,6 +91,7 @@ const App: React.FC = () => {
     setIsProcessing(true);
     setProcessProgress({ current: 0, total: files.length });
     
+    let totalTokens = 0;
     for (const file of Array.from(files)) {
       try {
         const base64Data = await new Promise<string>((resolve) => {
@@ -89,6 +102,7 @@ const App: React.FC = () => {
         
         const result = await extractInvoiceData(base64Data, file.type, file.name, 'ULTIMATE', 'INBOUND', true);
         const inv = { ...result.invoice, owner: currentUser };
+        totalTokens += result.usage.totalTokens;
         
         // SMART OVERRIDE VIA MASTER DATA
         const partner = matchMasterData(inv.supplierSiret);
@@ -116,6 +130,22 @@ const App: React.FC = () => {
         setProcessProgress(prev => ({ ...prev, current: prev.current + 1 }));
       }
     }
+
+    // Update stats
+    if (userProfile) {
+      const newStats = {
+        ...userProfile.stats,
+        extractRequests: userProfile.stats.extractRequests + files.length,
+        totalTokens: userProfile.stats.totalTokens + totalTokens
+      };
+      dbService.syncUserStats(currentUser, newStats, {
+        id: crypto.randomUUID(),
+        timestamp: new Date().toISOString(),
+        action: 'BATCH_EXTRACTION',
+        details: `Processed ${files.length} documents. Tokens used: ${totalTokens}`
+      });
+    }
+
     setIsProcessing(false);
   };
 
@@ -129,7 +159,6 @@ const App: React.FC = () => {
   const handleSyncInvoices = async (ids: string[]) => {
     if (!erpConfig.enabled) return alert("ERP désactivé dans les options.");
     addLog(`Démarrage synchronisation de ${ids.length} factures...`, 'info');
-    // Simulation logic here, ideally calling erpService
     setIsProcessing(true);
     await new Promise(r => setTimeout(r, 1000));
     setAllInvoices(prev => prev.map(i => ids.includes(i.id) ? {...i, erpStatus: ErpStatus.SUCCESS} : i));
@@ -141,18 +170,37 @@ const App: React.FC = () => {
     setLogs(prev => [...prev, { id: crypto.randomUUID(), timestamp: new Date(), message, type }]);
   };
 
-  if (!currentUser) return <LoginScreen onLogin={u => setCurrentUser(u.username)} users={[]} onRegister={()=>{}} onResetPassword={()=>{}} />;
+  const fetchUsers = async () => {
+    const users = await dbService.getAllUsers();
+    setAllUsers(users);
+  };
+
+  const isAdmin = userProfile?.role === 'ADMIN';
+
+  if (!currentUser) return <LoginScreen onLogin={u => { setCurrentUser(u.username); setUserProfile(u); }} users={[]} onRegister={()=>{}} onResetPassword={()=>{}} />;
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 font-sans pb-24">
       <header className="bg-slate-950 px-8 h-20 flex items-center justify-between sticky top-0 z-50 shadow-xl border-b border-white/5">
         <div className="flex items-center space-x-6">
           <div className="bg-indigo-600 p-2.5 rounded-xl text-white shadow-lg"><Cpu className="w-6 h-6" /></div>
-          <h1 className="text-xl font-black text-white tracking-[0.2em] uppercase">Invoice Command</h1>
+          <div>
+            <h1 className="text-xl font-black text-white tracking-[0.2em] uppercase">Invoice Command</h1>
+            <p className="text-[9px] font-black text-indigo-400 uppercase tracking-widest mt-0.5">Session: {currentUser} ({userProfile?.role})</p>
+          </div>
         </div>
-        <div className="flex items-center space-x-6">
+        <div className="flex items-center space-x-4">
+          {isAdmin && (
+            <button 
+              onClick={() => { fetchUsers(); setShowUserMgmt(true); }} 
+              className="flex items-center space-x-3 px-5 py-2.5 bg-indigo-600/10 text-indigo-400 hover:bg-indigo-600 hover:text-white rounded-2xl border border-indigo-600/20 transition-all font-black uppercase text-[10px] tracking-widest"
+            >
+              <ShieldCheck className="w-5 h-5" />
+              <span>Admin Panel</span>
+            </button>
+          )}
           <button onClick={() => setShowConfig(true)} className="p-3 bg-white/5 text-slate-400 hover:text-white rounded-2xl border border-white/10 hover:bg-white/10 transition-all"><Settings className="w-6 h-6" /></button>
-          <button onClick={() => { localStorage.removeItem('invoice-session-active-user'); setCurrentUser(null); }} className="p-3 bg-white/5 text-slate-400 hover:text-rose-500 rounded-2xl border border-white/10 hover:bg-rose-500/10 transition-all"><LogOut className="w-6 h-6" /></button>
+          <button onClick={() => { localStorage.removeItem('invoice-session-active-user'); setCurrentUser(null); setUserProfile(null); }} className="p-3 bg-white/5 text-slate-400 hover:text-rose-500 rounded-2xl border border-white/10 hover:bg-rose-500/10 transition-all"><LogOut className="w-6 h-6" /></button>
         </div>
       </header>
 
@@ -198,6 +246,18 @@ const App: React.FC = () => {
         xmlProfiles={xmlProfiles} onSaveXmlProfiles={setXmlProfiles}
         masterData={masterData} onSaveMasterData={setMasterData}
       />
+
+      {isAdmin && (
+        <UserManagement 
+          isOpen={showUserMgmt}
+          onClose={() => setShowUserMgmt(false)}
+          users={allUsers}
+          currentUser={currentUser!}
+          onUpdateRole={async (u, r) => { await dbService.updateUserRole(u, r); fetchUsers(); }}
+          onDeleteUser={async (u) => { if(confirm(`Delete ${u}?`)) { await dbService.deleteUser(u); fetchUsers(); } }}
+          onResetPassword={async (u, p) => { await dbService.resetPasswordAdmin(u, p); fetchUsers(); }}
+        />
+      )}
     </div>
   );
 };

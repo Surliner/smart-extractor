@@ -1,3 +1,4 @@
+
 import { InvoiceData, ExportTemplate, LookupTable, ExportColumn } from '../types';
 
 // Helper to safely access nested object properties
@@ -7,7 +8,7 @@ const getNestedValue = (obj: any, path: string): any => {
 
 // Formatting helpers based on MotoClic specs or general CSV needs
 const formatValue = (value: any, type?: string): string => {
-  if (value === null || value === undefined) return '';
+  if (value === null || value === undefined || value === '') return '';
   if (value instanceof Date) {
     // Format YYYY-MM-DD HH:mm:ss
     const pad = (n: number) => n.toString().padStart(2, '0');
@@ -28,12 +29,12 @@ const processComposite = (pattern: string, context: any): string => {
 };
 
 // Process a single cell
-const processCell = (
+export const processCell = (
   col: ExportColumn, 
   context: any, // Contains flattened invoice + item + { invoice, item }
   lookups: LookupTable[]
 ): string => {
-  let rawValue = '';
+  let rawValue: any = '';
 
   switch (col.type) {
     case 'static':
@@ -42,20 +43,28 @@ const processCell = (
 
     case 'field':
       rawValue = getNestedValue(context, col.value);
+      // Use default if extracted field is empty
+      if (rawValue === undefined || rawValue === null || rawValue === '') {
+        rawValue = col.defaultValue || '';
+      }
       break;
 
     case 'composite':
       rawValue = processComposite(col.value, context);
+      // Use default if composite results in empty string
+      if (!rawValue) {
+        rawValue = col.defaultValue || '';
+      }
       break;
 
     case 'lookup':
       // 1. Get source value
       const sourceVal = getNestedValue(context, col.value);
-      if (sourceVal) {
+      if (sourceVal !== undefined && sourceVal !== null && sourceVal !== '') {
         // 2. Find table
         const table = lookups.find(t => t.id === col.lookupTableId);
         if (table) {
-          // 3. Find entry (case insensitive matching?)
+          // 3. Find entry (case insensitive matching)
           const entry = table.entries.find(e => e.key.toLowerCase() === String(sourceVal).toLowerCase());
           rawValue = entry ? entry.value : (col.defaultValue || '');
         } else {
@@ -83,24 +92,12 @@ export const generateTemplatedCSV = (
 
   // 2. Data Rows
   invoices.forEach(inv => {
-    // If invoice has items, iterate items. If not, should we output 1 row? 
-    // For Stock Import (MotoClic), items are mandatory. We will assume item iteration.
-    // If no items, we skip (or you could uncomment logic to print 1 row with empty item fields).
-    
-    const itemsToProcess = (inv.items && inv.items.length > 0) ? inv.items : [];
-
-    if (itemsToProcess.length === 0) {
-       // Optional: Handle case where invoice has no items if you still want a row
-       // For now, we'll mimic the item loop with a null item to allow invoice-level data export
-       // But typically stock imports require lines. 
-    }
+    const itemsToProcess = (inv.items && inv.items.length > 0) ? inv.items : [null];
 
     itemsToProcess.forEach(item => {
-      // Flatten context so 'invoiceNumber' works (mapped to inv.invoiceNumber) AND 'invoice.invoiceNumber' works.
-      // This ensures backward compatibility with templates created before explicit paths were enforced.
       const context = { 
         ...inv, 
-        ...item, 
+        ...(item || {}), 
         invoice: inv, 
         item: item 
       };

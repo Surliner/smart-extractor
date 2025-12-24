@@ -1,5 +1,5 @@
 
-import { InvoiceData, UserProfile, UserActivity } from '../types';
+import { InvoiceData, UserProfile, UserActivity, UserRole } from '../types';
 
 const API_URL = window.location.hostname === 'localhost' 
   ? 'http://localhost:3000/api' 
@@ -43,7 +43,6 @@ export const dbService = {
       });
       return response.ok;
     } catch (e) {
-      console.warn("Connexion Backend échouée, mode local activé.");
       return false; 
     }
   },
@@ -67,9 +66,7 @@ export const dbService = {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, stats, activity })
       });
-    } catch (e) {
-      // Fallback localstorage déjà géré dans App.tsx
-    }
+    } catch (e) { }
   },
 
   async getAllUsers(): Promise<UserProfile[]> {
@@ -78,8 +75,29 @@ export const dbService = {
       if (response.ok) return await response.json();
       throw new Error();
     } catch (e) {
-      const saved = localStorage.getItem('smart-invoice-users');
-      return saved ? JSON.parse(saved) : [];
+      return [];
     }
+  },
+
+  async updateUserRole(username: string, role: UserRole): Promise<void> {
+    await fetch(`${API_URL}/admin/users/role`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, role })
+    });
+  },
+
+  async deleteUser(username: string): Promise<void> {
+    await fetch(`${API_URL}/admin/users?username=${username}`, {
+      method: 'DELETE'
+    });
+  },
+
+  async resetPasswordAdmin(username: string, newPass: string): Promise<void> {
+    await fetch(`${API_URL}/admin/users/password`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password: newPass })
+    });
   }
 };

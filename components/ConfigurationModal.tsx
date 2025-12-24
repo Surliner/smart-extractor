@@ -1,7 +1,8 @@
 
 import React, { useState, useMemo } from 'react';
-import { Settings, Save, X, Database, FileSpreadsheet, Plus, Trash2, CloudLightning, ShieldCheck, FileJson, Layers, Landmark, Tag, ArrowRightLeft, LayoutTemplate, Building2, Code2, GripVertical, Info, Settings2, FileText, ChevronDown } from 'lucide-react';
-import { ErpConfig, LookupTable, ExportTemplate, PartnerMasterData, SageX3Config, ExportColumn, XmlMappingProfile } from '../types';
+import { Settings, Save, X, Database, FileSpreadsheet, Plus, Trash2, CloudLightning, ShieldCheck, FileJson, Layers, Landmark, Tag, ArrowRightLeft, LayoutTemplate, Building2, Code2, GripVertical, Info, Settings2, FileText, ChevronDown, PlayCircle, TableProperties } from 'lucide-react';
+import { ErpConfig, LookupTable, ExportTemplate, PartnerMasterData, SageX3Config, ExportColumn, XmlMappingProfile, InvoiceData, InvoiceType } from '../types';
+import { processCell } from '../services/exportService';
 
 const FIELD_GROUPS = [
   {
@@ -51,6 +52,29 @@ const FIELD_GROUPS = [
 
 const FLAT_FIELDS = FIELD_GROUPS.flatMap(g => g.fields);
 
+const MOCK_PREVIEW_INVOICE: InvoiceData = {
+  id: 'MOCK-PREVIEW',
+  invoiceNumber: 'INV-2025-099',
+  invoiceDate: '15/05/2025',
+  dueDate: '15/06/2025',
+  supplier: 'SOCIETE EXEMPLE SAS',
+  supplierSiret: '12345678900014',
+  supplierVat: 'FR12345678901',
+  supplierErpCode: 'FR0012',
+  buyerName: 'CLIENT FINAL SARL',
+  amountInclVat: 1200.00,
+  amountExclVat: 1000.00,
+  totalVat: 200.00,
+  currency: 'EUR',
+  invoiceType: InvoiceType.INVOICE,
+  iban: 'FR7630006000011234567890123',
+  bic: 'BNPPARPPXXX',
+  originalFilename: 'facture_sample.pdf',
+  items: [
+    { articleId: 'PRD-100', description: 'Prestation Expertise IA', quantity: 1, unitPrice: 1000, amount: 1000, taxRate: 20 }
+  ]
+};
+
 interface ConfigurationModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -99,9 +123,9 @@ export const ConfigurationModal: React.FC<ConfigurationModalProps> = ({
       name: 'Nouveau Template CSV',
       separator: 'semicolon',
       columns: [
-        { header: 'N_FACTURE', type: 'field', value: 'invoiceNumber' },
-        { header: 'DATE', type: 'field', value: 'invoiceDate' },
-        { header: 'TOTAL_TTC', type: 'field', value: 'amountInclVat' }
+        { header: 'N_FACTURE', type: 'field', value: 'invoiceNumber', defaultValue: '' },
+        { header: 'DATE', type: 'field', value: 'invoiceDate', defaultValue: '' },
+        { header: 'TOTAL_TTC', type: 'field', value: 'amountInclVat', defaultValue: '0.00' }
       ]
     };
     setLocalTemplates([newTpl, ...localTemplates]);
@@ -116,7 +140,7 @@ export const ConfigurationModal: React.FC<ConfigurationModalProps> = ({
       if (t.id === templateId) {
         return {
           ...t,
-          columns: [...t.columns, { header: 'NEW_COL', type: 'field', value: 'invoiceNumber' }]
+          columns: [...t.columns, { header: 'NEW_COL', type: 'field', value: 'invoiceNumber', defaultValue: '' }]
         };
       }
       return t;
@@ -157,6 +181,21 @@ export const ConfigurationModal: React.FC<ConfigurationModalProps> = ({
     setLocalXmlProfiles([newProfile, ...localXmlProfiles]);
   };
 
+  const getPreviewRow = (template: ExportTemplate) => {
+    const inv = MOCK_PREVIEW_INVOICE;
+    const item = inv.items![0];
+    const context = { ...inv, ...item, invoice: inv, item: item };
+    const sep = template.separator === 'semicolon' ? ';' : template.separator === 'tab' ? '\t' : ',';
+    
+    return template.columns.map(col => {
+      let val = processCell(col, context, localLookups);
+      if (val.includes(sep) || val.includes('"')) {
+        val = `"${val.replace(/"/g, '""')}"`;
+      }
+      return val;
+    }).join(sep);
+  };
+
   return (
     <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md flex items-center justify-center z-[110] p-4">
       <div className="bg-white rounded-[2.5rem] shadow-2xl border border-slate-200 w-full max-w-7xl h-[92vh] flex flex-col overflow-hidden">
@@ -188,7 +227,7 @@ export const ConfigurationModal: React.FC<ConfigurationModalProps> = ({
           {/* Content Area */}
           <div className="flex-1 p-10 overflow-y-auto bg-white custom-scrollbar">
             
-            {/* FLAT TEMPLATES (Restore & Improve) */}
+            {/* FLAT TEMPLATES */}
             {activeTab === 'templates' && (
               <div className="space-y-10 animate-in fade-in duration-300">
                 <Header title="File Export Templates" desc="Bâtissez vos structures de fichiers CSV ou TXT sur mesure">
@@ -243,78 +282,99 @@ export const ConfigurationModal: React.FC<ConfigurationModalProps> = ({
                           
                           <div className="space-y-3">
                             {tpl.columns.map((col, cIdx) => (
-                              <div key={cIdx} className="flex items-center space-x-3 p-3 bg-slate-50 rounded-3xl border border-slate-100 group/col hover:bg-white hover:border-indigo-100 transition-all">
-                                <div className="p-2 text-slate-300 cursor-grab active:cursor-grabbing"><GripVertical className="w-4 h-4" /></div>
-                                
-                                <div className="flex-1 min-w-0 grid grid-cols-12 gap-3 items-end">
-                                  <div className="col-span-3">
-                                    <input 
-                                      value={col.header} 
-                                      onChange={(e) => updateColumn(tpl.id, cIdx, { header: e.target.value.toUpperCase() })}
-                                      className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2 text-[10px] font-black text-slate-900 outline-none focus:border-indigo-600"
-                                      placeholder="HEADER"
-                                    />
-                                  </div>
-
-                                  <div className="col-span-2">
-                                    <select 
-                                      value={col.type} 
-                                      onChange={(e) => updateColumn(tpl.id, cIdx, { type: e.target.value as any })}
-                                      className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-[9px] font-black uppercase text-indigo-600 outline-none"
-                                    >
-                                      <option value="field">Extrait IA</option>
-                                      <option value="static">Statique</option>
-                                      <option value="lookup">Lookup</option>
-                                    </select>
-                                  </div>
-
-                                  <div className="col-span-5">
-                                    {col.type === 'field' ? (
-                                      <select 
-                                        value={col.value} 
-                                        onChange={(e) => updateColumn(tpl.id, cIdx, { value: e.target.value })}
-                                        className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-[10px] font-bold text-slate-700 outline-none"
-                                      >
-                                        {FIELD_GROUPS.map(g => (
-                                          <optgroup key={g.name} label={g.name} className="text-[8px] uppercase tracking-widest text-slate-400">
-                                            {g.fields.map(f => (
-                                              <option key={f.id} value={f.id}>{f.label} ({f.bt})</option>
-                                            ))}
-                                          </optgroup>
-                                        ))}
-                                      </select>
-                                    ) : col.type === 'static' ? (
+                              <div key={cIdx} className="flex flex-col p-4 bg-slate-50 rounded-3xl border border-slate-100 group/col hover:bg-white hover:border-indigo-100 transition-all space-y-4">
+                                <div className="flex items-center space-x-3">
+                                  <div className="p-2 text-slate-300 cursor-grab active:cursor-grabbing"><GripVertical className="w-4 h-4" /></div>
+                                  <div className="flex-1 min-w-0 grid grid-cols-12 gap-3 items-end">
+                                    <div className="col-span-3">
                                       <input 
-                                        value={col.value} 
-                                        onChange={(e) => updateColumn(tpl.id, cIdx, { value: e.target.value })}
-                                        className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2 text-[10px] font-bold text-slate-900 outline-none"
-                                        placeholder="Valeur fixe..."
+                                        value={col.header} 
+                                        onChange={(e) => updateColumn(tpl.id, cIdx, { header: e.target.value.toUpperCase() })}
+                                        className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2 text-[10px] font-black text-slate-900 outline-none focus:border-indigo-600"
+                                        placeholder="HEADER"
                                       />
-                                    ) : (
-                                      <div className="flex space-x-2">
+                                      <p className="text-[7px] font-black text-slate-400 uppercase mt-1 ml-1">Libellé Colonne</p>
+                                    </div>
+
+                                    <div className="col-span-2">
+                                      <select 
+                                        value={col.type} 
+                                        onChange={(e) => updateColumn(tpl.id, cIdx, { type: e.target.value as any })}
+                                        className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-[9px] font-black uppercase text-indigo-600 outline-none"
+                                      >
+                                        <option value="field">Extrait IA</option>
+                                        <option value="static">Statique</option>
+                                        <option value="lookup">Lookup</option>
+                                      </select>
+                                      <p className="text-[7px] font-black text-slate-400 uppercase mt-1 ml-1">Source Donnée</p>
+                                    </div>
+
+                                    <div className="col-span-5">
+                                      {col.type === 'field' ? (
                                         <select 
                                           value={col.value} 
                                           onChange={(e) => updateColumn(tpl.id, cIdx, { value: e.target.value })}
-                                          className="flex-1 bg-white border border-slate-200 rounded-xl px-3 py-2 text-[10px] font-bold text-slate-700 outline-none"
+                                          className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-[10px] font-bold text-slate-700 outline-none"
                                         >
-                                          {FLAT_FIELDS.map(f => <option key={f.id} value={f.id}>{f.label}</option>)}
+                                          {FIELD_GROUPS.map(g => (
+                                            <optgroup key={g.name} label={g.name} className="text-[8px] uppercase tracking-widest text-slate-400">
+                                              {g.fields.map(f => (
+                                                <option key={f.id} value={f.id}>{f.label} ({f.bt})</option>
+                                              ))}
+                                            </optgroup>
+                                          ))}
                                         </select>
-                                        <select 
-                                          value={col.lookupTableId} 
-                                          onChange={(e) => updateColumn(tpl.id, cIdx, { lookupTableId: e.target.value })}
-                                          className="flex-1 bg-indigo-50 border border-indigo-100 rounded-xl px-3 py-2 text-[9px] font-black uppercase text-indigo-600 outline-none"
-                                        >
-                                          <option value="">Table...</option>
-                                          {localLookups.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
-                                        </select>
-                                      </div>
-                                    )}
-                                  </div>
+                                      ) : col.type === 'static' ? (
+                                        <input 
+                                          value={col.value} 
+                                          onChange={(e) => updateColumn(tpl.id, cIdx, { value: e.target.value })}
+                                          className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2 text-[10px] font-bold text-slate-900 outline-none"
+                                          placeholder="Valeur fixe..."
+                                        />
+                                      ) : (
+                                        <div className="flex space-x-2">
+                                          <select 
+                                            value={col.value} 
+                                            onChange={(e) => updateColumn(tpl.id, cIdx, { value: e.target.value })}
+                                            className="flex-1 bg-white border border-slate-200 rounded-xl px-3 py-2 text-[10px] font-bold text-slate-700 outline-none"
+                                          >
+                                            {FLAT_FIELDS.map(f => <option key={f.id} value={f.id}>{f.label}</option>)}
+                                          </select>
+                                          <select 
+                                            value={col.lookupTableId} 
+                                            onChange={(e) => updateColumn(tpl.id, cIdx, { lookupTableId: e.target.value })}
+                                            className="flex-1 bg-indigo-50 border border-indigo-100 rounded-xl px-3 py-2 text-[9px] font-black uppercase text-indigo-600 outline-none"
+                                          >
+                                            <option value="">Table...</option>
+                                            {localLookups.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                                          </select>
+                                        </div>
+                                      )}
+                                      <p className="text-[7px] font-black text-slate-400 uppercase mt-1 ml-1">Sélecteur de Valeur</p>
+                                    </div>
 
-                                  <div className="col-span-2 flex justify-end">
-                                    <button onClick={() => removeColumn(tpl.id, cIdx)} className="p-2 text-slate-300 hover:text-rose-500 transition-colors opacity-0 group-hover/col:opacity-100">
-                                      <Trash2 className="w-4 h-4" />
-                                    </button>
+                                    <div className="col-span-2 flex justify-end">
+                                      <button onClick={() => removeColumn(tpl.id, cIdx)} className="p-2 text-slate-300 hover:text-rose-500 transition-colors opacity-0 group-hover/col:opacity-100">
+                                        <Trash2 className="w-4 h-4" />
+                                      </button>
+                                    </div>
+                                  </div>
+                                </div>
+                                
+                                <div className="border-t border-slate-100/50 pt-3 flex items-center space-x-6">
+                                  <div className="flex-1 flex items-center space-x-3">
+                                    <Tag className="w-3 h-3 text-slate-300" />
+                                    <div className="flex-1">
+                                      <input 
+                                        value={col.defaultValue || ''} 
+                                        onChange={(e) => updateColumn(tpl.id, cIdx, { defaultValue: e.target.value })}
+                                        className="w-full bg-transparent border-b border-transparent hover:border-slate-200 focus:border-indigo-400 text-[10px] font-bold text-slate-500 outline-none px-1 py-0.5 transition-all"
+                                        placeholder="Valeur par défaut si vide..."
+                                      />
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center text-[8px] font-black text-slate-300 uppercase tracking-widest italic">
+                                    <Info className="w-2.5 h-2.5 mr-1" /> Requis pour le mapping ERP strict
                                   </div>
                                 </div>
                               </div>
@@ -324,6 +384,32 @@ export const ConfigurationModal: React.FC<ConfigurationModalProps> = ({
                           <button onClick={() => addColumn(tpl.id)} className="w-full py-5 border-2 border-dashed border-slate-100 rounded-[2rem] text-[10px] font-black uppercase text-slate-400 hover:border-indigo-200 hover:bg-indigo-50/30 hover:text-indigo-600 transition-all flex items-center justify-center">
                             <Plus className="w-4 h-4 mr-2" /> Ajouter une colonne
                           </button>
+                        </div>
+
+                        {/* Live Preview Section */}
+                        <div className="mt-10 bg-slate-900 rounded-[2rem] p-8 text-white relative overflow-hidden shadow-2xl">
+                          <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/10 rounded-full blur-3xl -mr-16 -mt-16"></div>
+                          <div className="flex items-center justify-between mb-6">
+                             <div className="flex items-center space-x-3">
+                                <PlayCircle className="w-5 h-5 text-indigo-400" />
+                                <div>
+                                   <p className="text-[10px] font-black uppercase tracking-widest text-indigo-300">Live Preview Output</p>
+                                   <p className="text-[8px] font-bold text-slate-500 uppercase tracking-widest">Basé sur une facture d'exemple fictive</p>
+                                </div>
+                             </div>
+                             <div className="flex items-center space-x-1.5 bg-white/5 px-3 py-1.5 rounded-xl border border-white/5">
+                                <TableProperties className="w-3 h-3 text-slate-500" />
+                                <span className="text-[8px] font-black uppercase tracking-widest text-slate-400">Preview Mode</span>
+                             </div>
+                          </div>
+                          
+                          <div className="bg-black/40 rounded-2xl p-6 font-mono text-xs overflow-x-auto custom-scrollbar border border-white/5">
+                             <div className="text-slate-500 mb-2 select-none">{tpl.columns.map(c => c.header).join(tpl.separator === 'semicolon' ? ';' : tpl.separator === 'tab' ? '\t' : ',')}</div>
+                             <div className="text-emerald-400 selection:bg-emerald-500/20">{getPreviewRow(tpl)}</div>
+                          </div>
+                          <div className="mt-4 flex items-center justify-center text-[7px] font-black uppercase tracking-[0.3em] text-slate-600">
+                             Visualisation temps réel • Auto-escape inclus • Separator: {tpl.separator}
+                          </div>
                         </div>
                       </div>
                     ))}
