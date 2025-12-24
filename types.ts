@@ -52,7 +52,7 @@ export interface SageX3Config {
 
 export interface InvoiceData {
   id: string;
-  owner?: string; // Utilisateur ayant extrait la facture
+  owner?: string; 
   sessionId?: string;
   extractionMode?: ExtractionMode;
   direction?: 'INBOUND' | 'OUTBOUND';
@@ -126,6 +126,14 @@ export interface ExportTemplate {
   name: string;
   separator: 'comma' | 'semicolon' | 'tab';
   columns: ExportColumn[];
+}
+
+export interface XmlMappingProfile {
+  id: string;
+  name: string;
+  rootTag: string;
+  itemTag: string;
+  mappings: { btId: string; xmlTag: string; enabled: boolean }[];
 }
 
 export type UserRole = 'ADMIN' | 'USER';

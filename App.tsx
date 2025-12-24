@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { UploadCloud, Loader2, Cpu, LogOut, Settings, Zap, Users, CloudLightning } from 'lucide-react';
 import { extractInvoiceData } from './services/geminiService';
 import { dbService } from './services/databaseService';
-import { InvoiceData, ErpStatus, ProcessingLog, ErpConfig, UserProfile, UserRole, PartnerMasterData, LookupTable, ExportTemplate } from './types';
+import { InvoiceData, ErpStatus, ProcessingLog, ErpConfig, UserProfile, UserRole, PartnerMasterData, LookupTable, ExportTemplate, XmlMappingProfile } from './types';
 import { ProcessingLogs } from './components/ProcessingLogs';
 import { InvoiceTable } from './components/InvoiceTable';
 import { LoginScreen } from './components/LoginScreen';
@@ -52,6 +52,11 @@ const App: React.FC = () => {
     return saved ? JSON.parse(saved) : [];
   });
 
+  const [xmlProfiles, setXmlProfiles] = useState<XmlMappingProfile[]>(() => {
+    const saved = localStorage.getItem('invoice-xml-profiles');
+    return saved ? JSON.parse(saved) : [];
+  });
+
   const currentUserProfile = useMemo(() => users.find(u => u.username === currentUser), [users, currentUser]);
   const isAdmin = currentUserProfile?.role === 'ADMIN';
 
@@ -83,7 +88,8 @@ const App: React.FC = () => {
     localStorage.setItem('invoice-master-data', JSON.stringify(masterData));
     localStorage.setItem('invoice-lookup-tables', JSON.stringify(lookupTables));
     localStorage.setItem('invoice-export-templates', JSON.stringify(templates));
-  }, [users, allInvoices, memory, erpConfig, masterData, lookupTables, templates]);
+    localStorage.setItem('invoice-xml-profiles', JSON.stringify(xmlProfiles));
+  }, [users, allInvoices, memory, erpConfig, masterData, lookupTables, templates, xmlProfiles]);
 
   const visibleInvoices = useMemo(() => {
     if (!currentUser) return [];
@@ -137,8 +143,6 @@ const App: React.FC = () => {
         if (partnerMatch) {
             inv.supplierErpCode = partnerMatch.erpCode;
             inv.isMasterMatched = true;
-            // Optionnel: On peut aussi forcer le nom "officiel" du référentiel
-            // inv.supplier = partnerMatch.name; 
         }
 
         const uniqueKey = createDedupKey(inv.supplier, inv.invoiceNumber);
@@ -174,6 +178,48 @@ const App: React.FC = () => {
       }
     }
     setIsProcessing(false);
+  };
+
+  const handleDeleteInvoices = (ids: string[]) => {
+    if (!confirm(`Confirmer la suppression de ${ids.length} factures ?`)) return;
+    
+    const toDelete = allInvoices.filter(inv => ids.includes(inv.id));
+    setAllInvoices(prev => prev.filter(inv => !ids.includes(inv.id)));
+    
+    // Libérer la mémoire de dédoublonnement
+    setMemory(prev => {
+        const next = new Set(prev);
+        toDelete.forEach(inv => {
+            next.delete(createDedupKey(inv.supplier, inv.invoiceNumber));
+        });
+        return next;
+    });
+    
+    setSelectedIds(new Set());
+    addLog(`${ids.length} factures supprimées de la file d'attente.`, 'info');
+  };
+
+  const handleSyncInvoices = async (ids: string[]) => {
+    if (!erpConfig.enabled || !erpConfig.apiUrl) {
+        alert("Connecteur ERP désactivé. Configurez-le dans le Hub.");
+        return;
+    }
+    
+    setIsProcessing(true);
+    let count = 0;
+    for (const id of ids) {
+        const inv = allInvoices.find(i => i.id === id);
+        if (!inv) continue;
+        
+        addLog(`Sync Sage X3 : ${inv.invoiceNumber}...`, 'info');
+        // Simulation d'appel API Sage
+        await new Promise(r => setTimeout(r, 600)); 
+        
+        setAllInvoices(prev => prev.map(i => i.id === id ? { ...i, erpStatus: ErpStatus.SUCCESS } : i));
+        count++;
+    }
+    setIsProcessing(false);
+    addLog(`Synchronisation terminée : ${count} factures traitées.`, 'success');
   };
 
   const addLog = (message: string, type: ProcessingLog['type'] = 'info') => {
@@ -228,6 +274,7 @@ const App: React.FC = () => {
         erpConfig={erpConfig} onSaveErp={setErpConfig} 
         lookupTables={lookupTables} onSaveLookups={setLookupTables} 
         templates={templates} onSaveTemplates={setTemplates} 
+        xmlProfiles={xmlProfiles} onSaveXmlProfiles={setXmlProfiles}
         masterData={masterData} onSaveMasterData={setMasterData}
       />
 
@@ -289,6 +336,8 @@ const App: React.FC = () => {
                 onToggleAll={() => setSelectedIds(selectedIds.size === visibleInvoices.length ? new Set() : new Set(visibleInvoices.map(i => i.id)))} 
                 onUpdate={(id, data) => setAllInvoices(prev => prev.map(inv => inv.id === id ? { ...inv, ...data } : inv))} 
                 onUpdateItem={() => {}} onDeleteItem={() => {}} 
+                onDeleteInvoices={handleDeleteInvoices}
+                onSyncInvoices={handleSyncInvoices}
                 lookupTables={lookupTables} templates={templates}
             />
           </div>

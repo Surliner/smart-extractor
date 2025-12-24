@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { InvoiceData, InvoiceItem, ErpStatus, InvoiceType, LookupTable, ExportTemplate } from '../types';
-import { Trash2, ChevronDown, ChevronRight, CheckCircle2, AlertCircle, Circle, Columns, X, FileCode, ArrowDownLeft, ArrowUpRight, Maximize2, LayoutList, FileSpreadsheet, FileDown } from 'lucide-react';
+import { Trash2, ChevronDown, ChevronRight, CheckCircle2, AlertCircle, Circle, Columns, X, FileCode, ArrowDownLeft, ArrowUpRight, Maximize2, LayoutList, FileSpreadsheet, FileDown, Zap, ListChecks } from 'lucide-react';
 import { FacturXModal } from './FacturXModal';
 import { generateTemplatedCSV } from '../services/exportService';
 
@@ -13,6 +13,8 @@ interface InvoiceTableProps {
   onUpdate: (id: string, data: Partial<InvoiceData>) => void;
   onUpdateItem: (invoiceId: string, itemIndex: number, data: Partial<InvoiceItem>) => void;
   onDeleteItem: (invoiceId: string, itemIndex: number) => void;
+  onDeleteInvoices: (ids: string[]) => void;
+  onSyncInvoices: (ids: string[]) => void;
   lookupTables: LookupTable[];
   templates: ExportTemplate[];
 }
@@ -45,6 +47,8 @@ export const InvoiceTable: React.FC<InvoiceTableProps> = ({
   onUpdate, 
   onUpdateItem,
   onDeleteItem,
+  onDeleteInvoices,
+  onSyncInvoices,
   lookupTables,
   templates
 }) => {
@@ -190,7 +194,54 @@ export const InvoiceTable: React.FC<InvoiceTableProps> = ({
         />
       )}
 
-      {/* Main Table Container: We ensure that children can overflow the header area */}
+      {/* Barre d'Actions Flottante */}
+      {selectedIds.size > 0 && (
+        <div className="fixed bottom-10 left-1/2 -translate-x-1/2 z-[60] bg-slate-950/90 backdrop-blur-2xl text-white px-8 py-5 rounded-[2.5rem] shadow-[0_40px_100px_-20px_rgba(0,0,0,0.6)] flex items-center space-x-10 animate-in slide-in-from-bottom-10 duration-500 border border-white/10">
+          <div className="flex items-center space-x-4 pr-10 border-r border-white/10">
+             <div className="bg-indigo-600 p-2.5 rounded-2xl shadow-lg shadow-indigo-500/20">
+                <ListChecks className="w-5 h-5" />
+             </div>
+             <div>
+                <p className="text-[11px] font-black uppercase tracking-[0.2em] leading-none">{selectedIds.size} FACTURES</p>
+                <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest mt-1.5">Traitement de masse</p>
+             </div>
+          </div>
+
+          <div className="flex items-center space-x-8">
+             <button 
+                onClick={() => setShowExportMenu(!showExportMenu)}
+                className="flex items-center space-x-2.5 text-[10px] font-black uppercase tracking-widest hover:text-emerald-400 transition-colors group"
+             >
+                <FileSpreadsheet className="w-5 h-5 text-emerald-500 group-hover:scale-110 transition-transform" />
+                <span>Exporter ({selectedIds.size})</span>
+             </button>
+
+             <button 
+                onClick={() => onSyncInvoices(Array.from(selectedIds))}
+                className="flex items-center space-x-2.5 text-[10px] font-black uppercase tracking-widest hover:text-indigo-400 transition-colors group"
+             >
+                <Zap className="w-5 h-5 text-indigo-500 group-hover:scale-110 transition-transform" />
+                <span>Sync Sage</span>
+             </button>
+
+             <button 
+                onClick={() => onDeleteInvoices(Array.from(selectedIds))}
+                className="flex items-center space-x-2.5 text-[10px] font-black uppercase tracking-widest hover:text-rose-400 transition-colors group"
+             >
+                <Trash2 className="w-5 h-5 text-rose-500 group-hover:scale-110 transition-transform" />
+                <span>Supprimer</span>
+             </button>
+          </div>
+
+          <button 
+            onClick={() => onToggleAll()} 
+            className="ml-4 p-2.5 hover:bg-white/10 rounded-full transition-all text-slate-400 hover:text-white"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+      )}
+
       <div className="bg-white rounded-[2rem] shadow-2xl border-2 border-slate-200 flex flex-col relative">
         <div className="px-8 py-4 border-b-2 border-slate-100 flex justify-between items-center bg-white sticky top-0 z-40 rounded-t-[2rem]">
           <div className="flex items-center space-x-4">
@@ -287,7 +338,6 @@ export const InvoiceTable: React.FC<InvoiceTableProps> = ({
           </div>
         </div>
 
-        {/* Scrollable Table Area: overflow-hidden is moved to the parent only, this child handles horizontal scroll */}
         <div className="overflow-x-auto custom-scrollbar bg-white rounded-b-[2rem]">
           <table className="w-full text-sm text-left border-collapse table-fixed">
             <thead className="text-[9px] text-slate-500 uppercase font-black bg-slate-100/50 border-b border-slate-200 sticky top-0 z-30 backdrop-blur-md">
