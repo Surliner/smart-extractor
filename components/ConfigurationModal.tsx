@@ -132,21 +132,39 @@ export const ConfigurationModal: React.FC<ConfigurationModalProps> = ({
 
     const reader = new FileReader();
     reader.onload = (event) => {
-      const csv = event.target?.result as string;
-      const lines = csv.split('\n');
-      const headers = lines[0].toLowerCase().split(/[;,]/);
+      const content = event.target?.result as string;
+      // Supprimer le BOM (Byte Order Mark) fréquent dans les exports Excel
+      const cleanContent = content.replace(/^\uFEFF/, '');
+      const lines = cleanContent.split(/\r?\n/).filter(l => l.trim());
+      if (lines.length < 1) return;
+
+      // Détection robuste du séparateur (priorité au point-virgule)
+      const headerLine = lines[0];
+      const separator = headerLine.includes(';') ? ';' : ',';
+      const headers = headerLine.toLowerCase().split(separator).map(h => h.trim());
       
-      const newPartners: PartnerMasterData[] = lines.slice(1).filter(l => l.trim()).map(line => {
-        const values = line.split(/[;,]/);
+      const newPartners: PartnerMasterData[] = lines.slice(1).map(line => {
+        const values = line.split(separator);
         const p: any = { id: crypto.randomUUID() };
+        
         headers.forEach((h, i) => {
-          const val = values[i]?.trim();
-          if (h.includes('code') || h.includes('id')) p.erpCode = val;
-          else if (h.includes('nom') || h.includes('name')) p.name = val;
-          else if (h.includes('siret')) p.siret = val;
-          else if (h.includes('tva') || h.includes('vat')) p.vatNumber = val;
-          else if (h.includes('iban')) p.iban = val;
-          else if (h.includes('compte') || h.includes('group')) p.accountingGroup = val;
+          const val = values[i]?.trim() || '';
+          if (!val) return;
+
+          // Mapping intelligent par mots-clés
+          if (h.includes('code') || h.includes('id') || h.includes('erp')) {
+            p.erpCode = val;
+          } else if (h.includes('nom') || h.includes('name') || h.includes('raison') || h.includes('societe')) {
+            p.name = val;
+          } else if (h.includes('siret')) {
+            p.siret = val;
+          } else if (h.includes('tva') || h.includes('vat')) {
+            p.vatNumber = val;
+          } else if (h.includes('iban')) {
+            p.iban = val;
+          } else if (h.includes('compte') || h.includes('group')) {
+            p.accountingGroup = val;
+          }
         });
         return p as PartnerMasterData;
       });
@@ -154,6 +172,8 @@ export const ConfigurationModal: React.FC<ConfigurationModalProps> = ({
       setLocalMasterData([...localMasterData, ...newPartners]);
     };
     reader.readAsText(file);
+    // Reset input
+    e.target.value = '';
   };
 
   const filteredMasterData = localMasterData.filter(p => 
@@ -306,6 +326,11 @@ export const ConfigurationModal: React.FC<ConfigurationModalProps> = ({
                            </td>
                          </tr>
                        ))}
+                       {filteredMasterData.length === 0 && (
+                        <tr>
+                          <td colSpan={5} className="px-6 py-12 text-center text-slate-400 italic font-medium">Aucun tiers trouvé. Importez un fichier CSV ou effectuez une recherche.</td>
+                        </tr>
+                       )}
                     </tbody>
                   </table>
                 </div>
