@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
-import { Settings, Save, X, Database, FileSpreadsheet, Plus, Trash2, CloudLightning, ShieldCheck, FileJson, Layers, Landmark, Tag, ArrowRightLeft, LayoutTemplate, Building2, Code2 } from 'lucide-react';
+import { Settings, Save, X, Database, FileSpreadsheet, Plus, Trash2, CloudLightning, ShieldCheck, FileJson, Layers, Landmark, Tag, ArrowRightLeft, LayoutTemplate, Building2, Code2, GripVertical, Info, Settings2, FileText, ChevronDown } from 'lucide-react';
 import { ErpConfig, LookupTable, ExportTemplate, PartnerMasterData, SageX3Config, ExportColumn, XmlMappingProfile } from '../types';
 
 const FIELD_GROUPS = [
@@ -9,25 +9,42 @@ const FIELD_GROUPS = [
     fields: [
       { id: 'invoiceNumber', label: 'Numéro Facture', bt: 'BT-1' },
       { id: 'invoiceDate', label: 'Date Facture', bt: 'BT-2' },
+      { id: 'dueDate', label: 'Échéance', bt: 'BT-9' },
       { id: 'currency', label: 'Devise', bt: 'BT-5' },
+      { id: 'invoiceType', label: 'Type Facture', bt: 'BT-3' },
     ]
   },
   {
-    name: 'Tiers Fournisseur',
+    name: 'Tiers & Banque',
     fields: [
       { id: 'supplier', label: 'Nom Fournisseur', bt: 'BT-27' },
-      { id: 'supplierSiret', label: 'SIRET', bt: 'BT-29' },
-      { id: 'supplierVat', label: 'TVA', bt: 'BT-31' },
+      { id: 'supplierSiret', label: 'SIRET Fournisseur', bt: 'BT-29' },
+      { id: 'supplierVat', label: 'TVA Fournisseur', bt: 'BT-31' },
+      { id: 'supplierErpCode', label: 'Code ERP Tiers', bt: 'N/A' },
+      { id: 'buyerName', label: 'Nom Acheteur', bt: 'BT-44' },
       { id: 'iban', label: 'IBAN', bt: 'BT-84' },
       { id: 'bic', label: 'BIC', bt: 'BT-85' },
     ]
   },
   {
-    name: 'Montants Financiers',
+    name: 'Montants & Totaux',
     fields: [
       { id: 'amountExclVat', label: 'Total HT', bt: 'BT-109' },
       { id: 'totalVat', label: 'Total TVA', bt: 'BT-110' },
       { id: 'amountInclVat', label: 'Total TTC', bt: 'BT-112' },
+      { id: 'globalDiscount', label: 'Remise Globale', bt: 'BT-107' },
+      { id: 'globalCharge', label: 'Frais Globaux', bt: 'BT-108' },
+    ]
+  },
+  {
+    name: 'Lignes de Détail',
+    fields: [
+      { id: 'articleId', label: 'Réf Article', bt: 'BT-155' },
+      { id: 'description', label: 'Désignation', bt: 'BT-154' },
+      { id: 'quantity', label: 'Quantité', bt: 'BT-129' },
+      { id: 'unitPrice', label: 'Prix Unitaire', bt: 'BT-146' },
+      { id: 'amount', label: 'Total Ligne HT', bt: 'BT-131' },
+      { id: 'taxRate', label: 'Taux TVA Ligne', bt: 'BT-152' },
     ]
   }
 ];
@@ -76,6 +93,59 @@ export const ConfigurationModal: React.FC<ConfigurationModalProps> = ({
     onClose();
   };
 
+  const handleAddTemplate = () => {
+    const newTpl: ExportTemplate = {
+      id: crypto.randomUUID(),
+      name: 'Nouveau Template CSV',
+      separator: 'semicolon',
+      columns: [
+        { header: 'N_FACTURE', type: 'field', value: 'invoiceNumber' },
+        { header: 'DATE', type: 'field', value: 'invoiceDate' },
+        { header: 'TOTAL_TTC', type: 'field', value: 'amountInclVat' }
+      ]
+    };
+    setLocalTemplates([newTpl, ...localTemplates]);
+  };
+
+  const updateTemplate = (id: string, updates: Partial<ExportTemplate>) => {
+    setLocalTemplates(prev => prev.map(t => t.id === id ? { ...t, ...updates } : t));
+  };
+
+  const addColumn = (templateId: string) => {
+    setLocalTemplates(prev => prev.map(t => {
+      if (t.id === templateId) {
+        return {
+          ...t,
+          columns: [...t.columns, { header: 'NEW_COL', type: 'field', value: 'invoiceNumber' }]
+        };
+      }
+      return t;
+    }));
+  };
+
+  const removeColumn = (templateId: string, colIndex: number) => {
+    setLocalTemplates(prev => prev.map(t => {
+      if (t.id === templateId) {
+        return {
+          ...t,
+          columns: t.columns.filter((_, i) => i !== colIndex)
+        };
+      }
+      return t;
+    }));
+  };
+
+  const updateColumn = (templateId: string, colIndex: number, updates: Partial<ExportColumn>) => {
+    setLocalTemplates(prev => prev.map(t => {
+      if (t.id === templateId) {
+        const newCols = [...t.columns];
+        newCols[colIndex] = { ...newCols[colIndex], ...updates };
+        return { ...t, columns: newCols };
+      }
+      return t;
+    }));
+  };
+
   const handleAddXmlProfile = () => {
     const newProfile: XmlMappingProfile = {
       id: crypto.randomUUID(),
@@ -89,7 +159,7 @@ export const ConfigurationModal: React.FC<ConfigurationModalProps> = ({
 
   return (
     <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md flex items-center justify-center z-[110] p-4">
-      <div className="bg-white rounded-[2.5rem] shadow-2xl border border-slate-200 w-full max-w-7xl h-[90vh] flex flex-col overflow-hidden">
+      <div className="bg-white rounded-[2.5rem] shadow-2xl border border-slate-200 w-full max-w-7xl h-[92vh] flex flex-col overflow-hidden">
         
         {/* Header */}
         <div className="px-10 py-6 border-b border-slate-100 flex justify-between items-center bg-white shrink-0">
@@ -105,9 +175,9 @@ export const ConfigurationModal: React.FC<ConfigurationModalProps> = ({
           <button onClick={onClose} className="p-3 text-slate-400 hover:text-rose-500 transition-colors bg-slate-50 rounded-xl"><X className="w-6 h-6" /></button>
         </div>
 
-        <div className="flex-1 flex overflow-hidden">
+        <div className="flex-1 flex overflow-hidden bg-slate-50">
           {/* Sidebar Navigation */}
-          <div className="w-72 bg-slate-50 border-r border-slate-200 p-6 space-y-2 shrink-0 overflow-y-auto custom-scrollbar">
+          <div className="w-72 bg-white border-r border-slate-200 p-6 space-y-2 shrink-0 overflow-y-auto custom-scrollbar">
             <NavBtn icon={Database} label="Master Data" active={activeTab === 'masterdata'} onClick={() => setActiveTab('masterdata')} />
             <NavBtn icon={FileSpreadsheet} label="Flat Templates" active={activeTab === 'templates'} onClick={() => setActiveTab('templates')} />
             <NavBtn icon={FileJson} label="XML Blueprints" active={activeTab === 'xml'} onClick={() => setActiveTab('xml')} />
@@ -116,8 +186,152 @@ export const ConfigurationModal: React.FC<ConfigurationModalProps> = ({
           </div>
 
           {/* Content Area */}
-          <div className="flex-1 p-12 overflow-y-auto bg-white custom-scrollbar">
+          <div className="flex-1 p-10 overflow-y-auto bg-white custom-scrollbar">
             
+            {/* FLAT TEMPLATES (Restore & Improve) */}
+            {activeTab === 'templates' && (
+              <div className="space-y-10 animate-in fade-in duration-300">
+                <Header title="File Export Templates" desc="Bâtissez vos structures de fichiers CSV ou TXT sur mesure">
+                  <button onClick={handleAddTemplate} className="bg-indigo-600 text-white px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center shadow-xl shadow-indigo-100 hover:bg-indigo-700 transition-all active:scale-95">
+                    <Plus className="w-4 h-4 mr-2" /> Nouveau Template
+                  </button>
+                </Header>
+
+                {localTemplates.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-20 border-2 border-dashed border-slate-100 rounded-[3rem] bg-slate-50/50">
+                    <div className="p-6 bg-white rounded-3xl shadow-sm mb-4">
+                      <FileSpreadsheet className="w-10 h-10 text-slate-300" />
+                    </div>
+                    <p className="text-sm font-black text-slate-400 uppercase tracking-widest">Aucun template configuré</p>
+                    <button onClick={handleAddTemplate} className="mt-4 text-[10px] font-black text-indigo-600 uppercase tracking-widest hover:text-indigo-800 underline">Créer votre premier template maintenant</button>
+                  </div>
+                ) : (
+                  <div className="space-y-12">
+                    {localTemplates.map((tpl) => (
+                      <div key={tpl.id} className="bg-white border-2 border-slate-100 rounded-[3rem] p-10 relative group shadow-sm hover:border-indigo-100 transition-all">
+                        <button onClick={() => setLocalTemplates(prev => prev.filter(t => t.id !== tpl.id))} className="absolute top-10 right-10 p-3 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-2xl transition-all">
+                          <Trash2 className="w-6 h-6" />
+                        </button>
+
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 mb-10 border-b border-slate-50 pb-10">
+                          <div className="space-y-4">
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center"><Settings2 className="w-3 h-3 mr-2" /> Identification</label>
+                            <Input label="Nom du Template" value={tpl.name} onChange={(v: string) => updateTemplate(tpl.id, { name: v })} placeholder="Ex: Export Sage Achats" />
+                          </div>
+                          <div className="space-y-4">
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center"><FileText className="w-3 h-3 mr-2" /> Format de Fichier</label>
+                            <div className="flex flex-col space-y-1">
+                              <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Séparateur de colonnes</label>
+                              <select 
+                                value={tpl.separator} 
+                                onChange={(e) => updateTemplate(tpl.id, { separator: e.target.value as any })}
+                                className="w-full px-5 py-4 rounded-2xl border border-slate-200 bg-slate-50 text-xs font-black outline-none focus:border-indigo-600 focus:bg-white transition-all appearance-none cursor-pointer"
+                              >
+                                <option value="semicolon">Point-virgule (;)</option>
+                                <option value="comma">Virgule (,)</option>
+                                <option value="tab">Tabulation (\t)</option>
+                              </select>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="space-y-6">
+                          <div className="flex justify-between items-end mb-2">
+                             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center"><LayoutTemplate className="w-3 h-3 mr-2" /> Structure des Colonnes</label>
+                             <span className="text-[9px] font-black text-slate-300 uppercase tracking-widest">{tpl.columns.length} Colonnes</span>
+                          </div>
+                          
+                          <div className="space-y-3">
+                            {tpl.columns.map((col, cIdx) => (
+                              <div key={cIdx} className="flex items-center space-x-3 p-3 bg-slate-50 rounded-3xl border border-slate-100 group/col hover:bg-white hover:border-indigo-100 transition-all">
+                                <div className="p-2 text-slate-300 cursor-grab active:cursor-grabbing"><GripVertical className="w-4 h-4" /></div>
+                                
+                                <div className="flex-1 min-w-0 grid grid-cols-12 gap-3 items-end">
+                                  <div className="col-span-3">
+                                    <input 
+                                      value={col.header} 
+                                      onChange={(e) => updateColumn(tpl.id, cIdx, { header: e.target.value.toUpperCase() })}
+                                      className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2 text-[10px] font-black text-slate-900 outline-none focus:border-indigo-600"
+                                      placeholder="HEADER"
+                                    />
+                                  </div>
+
+                                  <div className="col-span-2">
+                                    <select 
+                                      value={col.type} 
+                                      onChange={(e) => updateColumn(tpl.id, cIdx, { type: e.target.value as any })}
+                                      className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-[9px] font-black uppercase text-indigo-600 outline-none"
+                                    >
+                                      <option value="field">Extrait IA</option>
+                                      <option value="static">Statique</option>
+                                      <option value="lookup">Lookup</option>
+                                    </select>
+                                  </div>
+
+                                  <div className="col-span-5">
+                                    {col.type === 'field' ? (
+                                      <select 
+                                        value={col.value} 
+                                        onChange={(e) => updateColumn(tpl.id, cIdx, { value: e.target.value })}
+                                        className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-[10px] font-bold text-slate-700 outline-none"
+                                      >
+                                        {FIELD_GROUPS.map(g => (
+                                          <optgroup key={g.name} label={g.name} className="text-[8px] uppercase tracking-widest text-slate-400">
+                                            {g.fields.map(f => (
+                                              <option key={f.id} value={f.id}>{f.label} ({f.bt})</option>
+                                            ))}
+                                          </optgroup>
+                                        ))}
+                                      </select>
+                                    ) : col.type === 'static' ? (
+                                      <input 
+                                        value={col.value} 
+                                        onChange={(e) => updateColumn(tpl.id, cIdx, { value: e.target.value })}
+                                        className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2 text-[10px] font-bold text-slate-900 outline-none"
+                                        placeholder="Valeur fixe..."
+                                      />
+                                    ) : (
+                                      <div className="flex space-x-2">
+                                        <select 
+                                          value={col.value} 
+                                          onChange={(e) => updateColumn(tpl.id, cIdx, { value: e.target.value })}
+                                          className="flex-1 bg-white border border-slate-200 rounded-xl px-3 py-2 text-[10px] font-bold text-slate-700 outline-none"
+                                        >
+                                          {FLAT_FIELDS.map(f => <option key={f.id} value={f.id}>{f.label}</option>)}
+                                        </select>
+                                        <select 
+                                          value={col.lookupTableId} 
+                                          onChange={(e) => updateColumn(tpl.id, cIdx, { lookupTableId: e.target.value })}
+                                          className="flex-1 bg-indigo-50 border border-indigo-100 rounded-xl px-3 py-2 text-[9px] font-black uppercase text-indigo-600 outline-none"
+                                        >
+                                          <option value="">Table...</option>
+                                          {localLookups.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                                        </select>
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  <div className="col-span-2 flex justify-end">
+                                    <button onClick={() => removeColumn(tpl.id, cIdx)} className="p-2 text-slate-300 hover:text-rose-500 transition-colors opacity-0 group-hover/col:opacity-100">
+                                      <Trash2 className="w-4 h-4" />
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+
+                          <button onClick={() => addColumn(tpl.id)} className="w-full py-5 border-2 border-dashed border-slate-100 rounded-[2rem] text-[10px] font-black uppercase text-slate-400 hover:border-indigo-200 hover:bg-indigo-50/30 hover:text-indigo-600 transition-all flex items-center justify-center">
+                            <Plus className="w-4 h-4 mr-2" /> Ajouter une colonne
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* MASTER DATA */}
             {activeTab === 'masterdata' && (
               <div className="space-y-8 animate-in fade-in duration-300">
@@ -131,18 +345,18 @@ export const ConfigurationModal: React.FC<ConfigurationModalProps> = ({
                       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                         <div className="space-y-4">
                           <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest flex items-center"><Building2 className="w-3 h-3 mr-2" /> Identité ERP</label>
-                          <Input label="Code Sage" value={p.erpCode} onChange={v=>setLocalMasterData(prev=>prev.map(x=>x.id===p.id?{...x, erpCode:v}:x))} />
-                          <Input label="Raison Sociale" value={p.name} onChange={v=>setLocalMasterData(prev=>prev.map(x=>x.id===p.id?{...x, name:v}:x))} />
+                          <Input label="Code Sage" value={p.erpCode} onChange={(v:any)=>setLocalMasterData(prev=>prev.map(x=>x.id===p.id?{...x, erpCode:v}:x))} />
+                          <Input label="Raison Sociale" value={p.name} onChange={(v:any)=>setLocalMasterData(prev=>prev.map(x=>x.id===p.id?{...x, name:v}:x))} />
                         </div>
                         <div className="space-y-4">
                           <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest flex items-center"><ShieldCheck className="w-3 h-3 mr-2" /> Fiscalité</label>
-                          <Input label="SIRET" value={p.siret} onChange={v=>setLocalMasterData(prev=>prev.map(x=>x.id===p.id?{...x, siret:v.replace(/\s/g,'')}:x))} />
-                          <Input label="N° TVA" value={p.vatNumber} onChange={v=>setLocalMasterData(prev=>prev.map(x=>x.id===p.id?{...x, vatNumber:v}:x))} />
+                          <Input label="SIRET" value={p.siret} onChange={(v:any)=>setLocalMasterData(prev=>prev.map(x=>x.id===p.id?{...x, siret:v.replace(/\s/g,'')}:x))} />
+                          <Input label="N° TVA" value={p.vatNumber} onChange={(v:any)=>setLocalMasterData(prev=>prev.map(x=>x.id===p.id?{...x, vatNumber:v}:x))} />
                         </div>
                         <div className="space-y-4">
                           <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest flex items-center"><Landmark className="w-3 h-3 mr-2" /> Bancaire</label>
-                          <Input label="IBAN" value={p.iban || ''} onChange={v=>setLocalMasterData(prev=>prev.map(x=>x.id===p.id?{...x, iban:v.replace(/\s/g,'')}:x))} />
-                          <Input label="BIC" value={p.bic || ''} onChange={v=>setLocalMasterData(prev=>prev.map(x=>x.id===p.id?{...x, bic:v}:x))} />
+                          <Input label="IBAN" value={p.iban || ''} onChange={(v:any)=>setLocalMasterData(prev=>prev.map(x=>x.id===p.id?{...x, iban:v.replace(/\s/g,'')}:x))} />
+                          <Input label="BIC" value={p.bic || ''} onChange={(v:any)=>setLocalMasterData(prev=>prev.map(x=>x.id===p.id?{...x, bic:v}:x))} />
                         </div>
                       </div>
                     </div>
@@ -161,9 +375,9 @@ export const ConfigurationModal: React.FC<ConfigurationModalProps> = ({
                   <div key={prof.id} className="p-8 border-2 border-slate-100 rounded-[2.5rem] bg-white relative group shadow-sm hover:border-indigo-100 transition-all">
                     <button onClick={()=>setLocalXmlProfiles(prev=>prev.filter(p=>p.id!==prof.id))} className="absolute top-8 right-8 text-slate-300 hover:text-rose-500"><Trash2 className="w-5 h-5" /></button>
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8 border-b border-slate-50 pb-8">
-                      <Input label="Nom du Profil" value={prof.name} onChange={v=>setLocalXmlProfiles(prev=>prev.map(p=>p.id===prof.id?{...p, name:v}:p))} />
-                      <Input label="Balise Racine" value={prof.rootTag} onChange={v=>setLocalXmlProfiles(prev=>prev.map(p=>p.id===prof.id?{...p, rootTag:v}:p))} />
-                      <Input label="Balise Ligne" value={prof.itemTag} onChange={v=>setLocalXmlProfiles(prev=>prev.map(p=>p.id===prof.id?{...p, itemTag:v}:p))} />
+                      <Input label="Nom du Profil" value={prof.name} onChange={(v:any)=>setLocalXmlProfiles(prev=>prev.map(p=>p.id===prof.id?{...p, name:v}:p))} />
+                      <Input label="Balise Racine" value={prof.rootTag} onChange={(v:any)=>setLocalXmlProfiles(prev=>prev.map(p=>p.id===prof.id?{...p, rootTag:v}:p))} />
+                      <Input label="Balise Ligne" value={prof.itemTag} onChange={(v:any)=>setLocalXmlProfiles(prev=>prev.map(p=>p.id===prof.id?{...p, itemTag:v}:p))} />
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                       {prof.mappings.map((m, mIdx) => (
@@ -244,12 +458,12 @@ export const ConfigurationModal: React.FC<ConfigurationModalProps> = ({
                     </button>
                   </div>
                   <div className="space-y-8">
-                    <Input label="Sage X3 Endpoint" value={localErp.apiUrl} onChange={v=>setLocalErp({...localErp, apiUrl:v})} theme="dark" />
+                    <Input label="Sage X3 Endpoint" value={localErp.apiUrl} onChange={(v:any)=>setLocalErp({...localErp, apiUrl:v})} theme="dark" />
                     <div className="grid grid-cols-2 gap-8">
-                      <Input label="Dossier (Folder)" value={localErp.sageConfig?.folder||''} onChange={v=>setLocalErp({...localErp, sageConfig: {...(localErp.sageConfig||{} as SageX3Config), folder:v}})} theme="dark" />
-                      <Input label="Utilisateur" value={localErp.sageConfig?.user||''} onChange={v=>setLocalErp({...localErp, sageConfig: {...(localErp.sageConfig||{} as SageX3Config), user:v}})} theme="dark" />
+                      <Input label="Dossier (Folder)" value={localErp.sageConfig?.folder||''} onChange={(v:any)=>setLocalErp({...localErp, sageConfig: {...(localErp.sageConfig||{} as SageX3Config), folder:v}})} theme="dark" />
+                      <Input label="Utilisateur" value={localErp.sageConfig?.user||''} onChange={(v:any)=>setLocalErp({...localErp, sageConfig: {...(localErp.sageConfig||{} as SageX3Config), user:v}})} theme="dark" />
                     </div>
-                    <Input label="API Key / Token" type="password" value={localErp.apiKey} onChange={v=>setLocalErp({...localErp, apiKey:v})} theme="dark" />
+                    <Input label="API Key / Token" type="password" value={localErp.apiKey} onChange={(v:any)=>setLocalErp({...localErp, apiKey:v})} theme="dark" />
                   </div>
                 </div>
               </div>
@@ -271,7 +485,7 @@ export const ConfigurationModal: React.FC<ConfigurationModalProps> = ({
 };
 
 const NavBtn = ({ icon: Icon, label, active, onClick }: any) => (
-  <button onClick={onClick} className={`w-full flex items-center space-x-4 px-6 py-5 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${active ? 'bg-indigo-600 text-white shadow-xl shadow-indigo-200' : 'text-slate-400 hover:bg-white hover:text-slate-900'}`}>
+  <button onClick={onClick} className={`w-full flex items-center space-x-4 px-6 py-5 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${active ? 'bg-indigo-600 text-white shadow-xl shadow-indigo-100' : 'text-slate-400 hover:bg-slate-50 hover:text-slate-900'}`}>
     <Icon className="w-5 h-5" />
     <span>{label}</span>
   </button>
