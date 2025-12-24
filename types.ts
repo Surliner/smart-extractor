@@ -39,6 +39,7 @@ export interface PartnerMasterData {
   siret: string;
   vatNumber: string;
   iban?: string;
+  bic?: string;
   accountingGroup?: string;
 }
 
@@ -162,15 +163,6 @@ export interface UserProfile {
   securityAnswer?: string;
 }
 
-export interface ExtractionResult {
-  invoice: InvoiceData;
-  usage: {
-    promptTokens: number;
-    completionTokens: number;
-    totalTokens: number;
-  };
-}
-
 export interface LookupTable {
   id: string;
   name: string;
@@ -182,4 +174,14 @@ export interface ErpConfig {
   apiKey: string;
   enabled: boolean;
   sageConfig?: SageX3Config;
+}
+
+// Added ExtractionResult interface to fix the module export error
+export interface ExtractionResult {
+  invoice: InvoiceData;
+  usage: {
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
+  };
 }
