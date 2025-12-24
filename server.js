@@ -81,11 +81,39 @@ app.use(express.json({ limit: '50mb' }));
 
 // --- AUTH ---
 
+app.post('/api/auth/register', async (req, res) => {
+  const { username, password, securityQuestion, securityAnswer } = req.body;
+  try {
+    // Check if user exists
+    const existing = await pool.query('SELECT username FROM users WHERE LOWER(username) = LOWER($1)', [username.trim()]);
+    if (existing.rows.length > 0) {
+      return res.status(400).json({ error: "Ce nom d'utilisateur est déjà utilisé." });
+    }
+
+    // Determine role: First user is ADMIN. Also 'admin' and 'Jean Duhamel' are always ADMIN.
+    const userCount = await pool.query('SELECT COUNT(*) FROM users');
+    let role = 'USER';
+    const normalizedName = username.trim().toLowerCase();
+    if (parseInt(userCount.rows[0].count) === 0 || normalizedName === 'admin' || normalizedName === 'jean duhamel') {
+      role = 'ADMIN';
+    }
+
+    const result = await pool.query(
+      'INSERT INTO users (username, password, role, security_question, security_answer) VALUES ($1, $2, $3, $4, $5) RETURNING username, role, stats',
+      [username.trim(), password, role, securityQuestion, securityAnswer]
+    );
+
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post('/api/auth/login', async (req, res) => {
   const { username, password } = req.body;
   try {
     const result = await pool.query(
-      'SELECT username, password, role, stats, security_question FROM users WHERE LOWER(username) = LOWER($1)',
+      'SELECT username, password, role, stats, security_question, security_answer, created_at FROM users WHERE LOWER(username) = LOWER($1)',
       [username.trim()]
     );
     
@@ -107,12 +135,29 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
+app.post('/api/auth/reset-password', async (req, res) => {
+  const { username, newPassword, securityAnswer } = req.body;
+  try {
+    const userResult = await pool.query('SELECT security_answer FROM users WHERE LOWER(username) = LOWER($1)', [username.trim()]);
+    if (userResult.rows.length === 0) return res.status(404).json({ error: "Utilisateur non trouvé." });
+
+    if (userResult.rows[0].security_answer !== securityAnswer) {
+      return res.status(403).json({ error: "Réponse à la question de sécurité incorrecte." });
+    }
+
+    await pool.query('UPDATE users SET password = $1 WHERE LOWER(username) = LOWER($2)', [newPassword, username.trim()]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // --- ADMIN ROUTES ---
 
 app.get('/api/admin/users', async (req, res) => {
   try {
     const result = await pool.query(`
-      SELECT u.username, u.role, u.stats, u.created_at, u.login_history,
+      SELECT u.username, u.role, u.stats, u.created_at, u.login_history, u.security_question, u.security_answer,
              (SELECT json_agg(act) FROM (SELECT * FROM activities WHERE username = u.username ORDER BY timestamp DESC LIMIT 20) act) as activity_log
       FROM users u 
       ORDER BY u.created_at DESC

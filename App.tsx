@@ -56,20 +56,28 @@ const App: React.FC = () => {
 
   // Fetch initial data
   useEffect(() => {
-    if (currentUser) {
-      // Re-fetch current profile to get role
-      dbService.getAllUsers().then(users => {
-        setAllUsers(users);
-        const me = users.find(u => u.username === currentUser);
-        if (me) setUserProfile(me);
-      });
+    const initialize = async () => {
+      // Re-fetch current profile and all users
+      const users = await dbService.getAllUsers();
+      setAllUsers(users);
 
-      dbService.getInvoices(currentUser, userProfile?.role || 'USER').then(dbInvoices => {
-        setAllInvoices(dbInvoices);
-        const keys = dbInvoices.map(inv => createDedupKey(inv.supplier, inv.invoiceNumber));
-        setMemory(new Set(keys));
-      });
-    }
+      if (currentUser) {
+        const me = users.find(u => u.username === currentUser);
+        if (me) {
+          setUserProfile(me);
+          const dbInvoices = await dbService.getInvoices(currentUser, me.role || 'USER');
+          setAllInvoices(dbInvoices);
+          const keys = dbInvoices.map(inv => createDedupKey(inv.supplier, inv.invoiceNumber));
+          setMemory(new Set(keys));
+        } else {
+          // If current user not found (e.g. deleted), logout
+          localStorage.removeItem('invoice-session-active-user');
+          setCurrentUser(null);
+        }
+      }
+    };
+    
+    initialize();
   }, [currentUser]);
 
   useEffect(() => { 
@@ -175,9 +183,44 @@ const App: React.FC = () => {
     setAllUsers(users);
   };
 
+  const handleRegister = async (username: string, pass: string, question?: string, answer?: string) => {
+    try {
+      const newUser = await dbService.registerUser({
+        username,
+        password: pass,
+        securityQuestion: question,
+        securityAnswer: answer
+      });
+      // Refresh user list
+      fetchUsers();
+      // Auto-login
+      setCurrentUser(newUser.username);
+      setUserProfile(newUser);
+      localStorage.setItem('invoice-session-active-user', newUser.username);
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
+
+  const handleResetPassword = async (username: string, newPass: string, answer?: string) => {
+    try {
+      await dbService.resetPassword(username, newPass, answer || '');
+      fetchUsers();
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
+
   const isAdmin = userProfile?.role === 'ADMIN';
 
-  if (!currentUser) return <LoginScreen onLogin={u => { setCurrentUser(u.username); setUserProfile(u); }} users={[]} onRegister={()=>{}} onResetPassword={()=>{}} />;
+  if (!currentUser) return (
+    <LoginScreen 
+      onLogin={u => { setCurrentUser(u.username); setUserProfile(u); localStorage.setItem('invoice-session-active-user', u.username); }} 
+      users={allUsers} 
+      onRegister={handleRegister} 
+      onResetPassword={handleResetPassword} 
+    />
+  );
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 font-sans pb-24">

@@ -1,10 +1,9 @@
 
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { InvoiceData, InvoiceItem, ErpStatus, InvoiceType, LookupTable, ExportTemplate, XmlMappingProfile } from '../types';
-// Added ShieldCheck to the lucide-react imports
 import { Trash2, ChevronDown, CheckCircle2, AlertCircle, Circle, Columns, X, FileCode, ArrowDownLeft, ArrowUpRight, Maximize2, LayoutList, FileSpreadsheet, FileDown, Zap, ListChecks, FileJson, ShieldCheck } from 'lucide-react';
 import { FacturXModal } from './FacturXModal';
-import { generateTemplatedCSV } from '../services/exportService';
+import { generateTemplatedCSV, generateTemplatedXML } from '../services/exportService';
 
 interface InvoiceTableProps {
   invoices: InvoiceData[];
@@ -18,15 +17,6 @@ interface InvoiceTableProps {
   templates: ExportTemplate[];
   xmlProfiles: XmlMappingProfile[];
 }
-
-const DEFAULT_COL_WIDTHS: Record<string, number> = {
-  direction: 40,
-  invoiceNumber: 120,
-  date: 100,
-  supplier: 180,
-  total: 120,
-  filename: 150
-};
 
 export const InvoiceTable: React.FC<InvoiceTableProps> = ({ 
   invoices, 
@@ -42,7 +32,6 @@ export const InvoiceTable: React.FC<InvoiceTableProps> = ({
 }) => {
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
 
   const activeInvoice = useMemo(() => invoices.find(inv => inv.id === editingId), [invoices, editingId]);
 
@@ -54,6 +43,18 @@ export const InvoiceTable: React.FC<InvoiceTableProps> = ({
     const link = document.createElement('a');
     link.href = url;
     link.download = `${tpl.name}_${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
+    setShowExportMenu(false);
+  };
+
+  const handleExportXML = (prof: XmlMappingProfile) => {
+    const targets = invoices.filter(i => selectedIds.has(i.id));
+    const xml = generateTemplatedXML(targets, prof, lookupTables);
+    const blob = new Blob([xml], { type: 'application/xml;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${prof.name}_${new Date().toISOString().split('T')[0]}.xml`;
     link.click();
     setShowExportMenu(false);
   };
@@ -106,15 +107,17 @@ export const InvoiceTable: React.FC<InvoiceTableProps> = ({
                     <FileSpreadsheet className="w-4 h-4 mr-3 text-emerald-400" /> {tpl.name}
                   </button>
                 ))}
+                {templates.length === 0 && <p className="text-[10px] text-slate-600 px-4">Aucun template CSV</p>}
               </div>
               <div className="h-px bg-white/5"></div>
               <div className="space-y-2">
                 <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-2">Blueprints XML</p>
                 {xmlProfiles.map(prof => (
-                  <button key={prof.id} className="w-full text-left px-4 py-3 bg-white/5 rounded-xl text-[10px] font-black hover:bg-white/10 flex items-center">
+                  <button key={prof.id} onClick={() => handleExportXML(prof)} className="w-full text-left px-4 py-3 bg-white/5 rounded-xl text-[10px] font-black hover:bg-white/10 flex items-center">
                     <FileJson className="w-4 h-4 mr-3 text-indigo-400" /> {prof.name}
                   </button>
                 ))}
+                {xmlProfiles.length === 0 && <p className="text-[10px] text-slate-600 px-4">Aucun blueprint XML</p>}
               </div>
             </div>
           )}
@@ -137,25 +140,33 @@ export const InvoiceTable: React.FC<InvoiceTableProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {invoices.map(inv => (
-                <tr key={inv.id} className={`group hover:bg-slate-50 transition-colors ${selectedIds.has(inv.id) ? 'bg-indigo-50/50' : ''}`}>
-                  <td className="px-4 py-5 text-center">
-                    <input type="checkbox" checked={selectedIds.has(inv.id)} onChange={() => onToggleSelection(inv.id)} className="w-4 h-4 rounded border-slate-300" />
-                  </td>
-                  <td className="px-4 py-5 font-black text-slate-900 text-xs">{inv.invoiceNumber}</td>
-                  <td className="px-4 py-5 text-xs text-slate-500">{inv.invoiceDate}</td>
-                  <td className="px-4 py-5 text-xs font-bold text-slate-800">
-                    <div className="flex items-center">
-                      {inv.supplier}
-                      {inv.isMasterMatched && <ShieldCheck className="w-3 h-3 ml-2 text-emerald-500" />}
-                    </div>
-                  </td>
-                  <td className="px-4 py-5 text-right font-black text-indigo-600 text-xs">{inv.amountInclVat?.toFixed(2)} {inv.currency}</td>
-                  <td className="px-4 py-5 text-center">
-                    <button onClick={() => setEditingId(inv.id)} className="p-2 text-slate-400 hover:text-indigo-600 bg-white border border-slate-200 rounded-xl shadow-sm"><Maximize2 className="w-4 h-4" /></button>
+              {invoices.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="px-4 py-20 text-center text-slate-400 font-bold uppercase tracking-widest text-[10px]">
+                    Aucune facture dans le système
                   </td>
                 </tr>
-              ))}
+              ) : (
+                invoices.map(inv => (
+                  <tr key={inv.id} className={`group hover:bg-slate-50 transition-colors ${selectedIds.has(inv.id) ? 'bg-indigo-50/50' : ''}`}>
+                    <td className="px-4 py-5 text-center">
+                      <input type="checkbox" checked={selectedIds.has(inv.id)} onChange={() => onToggleSelection(inv.id)} className="w-4 h-4 rounded border-slate-300" />
+                    </td>
+                    <td className="px-4 py-5 font-black text-slate-900 text-xs">{inv.invoiceNumber}</td>
+                    <td className="px-4 py-5 text-xs text-slate-500">{inv.invoiceDate}</td>
+                    <td className="px-4 py-5 text-xs font-bold text-slate-800">
+                      <div className="flex items-center">
+                        {inv.supplier}
+                        {inv.isMasterMatched && <ShieldCheck className="w-3 h-3 ml-2 text-emerald-500" />}
+                      </div>
+                    </td>
+                    <td className="px-4 py-5 text-right font-black text-indigo-600 text-xs">{inv.amountInclVat?.toFixed(2)} {inv.currency}</td>
+                    <td className="px-4 py-5 text-center">
+                      <button onClick={() => setEditingId(inv.id)} className="p-2 text-slate-400 hover:text-indigo-600 bg-white border border-slate-200 rounded-xl shadow-sm"><Maximize2 className="w-4 h-4" /></button>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>

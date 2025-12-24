@@ -33,6 +33,18 @@ export const dbService = {
     return await response.json();
   },
 
+  async resetPassword(username: string, newPassword: string, securityAnswer: string): Promise<void> {
+    const response = await fetch(`${API_URL}/auth/reset-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, newPassword, securityAnswer })
+    });
+    if (!response.ok) {
+      const err = await response.json();
+      throw new Error(err.error || "Échec de la réinitialisation du mot de passe.");
+    }
+  },
+
   // --- FACTURES ---
   async saveInvoice(invoice: InvoiceData): Promise<boolean> {
     try {
