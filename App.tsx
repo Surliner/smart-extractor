@@ -74,13 +74,16 @@ const App: React.FC = () => {
     loadData();
   }, [currentUser]);
 
-  // Sauvegarde persistante (Local fallback)
+  // Sauvegarde persistante
   useEffect(() => { 
     localStorage.setItem('smart-invoice-users', JSON.stringify(users));
     localStorage.setItem('invoice-queue-persistent-all', JSON.stringify(allInvoices));
     localStorage.setItem('invoice-dedup-memory', JSON.stringify(Array.from(memory)));
     localStorage.setItem('invoice-erp-config', JSON.stringify(erpConfig));
-  }, [users, allInvoices, memory, erpConfig]);
+    localStorage.setItem('invoice-master-data', JSON.stringify(masterData));
+    localStorage.setItem('invoice-lookup-tables', JSON.stringify(lookupTables));
+    localStorage.setItem('invoice-export-templates', JSON.stringify(templates));
+  }, [users, allInvoices, memory, erpConfig, masterData, lookupTables, templates]);
 
   const visibleInvoices = useMemo(() => {
     if (!currentUser) return [];
@@ -106,6 +109,12 @@ const App: React.FC = () => {
     });
   };
 
+  const matchPartnerBySiret = (extractedSiret: string | undefined): PartnerMasterData | null => {
+    if (!extractedSiret) return null;
+    const cleanSiret = extractedSiret.replace(/\s/g, '');
+    return masterData.find(m => m.siret?.replace(/\s/g, '') === cleanSiret) || null;
+  };
+
   const processFiles = async (files: FileList | null) => {
     if (!files || files.length === 0 || !currentUser) return;
     setIsProcessing(true);
@@ -123,6 +132,15 @@ const App: React.FC = () => {
         const result = await extractInvoiceData(base64Data, file.type, file.name, 'ULTIMATE', invoiceDirection, true);
         const inv = { ...result.invoice, owner: currentUser };
         
+        // --- LOGIQUE DE MATCHING MASTER DATA ---
+        const partnerMatch = matchPartnerBySiret(inv.supplierSiret);
+        if (partnerMatch) {
+            inv.supplierErpCode = partnerMatch.erpCode;
+            inv.isMasterMatched = true;
+            // Optionnel: On peut aussi forcer le nom "officiel" du référentiel
+            // inv.supplier = partnerMatch.name; 
+        }
+
         const uniqueKey = createDedupKey(inv.supplier, inv.invoiceNumber);
         if (memory.has(uniqueKey)) {
             addLog(`Doublon ignoré : ${inv.invoiceNumber}`, 'warning');
@@ -131,7 +149,7 @@ const App: React.FC = () => {
             setMemory(prev => new Set(prev).add(uniqueKey));
             dbService.saveInvoice(inv);
             
-            addLog(`Extraite : ${inv.invoiceNumber}`, 'success');
+            addLog(`Extraite : ${inv.invoiceNumber}${inv.isMasterMatched ? ' (Master Match OK)' : ''}`, 'success');
             
             setUsers(prev => prev.map(u => {
               if (u.username === currentUser) {
@@ -175,7 +193,6 @@ const App: React.FC = () => {
         onLogin={(u) => {
           setCurrentUser(u.username);
           localStorage.setItem('invoice-session-active-user', u.username);
-          // Re-fetch users to get fresh roles from server
           dbService.getAllUsers().then(setUsers);
         }} 
         users={users} 
