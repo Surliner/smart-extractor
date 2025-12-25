@@ -312,7 +312,6 @@ export const ConfigurationModal: React.FC<ConfigurationModalProps> = ({
                             <div className="flex space-x-4 mt-8">
                                 <a href="https://fnfe-mve.org/factur-x/" target="_blank" className="flex items-center space-x-2 px-5 py-2.5 bg-white/5 hover:bg-white/10 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border border-white/5">
                                     <span>Documentation FNFE-MVE</span>
-                                    {/* Fixed missing ExternalLink import error */}
                                     <ExternalLink className="w-3 h-3" />
                                 </a>
                             </div>
@@ -449,7 +448,6 @@ export const ConfigurationModal: React.FC<ConfigurationModalProps> = ({
                                     </div>
 
                                     <div className="col-span-2 flex justify-end">
-                                      {/* Fixed colIndex vs cIdx error */}
                                       <button onClick={() => removeColumn(tpl.id, cIdx)} className="p-2 text-slate-300 hover:text-rose-500 transition-colors opacity-0 group-hover/col:opacity-100">
                                         <Trash2 className="w-4 h-4" />
                                       </button>
@@ -463,7 +461,6 @@ export const ConfigurationModal: React.FC<ConfigurationModalProps> = ({
                                     <div className="flex-1">
                                       <input 
                                         value={col.defaultValue || ''} 
-                                        {/* Fixed colIndex vs cIdx error */}
                                         onChange={(e) => updateColumn(tpl.id, cIdx, { defaultValue: e.target.value })}
                                         className="w-full bg-transparent border-b border-transparent hover:border-slate-200 focus:border-indigo-400 text-[10px] font-bold text-slate-500 outline-none px-1 py-0.5 transition-all"
                                         placeholder="Valeur par défaut si vide..."
