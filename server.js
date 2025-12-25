@@ -16,6 +16,7 @@ const pool = new Pool({
 const initDb = async () => {
   const client = await pool.connect();
   try {
+    console.log("Starting Database Initialization...");
     await client.query('BEGIN');
 
     // 1. Table Entreprises
@@ -28,27 +29,30 @@ const initDb = async () => {
       );
     `);
 
-    // 2. Table Utilisateurs
+    // 2. Table Utilisateurs (Création de base)
     await client.query(`
       CREATE TABLE IF NOT EXISTS users (
           username TEXT PRIMARY KEY,
           password TEXT NOT NULL,
-          role TEXT DEFAULT 'USER',
-          company_id UUID REFERENCES companies(id),
-          security_question TEXT,
-          security_answer TEXT,
-          stats JSONB DEFAULT '{"extractRequests": 0, "totalTokens": 0, "lastActive": ""}',
-          login_history JSONB DEFAULT '[]',
           created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       );
     `);
 
-    // Migrations de colonnes
-    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS security_question TEXT;`);
-    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS security_answer TEXT;`);
-    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT DEFAULT 'USER';`);
+    // 3. MIGRATIONS : Ajout des colonnes si elles manquent
+    const migrations = [
+      { table: 'users', col: 'company_id', type: 'UUID REFERENCES companies(id)' },
+      { table: 'users', col: 'role', type: "TEXT DEFAULT 'USER'" },
+      { table: 'users', col: 'security_question', type: 'TEXT' },
+      { table: 'users', col: 'security_answer', type: 'TEXT' },
+      { table: 'users', col: 'stats', type: "JSONB DEFAULT '{\"extractRequests\": 0, \"totalTokens\": 0, \"lastActive\": \"\"}'" },
+      { table: 'users', col: 'login_history', type: "JSONB DEFAULT '[]'" }
+    ];
 
-    // 3. Table Invoices
+    for (const m of migrations) {
+      await client.query(`ALTER TABLE ${m.table} ADD COLUMN IF NOT EXISTS ${m.col} ${m.type};`);
+    }
+
+    // 4. Table Invoices
     await client.query(`
       CREATE TABLE IF NOT EXISTS invoices (
           id UUID PRIMARY KEY,
@@ -59,18 +63,33 @@ const initDb = async () => {
       );
     `);
 
-    // Initialisation Société par défaut
+    // 5. Initialisation Société & Admin par défaut
     const compCount = await client.query('SELECT COUNT(*) FROM companies');
+    let defaultCompId;
+    
     if (parseInt(compCount.rows[0].count) === 0) {
-      const defaultCompId = uuidv4();
+      defaultCompId = uuidv4();
       await client.query('INSERT INTO companies (id, name) VALUES ($1, $2)', [defaultCompId, 'Société Pilote']);
+      console.log("Default company created.");
+    } else {
+      const firstComp = await client.query('SELECT id FROM companies LIMIT 1');
+      defaultCompId = firstComp.rows[0].id;
+    }
+
+    const userCount = await client.query('SELECT COUNT(*) FROM users');
+    if (parseInt(userCount.rows[0].count) === 0) {
+      await client.query(
+        'INSERT INTO users (username, password, role, company_id) VALUES ($1, $2, $3, $4)',
+        ['admin', 'admin', 'SUPER_ADMIN', defaultCompId]
+      );
+      console.log("Default user created: admin / admin");
     }
 
     await client.query('COMMIT');
     console.log("Database Schema Initialized Successfully");
   } catch (err) {
     await client.query('ROLLBACK');
-    console.error("DB Sync Error:", err);
+    console.error("DB Initialization Failure:", err);
   } finally {
     client.release();
   }
@@ -79,13 +98,13 @@ const initDb = async () => {
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 
-// --- API ENDPOINTS ---
+// --- API AUTH ---
 
 app.post('/api/auth/register', async (req, res) => {
   const { username, password, securityQuestion, securityAnswer } = req.body;
   try {
     const compRes = await pool.query('SELECT id FROM companies LIMIT 1');
-    if (compRes.rows.length === 0) return res.status(500).json({ error: "Configuration système incomplète (SOCIETE_MISSING)" });
+    if (compRes.rows.length === 0) return res.status(500).json({ error: "Aucune société disponible." });
     
     const companyId = compRes.rows[0].id;
     const userCount = await pool.query('SELECT COUNT(*) FROM users');
