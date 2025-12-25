@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { InvoiceData, InvoiceItem, ErpStatus, InvoiceType, LookupTable, ExportTemplate, XmlMappingProfile } from '../types';
-import { Trash2, ChevronDown, CheckCircle2, AlertCircle, Circle, Columns, X, FileCode, ArrowDownLeft, ArrowUpRight, Maximize2, LayoutList, FileSpreadsheet, FileDown, Zap, ListChecks, FileJson, ShieldCheck, FileCheck } from 'lucide-react';
+import { Trash2, ChevronDown, CheckCircle2, AlertCircle, Circle, Columns, X, FileCode, ArrowDownLeft, ArrowUpRight, Maximize2, LayoutList, FileSpreadsheet, FileDown, Zap, ListChecks, FileJson, ShieldCheck, FileCheck, Search, Filter, ArrowUpDown, ArrowUp, ArrowDown, Calendar, Banknote } from 'lucide-react';
 import { FacturXModal } from './FacturXModal';
 import { generateTemplatedCSV, generateTemplatedXML } from '../services/exportService';
 import { generateFacturXXML } from '../services/facturXService';
@@ -19,6 +19,11 @@ interface InvoiceTableProps {
   xmlProfiles: XmlMappingProfile[];
 }
 
+type SortConfig = {
+  key: keyof InvoiceData;
+  direction: 'asc' | 'desc';
+} | null;
+
 export const InvoiceTable: React.FC<InvoiceTableProps> = ({ 
   invoices, 
   selectedIds,
@@ -33,8 +38,108 @@ export const InvoiceTable: React.FC<InvoiceTableProps> = ({
 }) => {
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  
+  // Filtering states
+  const [showFilters, setShowFilters] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState<string>('ALL');
+  const [dateStart, setDateStart] = useState('');
+  const [dateEnd, setDateEnd] = useState('');
+  const [minAmount, setMinAmount] = useState('');
+  const [maxAmount, setMaxAmount] = useState('');
+
+  // Sorting state
+  const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'invoiceDate', direction: 'desc' });
 
   const activeInvoice = useMemo(() => invoices.find(inv => inv.id === editingId), [invoices, editingId]);
+
+  // Helper to parse date DD/MM/YYYY to Date object
+  const parseDate = (dStr: string) => {
+    if (!dStr) return null;
+    const [d, m, y] = dStr.split('/').map(Number);
+    return new Date(y, m - 1, d);
+  };
+
+  // Filter and Sort Logic
+  const filteredAndSortedInvoices = useMemo(() => {
+    let result = [...invoices];
+
+    // Search
+    if (searchTerm) {
+      const lowerSearch = searchTerm.toLowerCase();
+      result = result.filter(inv => 
+        inv.supplier.toLowerCase().includes(lowerSearch) || 
+        inv.invoiceNumber.toLowerCase().includes(lowerSearch)
+      );
+    }
+
+    // Status
+    if (statusFilter !== 'ALL') {
+      result = result.filter(inv => inv.erpStatus === statusFilter);
+    }
+
+    // Date Range
+    if (dateStart) {
+      const start = new Date(dateStart);
+      result = result.filter(inv => {
+        const d = parseDate(inv.invoiceDate);
+        return d ? d >= start : false;
+      });
+    }
+    if (dateEnd) {
+      const end = new Date(dateEnd);
+      result = result.filter(inv => {
+        const d = parseDate(inv.invoiceDate);
+        return d ? d <= end : false;
+      });
+    }
+
+    // Amount Range
+    if (minAmount) {
+      result = result.filter(inv => (inv.amountInclVat || 0) >= parseFloat(minAmount));
+    }
+    if (maxAmount) {
+      result = result.filter(inv => (inv.amountInclVat || 0) <= parseFloat(maxAmount));
+    }
+
+    // Sort
+    if (sortConfig) {
+      result.sort((a, b) => {
+        let aVal = a[sortConfig.key];
+        let bVal = b[sortConfig.key];
+
+        // Specific handling for dates
+        if (sortConfig.key === 'invoiceDate') {
+          const dA = parseDate(a.invoiceDate)?.getTime() || 0;
+          const dB = parseDate(b.invoiceDate)?.getTime() || 0;
+          return sortConfig.direction === 'asc' ? dA - dB : dB - dA;
+        }
+
+        // Default string/number sort
+        if (aVal === undefined || aVal === null) aVal = '';
+        if (bVal === undefined || bVal === null) bVal = '';
+
+        if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
+        if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
+        return 0;
+      });
+    }
+
+    return result;
+  }, [invoices, searchTerm, statusFilter, dateStart, dateEnd, minAmount, maxAmount, sortConfig]);
+
+  const requestSort = (key: keyof InvoiceData) => {
+    let direction: 'asc' | 'desc' = 'asc';
+    if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+    setSortConfig({ key, direction });
+  };
+
+  const getSortIcon = (key: keyof InvoiceData) => {
+    if (!sortConfig || sortConfig.key !== key) return <ArrowUpDown className="w-3 h-3 ml-1 opacity-30" />;
+    return sortConfig.direction === 'asc' ? <ArrowUp className="w-3 h-3 ml-1 text-indigo-600" /> : <ArrowDown className="w-3 h-3 ml-1 text-indigo-600" />;
+  };
 
   const handleExportCSV = (tpl: ExportTemplate) => {
     const targets = invoices.filter(i => selectedIds.has(i.id));
@@ -62,8 +167,6 @@ export const InvoiceTable: React.FC<InvoiceTableProps> = ({
 
   const handleExportFacturX = () => {
     const targets = invoices.filter(i => selectedIds.has(i.id));
-    
-    // Pour chaque facture, on génère un XML séparé conforme RFE
     targets.forEach((inv, index) => {
       setTimeout(() => {
         const xml = generateFacturXXML(inv);
@@ -73,10 +176,18 @@ export const InvoiceTable: React.FC<InvoiceTableProps> = ({
         link.href = url;
         link.download = `FACTUR-X_${inv.invoiceNumber || inv.id}.xml`;
         link.click();
-      }, index * 200); // Petit délai pour éviter le blocage navigateur
+      }, index * 200);
     });
-    
     setShowExportMenu(false);
+  };
+
+  const resetFilters = () => {
+    setSearchTerm('');
+    setStatusFilter('ALL');
+    setDateStart('');
+    setDateEnd('');
+    setMinAmount('');
+    setMaxAmount('');
   };
 
   return (
@@ -90,6 +201,105 @@ export const InvoiceTable: React.FC<InvoiceTableProps> = ({
           lookupTables={lookupTables}
         />
       )}
+
+      {/* FILTERS & SEARCH BAR */}
+      <div className="mb-6 space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="relative flex-1 max-w-md group">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
+            <input 
+              type="text" 
+              placeholder="Rechercher un fournisseur ou n° facture..." 
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-12 pr-4 py-3 bg-white border border-slate-200 rounded-2xl text-[11px] font-black uppercase tracking-widest outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/5 transition-all"
+            />
+          </div>
+          <div className="flex items-center space-x-3">
+            <button 
+              onClick={() => setShowFilters(!showFilters)}
+              className={`flex items-center space-x-2 px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${showFilters ? 'bg-indigo-600 text-white shadow-xl shadow-indigo-100' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+            >
+              <Filter className="w-4 h-4" />
+              <span>Filtres</span>
+              {(statusFilter !== 'ALL' || dateStart || dateEnd || minAmount || maxAmount) && (
+                <span className="ml-1 w-2 h-2 bg-rose-400 rounded-full animate-pulse"></span>
+              )}
+            </button>
+          </div>
+        </div>
+
+        {showFilters && (
+          <div className="bg-white p-6 rounded-[2rem] border border-slate-200 shadow-xl grid grid-cols-1 md:grid-cols-4 gap-6 animate-in slide-in-from-top-4 duration-300">
+            <div className="space-y-2">
+              <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Statut ERP</label>
+              <select 
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-100 rounded-xl text-[10px] font-bold outline-none focus:border-indigo-500"
+              >
+                <option value="ALL">Tous les statuts</option>
+                <option value="PENDING">En attente (Pending)</option>
+                <option value="SUCCESS">Succès (Success)</option>
+                <option value="ERROR">Erreur (Error)</option>
+              </select>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1 flex items-center">
+                <Calendar className="w-3 h-3 mr-1" /> Période Facture
+              </label>
+              <div className="flex items-center space-x-2">
+                <input 
+                  type="date" 
+                  value={dateStart}
+                  onChange={(e) => setDateStart(e.target.value)}
+                  className="w-full px-4 py-2 bg-slate-50 border border-slate-100 rounded-xl text-[9px] font-bold" 
+                />
+                <span className="text-slate-300">/</span>
+                <input 
+                  type="date" 
+                  value={dateEnd}
+                  onChange={(e) => setDateEnd(e.target.value)}
+                  className="w-full px-4 py-2 bg-slate-50 border border-slate-100 rounded-xl text-[9px] font-bold" 
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1 flex items-center">
+                <Banknote className="w-3 h-3 mr-1" /> Plage Montant TTC
+              </label>
+              <div className="flex items-center space-x-2">
+                <input 
+                  type="number" 
+                  placeholder="Min"
+                  value={minAmount}
+                  onChange={(e) => setMinAmount(e.target.value)}
+                  className="w-full px-4 py-2 bg-slate-50 border border-slate-100 rounded-xl text-[9px] font-bold" 
+                />
+                <span className="text-slate-300">-</span>
+                <input 
+                  type="number" 
+                  placeholder="Max"
+                  value={maxAmount}
+                  onChange={(e) => setMaxAmount(e.target.value)}
+                  className="w-full px-4 py-2 bg-slate-50 border border-slate-100 rounded-xl text-[9px] font-bold" 
+                />
+              </div>
+            </div>
+
+            <div className="flex items-end space-x-3">
+              <button 
+                onClick={resetFilters}
+                className="flex-1 py-2.5 text-[9px] font-black uppercase text-rose-500 border border-rose-100 rounded-xl hover:bg-rose-50 transition-colors"
+              >
+                Réinitialiser
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* FLOATING ACTION BAR */}
       {selectedIds.size > 0 && (
@@ -128,9 +338,7 @@ export const InvoiceTable: React.FC<InvoiceTableProps> = ({
                   <FileCheck className="w-4 h-4 mr-3 text-indigo-400" /> Factur-X (Profil Comfort)
                 </button>
               </div>
-              
               <div className="h-px bg-white/5"></div>
-
               <div className="space-y-2">
                 <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-2">Templates CSV</p>
                 {templates.map(tpl => (
@@ -139,9 +347,7 @@ export const InvoiceTable: React.FC<InvoiceTableProps> = ({
                   </button>
                 ))}
               </div>
-              
               <div className="h-px bg-white/5"></div>
-
               <div className="space-y-2">
                 <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-2">Blueprints XML (Custom)</p>
                 {xmlProfiles.map(prof => (
@@ -161,29 +367,51 @@ export const InvoiceTable: React.FC<InvoiceTableProps> = ({
             <thead className="bg-slate-50 text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200">
               <tr>
                 <th className="w-12 px-4 py-6 text-center">
-                  <input type="checkbox" checked={selectedIds.size === invoices.length && invoices.length > 0} onChange={onToggleAll} className="w-4 h-4 rounded border-slate-300" />
+                  <input type="checkbox" checked={selectedIds.size === filteredAndSortedInvoices.length && filteredAndSortedInvoices.length > 0} onChange={onToggleAll} className="w-4 h-4 rounded border-slate-300" />
                 </th>
-                <th className="w-40 px-4 py-6">Numéro Facture</th>
-                <th className="w-32 px-4 py-6">Date</th>
-                <th className="px-4 py-6">Fournisseur</th>
-                <th className="w-32 px-4 py-6 text-right">Total TTC</th>
+                <th className="w-40 px-4 py-6 cursor-pointer group" onClick={() => requestSort('invoiceNumber')}>
+                  <div className="flex items-center">
+                    Numéro Facture {getSortIcon('invoiceNumber')}
+                  </div>
+                </th>
+                <th className="w-32 px-4 py-6 cursor-pointer" onClick={() => requestSort('invoiceDate')}>
+                  <div className="flex items-center">
+                    Date {getSortIcon('invoiceDate')}
+                  </div>
+                </th>
+                <th className="px-4 py-6 cursor-pointer" onClick={() => requestSort('supplier')}>
+                  <div className="flex items-center">
+                    Fournisseur {getSortIcon('supplier')}
+                  </div>
+                </th>
+                <th className="w-32 px-4 py-6 text-right cursor-pointer" onClick={() => requestSort('amountInclVat')}>
+                  <div className="flex items-center justify-end">
+                    Total TTC {getSortIcon('amountInclVat')}
+                  </div>
+                </th>
                 <th className="w-24 px-4 py-6 text-center">Audit</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {invoices.length === 0 ? (
+              {filteredAndSortedInvoices.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="px-4 py-20 text-center text-slate-400 font-bold uppercase tracking-widest text-[10px]">
-                    Aucune facture dans le système
+                    {invoices.length === 0 ? "Aucune facture dans le système" : "Aucun résultat pour ces filtres"}
                   </td>
                 </tr>
               ) : (
-                invoices.map(inv => (
+                filteredAndSortedInvoices.map(inv => (
                   <tr key={inv.id} className={`group hover:bg-slate-50 transition-colors ${selectedIds.has(inv.id) ? 'bg-indigo-50/50' : ''}`}>
                     <td className="px-4 py-5 text-center">
                       <input type="checkbox" checked={selectedIds.has(inv.id)} onChange={() => onToggleSelection(inv.id)} className="w-4 h-4 rounded border-slate-300" />
                     </td>
-                    <td className="px-4 py-5 font-black text-slate-900 text-xs">{inv.invoiceNumber}</td>
+                    <td className="px-4 py-5 font-black text-slate-900 text-xs">
+                      <div className="flex items-center space-x-2">
+                        <span>{inv.invoiceNumber}</span>
+                        {inv.erpStatus === 'SUCCESS' && <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]"></div>}
+                        {inv.erpStatus === 'ERROR' && <div className="w-1.5 h-1.5 rounded-full bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.5)]"></div>}
+                      </div>
+                    </td>
                     <td className="px-4 py-5 text-xs text-slate-500">{inv.invoiceDate}</td>
                     <td className="px-4 py-5 text-xs font-bold text-slate-800">
                       <div className="flex items-center">
@@ -191,9 +419,13 @@ export const InvoiceTable: React.FC<InvoiceTableProps> = ({
                         {inv.isMasterMatched && <ShieldCheck className="w-3 h-3 ml-2 text-emerald-500" />}
                       </div>
                     </td>
-                    <td className="px-4 py-5 text-right font-black text-indigo-600 text-xs">{inv.amountInclVat?.toFixed(2)} {inv.currency}</td>
+                    <td className="px-4 py-5 text-right font-black text-indigo-600 text-xs">
+                      {inv.amountInclVat?.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} {inv.currency}
+                    </td>
                     <td className="px-4 py-5 text-center">
-                      <button onClick={() => setEditingId(inv.id)} className="p-2 text-slate-400 hover:text-indigo-600 bg-white border border-slate-200 rounded-xl shadow-sm"><Maximize2 className="w-4 h-4" /></button>
+                      <button onClick={() => setEditingId(inv.id)} className="p-2 text-slate-400 hover:text-indigo-600 bg-white border border-slate-200 rounded-xl shadow-sm transition-all hover:scale-110 active:scale-95">
+                        <Maximize2 className="w-4 h-4" />
+                      </button>
                     </td>
                   </tr>
                 ))

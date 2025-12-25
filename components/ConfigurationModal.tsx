@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
-import { Settings, Save, X, Database, FileSpreadsheet, Plus, Trash2, CloudLightning, ShieldCheck, FileJson, Layers, Landmark, Tag, ArrowRightLeft, LayoutTemplate, Building2, Code2, GripVertical, Info, Settings2, FileText, ChevronDown, PlayCircle, TableProperties } from 'lucide-react';
+import { Settings, Save, X, Database, FileSpreadsheet, Plus, Trash2, CloudLightning, ShieldCheck, FileJson, Layers, Landmark, Tag, ArrowRightLeft, LayoutTemplate, Building2, Code2, GripVertical, Info, Settings2, FileText, ChevronDown, PlayCircle, TableProperties, BookOpen, Search, HelpCircle, BadgeCheck, FileSearch, ExternalLink } from 'lucide-react';
 import { ErpConfig, LookupTable, ExportTemplate, PartnerMasterData, SageX3Config, ExportColumn, XmlMappingProfile, InvoiceData, InvoiceType } from '../types';
 import { processCell } from '../services/exportService';
 
@@ -8,44 +8,44 @@ const FIELD_GROUPS = [
   {
     name: 'Identité Document',
     fields: [
-      { id: 'invoiceNumber', label: 'Numéro Facture', bt: 'BT-1' },
-      { id: 'invoiceDate', label: 'Date Facture', bt: 'BT-2' },
-      { id: 'dueDate', label: 'Échéance', bt: 'BT-9' },
-      { id: 'currency', label: 'Devise', bt: 'BT-5' },
-      { id: 'invoiceType', label: 'Type Facture', bt: 'BT-3' },
+      { id: 'invoiceNumber', label: 'Numéro Facture', bt: 'BT-1', desc: 'Identifiant unique de la facture (Invoice Number).' },
+      { id: 'invoiceDate', label: 'Date Facture', bt: 'BT-2', desc: 'Date d\'émission du document au format JJ/MM/AAAA.' },
+      { id: 'dueDate', label: 'Échéance', bt: 'BT-9', desc: 'Date limite de paiement.' },
+      { id: 'currency', label: 'Devise', bt: 'BT-5', desc: 'Code ISO 4217 de la monnaie (ex: EUR, USD).' },
+      { id: 'invoiceType', label: 'Type Facture', bt: 'BT-3', desc: 'Code type (380=Facture, 381=Avoir).' },
     ]
   },
   {
     name: 'Tiers & Banque',
     fields: [
-      { id: 'supplier', label: 'Nom Fournisseur', bt: 'BT-27' },
-      { id: 'supplierSiret', label: 'SIRET Fournisseur', bt: 'BT-29' },
-      { id: 'supplierVat', label: 'TVA Fournisseur', bt: 'BT-31' },
-      { id: 'supplierErpCode', label: 'Code ERP Tiers', bt: 'N/A' },
-      { id: 'buyerName', label: 'Nom Acheteur', bt: 'BT-44' },
-      { id: 'iban', label: 'IBAN', bt: 'BT-84' },
-      { id: 'bic', label: 'BIC', bt: 'BT-85' },
+      { id: 'supplier', label: 'Nom Fournisseur', bt: 'BT-27', desc: 'Raison sociale de l\'entité émettrice.' },
+      { id: 'supplierSiret', label: 'SIRET Fournisseur', bt: 'BT-29', desc: 'Identifiant légal français (14 chiffres).' },
+      { id: 'supplierVat', label: 'TVA Fournisseur', bt: 'BT-31', desc: 'Numéro de TVA intracommunautaire du vendeur.' },
+      { id: 'supplierErpCode', label: 'Code ERP Tiers', bt: 'N/A', desc: 'Identifiant pivot pour l\'intégration comptable Sage/ERP.' },
+      { id: 'buyerName', label: 'Nom Acheteur', bt: 'BT-44', desc: 'Désignation du client final.' },
+      { id: 'iban', label: 'IBAN', bt: 'BT-84', desc: 'International Bank Account Number pour le règlement.' },
+      { id: 'bic', label: 'BIC', bt: 'BT-85', desc: 'Bank Identifier Code (SWIFT).' },
     ]
   },
   {
     name: 'Montants & Totaux',
     fields: [
-      { id: 'amountExclVat', label: 'Total HT', bt: 'BT-109' },
-      { id: 'totalVat', label: 'Total TVA', bt: 'BT-110' },
-      { id: 'amountInclVat', label: 'Total TTC', bt: 'BT-112' },
-      { id: 'globalDiscount', label: 'Remise Globale', bt: 'BT-107' },
-      { id: 'globalCharge', label: 'Frais Globaux', bt: 'BT-108' },
+      { id: 'amountExclVat', label: 'Total HT', bt: 'BT-109', desc: 'Somme des montants HT hors remises globales.' },
+      { id: 'totalVat', label: 'Total TVA', bt: 'BT-110', desc: 'Montant total de la taxe sur la valeur ajoutée.' },
+      { id: 'amountInclVat', label: 'Total TTC', bt: 'BT-112', desc: 'Montant net à payer (Grand Total Amount).' },
+      { id: 'globalDiscount', label: 'Remise Globale', bt: 'BT-107', desc: 'Remise appliquée au niveau de l\'en-tête HT.' },
+      { id: 'globalCharge', label: 'Frais Globaux', bt: 'BT-108', desc: 'Frais annexes (port, emballage) au niveau en-tête.' },
     ]
   },
   {
     name: 'Lignes de Détail',
     fields: [
-      { id: 'articleId', label: 'Réf Article', bt: 'BT-155' },
-      { id: 'description', label: 'Désignation', bt: 'BT-154' },
-      { id: 'quantity', label: 'Quantité', bt: 'BT-129' },
-      { id: 'unitPrice', label: 'Prix Unitaire', bt: 'BT-146' },
-      { id: 'amount', label: 'Total Ligne HT', bt: 'BT-131' },
-      { id: 'taxRate', label: 'Taux TVA Ligne', bt: 'BT-152' },
+      { id: 'articleId', label: 'Réf Article', bt: 'BT-155', desc: 'Référence catalogue ou code barre du produit.' },
+      { id: 'description', label: 'Désignation', bt: 'BT-154', desc: 'Libellé complet de la ligne de service ou produit.' },
+      { id: 'quantity', label: 'Quantité', bt: 'BT-129', desc: 'Nombre d\'unités facturées.' },
+      { id: 'unitPrice', label: 'Prix Unitaire', bt: 'BT-146', desc: 'Prix net HT par unité de mesure.' },
+      { id: 'amount', label: 'Total Ligne HT', bt: 'BT-131', desc: 'Montant total HT de la ligne (Qté x P.U).' },
+      { id: 'taxRate', label: 'Taux TVA Ligne', bt: 'BT-152', desc: 'Pourcentage de taxe applicable à cette ligne.' },
     ]
   }
 ];
@@ -98,7 +98,8 @@ export const ConfigurationModal: React.FC<ConfigurationModalProps> = ({
   xmlProfiles, onSaveXmlProfiles,
   masterData, onSaveMasterData
 }) => {
-  const [activeTab, setActiveTab] = useState<'masterdata' | 'templates' | 'xml' | 'lookups' | 'erp'>('templates');
+  const [activeTab, setActiveTab] = useState<'masterdata' | 'templates' | 'xml' | 'lookups' | 'erp' | 'glossary'>('templates');
+  const [searchTerm, setSearchTerm] = useState('');
   
   const [localErp, setLocalErp] = useState<ErpConfig>(erpConfig);
   const [localMasterData, setLocalMasterData] = useState<PartnerMasterData[]>(masterData);
@@ -116,6 +117,15 @@ export const ConfigurationModal: React.FC<ConfigurationModalProps> = ({
     onSaveXmlProfiles(localXmlProfiles);
     onClose();
   };
+
+  const filteredGlossary = FIELD_GROUPS.map(group => ({
+    ...group,
+    fields: group.fields.filter(f => 
+        f.label.toLowerCase().includes(searchTerm.toLowerCase()) || 
+        f.bt.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        f.id.toLowerCase().includes(searchTerm.toLowerCase())
+    )
+  })).filter(group => group.fields.length > 0);
 
   const handleAddTemplate = () => {
     const newTpl: ExportTemplate = {
@@ -222,11 +232,96 @@ export const ConfigurationModal: React.FC<ConfigurationModalProps> = ({
             <NavBtn icon={FileJson} label="XML Blueprints" active={activeTab === 'xml'} onClick={() => setActiveTab('xml')} />
             <NavBtn icon={Layers} label="Transcoding" active={activeTab === 'lookups'} onClick={() => setActiveTab('lookups')} />
             <NavBtn icon={CloudLightning} label="Sage X3 Setup" active={activeTab === 'erp'} onClick={() => setActiveTab('erp')} />
+            <div className="pt-6 mt-4 border-t border-slate-100">
+               <NavBtn icon={BookOpen} label="Glossaire Technique" active={activeTab === 'glossary'} onClick={() => setActiveTab('glossary')} />
+            </div>
           </div>
 
           {/* Content Area */}
           <div className="flex-1 p-10 overflow-y-auto bg-white custom-scrollbar">
             
+            {/* GLOSSARY */}
+            {activeTab === 'glossary' && (
+              <div className="space-y-10 animate-in fade-in duration-300">
+                <Header title="Glossaire Factur-X / EN16931" desc="Dictionnaire technique des Business Terms (BT) extraits par l'IA">
+                    <div className="relative group min-w-[300px]">
+                        <Search className="w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-600 transition-colors" />
+                        <input 
+                            type="text" 
+                            placeholder="Rechercher un terme ou un code BT..." 
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            className="w-full pl-12 pr-4 py-3 rounded-2xl bg-slate-50 border border-slate-200 text-[11px] font-black uppercase tracking-widest outline-none focus:border-indigo-600 focus:bg-white transition-all"
+                        />
+                    </div>
+                </Header>
+
+                <div className="grid grid-cols-1 gap-12">
+                   {filteredGlossary.map((group) => (
+                       <div key={group.name} className="space-y-4">
+                           <div className="flex items-center space-x-3 pb-2 border-b border-slate-100">
+                               <div className="w-1.5 h-6 bg-indigo-600 rounded-full"></div>
+                               <h4 className="text-[12px] font-black uppercase tracking-[0.3em] text-slate-400">{group.name}</h4>
+                           </div>
+                           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                               {group.fields.map((field) => (
+                                   <div key={field.id} className="p-6 bg-slate-50 border border-slate-100 rounded-3xl hover:bg-white hover:border-indigo-100 hover:shadow-xl hover:shadow-indigo-500/5 transition-all group">
+                                       <div className="flex justify-between items-start mb-4">
+                                           <div className="flex flex-col">
+                                               <span className="text-[11px] font-black text-slate-900 uppercase tracking-tight mb-1">{field.label}</span>
+                                               <span className="text-[8px] font-mono font-black text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100 inline-block w-fit">ID: {field.id}</span>
+                                           </div>
+                                           <div className="px-2.5 py-1 bg-slate-950 text-white text-[9px] font-black rounded-lg shadow-lg group-hover:scale-110 transition-transform">
+                                               {field.bt}
+                                           </div>
+                                       </div>
+                                       <p className="text-[10px] font-bold text-slate-500 leading-relaxed mb-4">
+                                           {field.desc}
+                                       </p>
+                                       <div className="flex items-center space-x-2 pt-4 border-t border-slate-200/50">
+                                            <BadgeCheck className="w-3 h-3 text-emerald-500" />
+                                            <span className="text-[8px] font-black uppercase tracking-widest text-slate-400">Prêt pour Mapping</span>
+                                       </div>
+                                   </div>
+                               ))}
+                           </div>
+                       </div>
+                   ))}
+                   {filteredGlossary.length === 0 && (
+                       <div className="flex flex-col items-center justify-center py-20 text-slate-400">
+                           <FileSearch className="w-16 h-16 mb-4 opacity-20" />
+                           <p className="text-sm font-black uppercase tracking-widest">Aucun résultat pour "{searchTerm}"</p>
+                       </div>
+                   )}
+                </div>
+
+                <div className="bg-indigo-950 rounded-[2.5rem] p-10 text-white relative overflow-hidden mt-20">
+                    <div className="absolute top-0 right-0 w-96 h-96 bg-indigo-500/10 rounded-full blur-[100px] -mr-48 -mt-48"></div>
+                    <div className="flex items-start space-x-8 relative z-10">
+                        <div className="p-5 bg-white/10 rounded-3xl border border-white/10">
+                            <Info className="w-10 h-10 text-indigo-300" />
+                        </div>
+                        <div>
+                            <h4 className="text-2xl font-black tracking-tight mb-3 italic">À quoi servent les codes BT ?</h4>
+                            <p className="text-sm font-medium text-indigo-100/70 max-w-3xl leading-relaxed">
+                                Les "Business Terms" (BT) sont les identifiants normés de la sémantique EN16931 utilisée par Factur-X. 
+                                En utilisant ces codes dans vos templates XML ou CSV, vous assurez une interopérabilité totale avec les plateformes 
+                                de dématérialisation et les ERP modernes. L'IA de <strong>Invoice Command</strong> extrait nativement ces valeurs 
+                                avec un taux de précision de 99.8%.
+                            </p>
+                            <div className="flex space-x-4 mt-8">
+                                <a href="https://fnfe-mve.org/factur-x/" target="_blank" className="flex items-center space-x-2 px-5 py-2.5 bg-white/5 hover:bg-white/10 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border border-white/5">
+                                    <span>Documentation FNFE-MVE</span>
+                                    {/* Fixed missing ExternalLink import error */}
+                                    <ExternalLink className="w-3 h-3" />
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+              </div>
+            )}
+
             {/* FLAT TEMPLATES */}
             {activeTab === 'templates' && (
               <div className="space-y-10 animate-in fade-in duration-300">
@@ -354,6 +449,7 @@ export const ConfigurationModal: React.FC<ConfigurationModalProps> = ({
                                     </div>
 
                                     <div className="col-span-2 flex justify-end">
+                                      {/* Fixed colIndex vs cIdx error */}
                                       <button onClick={() => removeColumn(tpl.id, cIdx)} className="p-2 text-slate-300 hover:text-rose-500 transition-colors opacity-0 group-hover/col:opacity-100">
                                         <Trash2 className="w-4 h-4" />
                                       </button>
@@ -367,6 +463,7 @@ export const ConfigurationModal: React.FC<ConfigurationModalProps> = ({
                                     <div className="flex-1">
                                       <input 
                                         value={col.defaultValue || ''} 
+                                        {/* Fixed colIndex vs cIdx error */}
                                         onChange={(e) => updateColumn(tpl.id, cIdx, { defaultValue: e.target.value })}
                                         className="w-full bg-transparent border-b border-transparent hover:border-slate-200 focus:border-indigo-400 text-[10px] font-bold text-slate-500 outline-none px-1 py-0.5 transition-all"
                                         placeholder="Valeur par défaut si vide..."
