@@ -12,8 +12,35 @@ export const dbService = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password })
     });
-    if (!response.ok) throw new Error("Identifiants invalides.");
+    if (!response.ok) {
+      const err = await response.json();
+      throw new Error(err.error || "Identifiants invalides.");
+    }
     return await response.json();
+  },
+
+  async register(username: string, password: string, securityQuestion: string, securityAnswer: string): Promise<void> {
+    const response = await fetch(`${API_URL}/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password, securityQuestion, securityAnswer })
+    });
+    if (!response.ok) {
+      const err = await response.json();
+      throw new Error(err.error || "Échec de l'inscription.");
+    }
+  },
+
+  async resetPassword(username: string, newPassword: string, answer: string): Promise<void> {
+    const response = await fetch(`${API_URL}/auth/reset-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, newPassword, answer })
+    });
+    if (!response.ok) {
+      const err = await response.json();
+      throw new Error(err.error || "Échec de la réinitialisation.");
+    }
   },
 
   async saveCompanyConfig(companyId: string, config: any): Promise<void> {

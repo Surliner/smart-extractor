@@ -32,7 +32,7 @@ const initDb = async () => {
     await client.query(`
       CREATE TABLE IF NOT EXISTS users (
           username TEXT PRIMARY KEY,
-          password TEXT,
+          password TEXT NOT NULL,
           role TEXT DEFAULT 'USER',
           company_id UUID REFERENCES companies(id),
           security_question TEXT,
@@ -42,6 +42,11 @@ const initDb = async () => {
           created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       );
     `);
+
+    // Migrations de colonnes
+    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS security_question TEXT;`);
+    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS security_answer TEXT;`);
+    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT DEFAULT 'USER';`);
 
     // 3. Table Invoices
     await client.query(`
@@ -54,19 +59,7 @@ const initDb = async () => {
       );
     `);
 
-    // 4. Table Activités
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS activities (
-          id UUID PRIMARY KEY,
-          username TEXT REFERENCES users(username) ON DELETE CASCADE,
-          company_id UUID REFERENCES companies(id),
-          action TEXT,
-          details TEXT,
-          timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-      );
-    `);
-
-    // Migration initiale si vide
+    // Initialisation Société par défaut
     const compCount = await client.query('SELECT COUNT(*) FROM companies');
     if (parseInt(compCount.rows[0].count) === 0) {
       const defaultCompId = uuidv4();
@@ -74,6 +67,7 @@ const initDb = async () => {
     }
 
     await client.query('COMMIT');
+    console.log("Database Schema Initialized Successfully");
   } catch (err) {
     await client.query('ROLLBACK');
     console.error("DB Sync Error:", err);
@@ -85,7 +79,29 @@ const initDb = async () => {
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 
-// --- AUTH & CONFIG ---
+// --- API ENDPOINTS ---
+
+app.post('/api/auth/register', async (req, res) => {
+  const { username, password, securityQuestion, securityAnswer } = req.body;
+  try {
+    const compRes = await pool.query('SELECT id FROM companies LIMIT 1');
+    if (compRes.rows.length === 0) return res.status(500).json({ error: "Configuration système incomplète (SOCIETE_MISSING)" });
+    
+    const companyId = compRes.rows[0].id;
+    const userCount = await pool.query('SELECT COUNT(*) FROM users');
+    const role = parseInt(userCount.rows[0].count) === 0 ? 'SUPER_ADMIN' : 'USER';
+
+    await pool.query(
+      `INSERT INTO users (username, password, role, company_id, security_question, security_answer)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [username.trim(), password, role, companyId, securityQuestion, securityAnswer]
+    );
+    res.status(201).json({ success: true });
+  } catch (err) {
+    console.error("Register Error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
 
 app.post('/api/auth/login', async (req, res) => {
   const { username, password } = req.body;
@@ -103,7 +119,7 @@ app.post('/api/auth/login', async (req, res) => {
     const user = result.rows[0];
     if (user.password !== password) return res.status(401).json({ error: "Mot de passe incorrect." });
     
-    const profile = {
+    res.json({
       username: user.username,
       companyId: user.company_id,
       companyName: user.company_name,
@@ -111,12 +127,30 @@ app.post('/api/auth/login', async (req, res) => {
       stats: user.stats,
       companyConfig: user.company_config,
       createdAt: user.created_at
-    };
-    res.json(profile);
-  } catch (err) { res.status(500).json({ error: err.message }); }
+    });
+  } catch (err) {
+    console.error("Login Error:", err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
-// Sauvegarde de la configuration de l'entreprise (ERP, Templates, etc)
+app.post('/api/auth/reset-password', async (req, res) => {
+  const { username, newPassword, answer } = req.body;
+  try {
+    const userRes = await pool.query('SELECT security_answer FROM users WHERE LOWER(username) = LOWER($1)', [username.trim()]);
+    if (userRes.rows.length === 0) return res.status(404).json({ error: "Utilisateur non trouvé." });
+    
+    if (userRes.rows[0].security_answer?.toLowerCase().trim() !== answer.toLowerCase().trim()) {
+      return res.status(401).json({ error: "Réponse de sécurité incorrecte." });
+    }
+
+    await pool.query('UPDATE users SET password = $1 WHERE LOWER(username) = LOWER($2)', [newPassword, username.trim()]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post('/api/company/config', async (req, res) => {
   const { companyId, config } = req.body;
   try {
@@ -125,57 +159,14 @@ app.post('/api/company/config', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// --- ADMIN / SUPER ADMIN ---
-
-app.get('/api/admin/companies', async (req, res) => {
-  try {
-    const result = await pool.query('SELECT * FROM companies ORDER BY created_at DESC');
-    res.json(result.rows);
-  } catch (err) { res.status(500).json({ error: err.message }); }
-});
-
-app.post('/api/admin/companies', async (req, res) => {
-  const { name } = req.body;
-  try {
-    const result = await pool.query('INSERT INTO companies (id, name) VALUES ($1, $2) RETURNING *', [uuidv4(), name]);
-    res.status(201).json(result.rows[0]);
-  } catch (err) { res.status(500).json({ error: err.message }); }
-});
-
-app.post('/api/admin/users', async (req, res) => {
-  const { username, password, role, companyId } = req.body;
-  try {
-    const result = await pool.query(
-      'INSERT INTO users (username, password, role, company_id) VALUES ($1, $2, $3, $4) RETURNING username, role',
-      [username, password, role, companyId]
-    );
-    res.status(201).json(result.rows[0]);
-  } catch (err) { res.status(500).json({ error: err.message }); }
-});
-
-app.get('/api/admin/users', async (req, res) => {
-  const { requester, role } = req.query;
-  try {
-    let query = `
-      SELECT u.username, u.role, u.stats, u.created_at, u.company_id, c.name as company_name
-      FROM users u 
-      JOIN companies c ON u.company_id = c.id
-    `;
-    const result = await pool.query(query);
-    res.json(result.rows);
-  } catch (err) { res.status(500).json({ error: err.message }); }
-});
-
-// --- INVOICES (FILTERED BY COMPANY) ---
-
 app.get('/api/invoices', async (req, res) => {
   const { user } = req.query;
   try {
     const userRes = await pool.query('SELECT company_id, role FROM users WHERE username = $1', [user]);
+    if (userRes.rows.length === 0) return res.json([]);
     const u = userRes.rows[0];
     let query = 'SELECT data FROM invoices WHERE company_id = $1';
     if (u.role === 'SUPER_ADMIN') query = 'SELECT data FROM invoices';
-    
     const result = await pool.query(query, u.role === 'SUPER_ADMIN' ? [] : [u.company_id]);
     res.json(result.rows.map(r => r.data));
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -194,10 +185,28 @@ app.post('/api/invoices', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+app.get('/api/admin/users', async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT u.username, u.role, u.stats, u.created_at, u.company_id, c.name as company_name
+      FROM users u 
+      JOIN companies c ON u.company_id = c.id
+    `);
+    res.json(result.rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/admin/companies', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM companies ORDER BY created_at DESC');
+    res.json(result.rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 app.use(express.static(path.join(__dirname, 'dist')));
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'dist', 'index.html')));
 
 app.listen(port, async () => {
-  console.log(`SaaS Server running on port ${port}`);
+  console.log(`Server running on port ${port}`);
   await initDb();
 });

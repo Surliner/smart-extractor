@@ -10,12 +10,6 @@ import { LoginScreen } from './components/LoginScreen';
 import { ConfigurationModal } from './components/ConfigurationModal';
 import { UserManagement } from './components/UserManagement';
 
-const createDedupKey = (supplier: string, invoiceNumber: string) => {
-  const normSupplier = supplier.toLowerCase().replace(/[^a-z0-9]/g, '');
-  const normInvNum = invoiceNumber.toLowerCase().replace(/[^a-z0-9]/g, '');
-  return `${normInvNum}_${normSupplier}`;
-};
-
 const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<string | null>(localStorage.getItem('invoice-session-active-user'));
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
@@ -35,19 +29,11 @@ const App: React.FC = () => {
   const [templates, setTemplates] = useState<ExportTemplate[]>([]);
   const [xmlProfiles, setXmlProfiles] = useState<XmlMappingProfile[]>([]);
 
-  // Initialisation Multi-tenant
-  useEffect(() => {
-    if (currentUser && !userProfile) {
-        // En cas de refresh, on demande à l'utilisateur de se reconnecter pour recharger son profil complet
-    }
-  }, [currentUser, userProfile]);
-
   const handleLogin = (profile: UserProfile) => {
     setUserProfile(profile);
     setCurrentUser(profile.username);
     localStorage.setItem('invoice-session-active-user', profile.username);
     
-    // Charger la config entreprise
     const cfg = profile.companyConfig || {};
     setErpConfig(cfg.erpConfig || { apiUrl: '', apiKey: '', enabled: false });
     setMasterData(cfg.masterData || []);
@@ -55,8 +41,26 @@ const App: React.FC = () => {
     setTemplates(cfg.templates || []);
     setXmlProfiles(cfg.xmlProfiles || []);
 
-    // Charger les factures
-    dbService.getInvoices(profile.username).then(setAllInvoices);
+    dbService.getInvoices(profile.username).then(setAllInvoices).catch(console.error);
+  };
+
+  const handleRegister = async (username: string, pass: string, question?: string, answer?: string) => {
+    try {
+      await dbService.register(username, pass, question || '', answer || '');
+      alert("Inscription réussie ! Vous pouvez maintenant vous connecter.");
+      window.location.reload();
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
+
+  const handleResetPassword = async (username: string, newPass: string, answer?: string) => {
+    try {
+      await dbService.resetPassword(username, newPass, answer || '');
+      alert("Mot de passe réinitialisé ! Veuillez vous connecter avec vos nouveaux identifiants.");
+    } catch (err: any) {
+      alert(err.message);
+    }
   };
 
   const syncConfigToCloud = useCallback(async () => {
@@ -108,8 +112,8 @@ const App: React.FC = () => {
     <LoginScreen 
       onLogin={handleLogin} 
       users={allUsers} 
-      onRegister={() => {}} 
-      onResetPassword={() => {}} 
+      onRegister={handleRegister} 
+      onResetPassword={handleResetPassword} 
     />
   );
 
