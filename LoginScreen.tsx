@@ -1,12 +1,12 @@
 
 import React, { useState, useEffect } from 'react';
 import { UserCircle, ArrowRight, ShieldCheck, Key, UserPlus, LogIn, Cpu, HelpCircle, ArrowLeft, RefreshCw, Eye, EyeOff, Info, LayoutGrid, Database, Globe, ChevronDown, Fingerprint, Lock, ShieldAlert } from 'lucide-react';
-import { UserProfile } from '../types';
-import { dbService } from '../services/databaseService';
+import { UserProfile } from './types';
+import { dbService } from './services/databaseService';
 
 interface LoginScreenProps {
   onLogin: (user: UserProfile) => void;
-  users: UserProfile[];
+  users?: UserProfile[]; // Rendu optionnel pour plus de sécurité
   onRegister: (username: string, pass: string, securityQuestion?: string, securityAnswer?: string) => void;
   onResetPassword: (username: string, newPass: string, answer?: string) => void;
 }
@@ -22,8 +22,10 @@ const SECURITY_QUESTIONS = [
 
 type ViewState = 'LOGIN' | 'REGISTER' | 'RECOVER_IDENTIFY' | 'RECOVER_CHALLENGE' | 'RECOVER_RESET';
 
-export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, users, onRegister, onResetPassword }) => {
-  const [view, setView] = useState<ViewState>(users.length === 0 ? 'REGISTER' : 'LOGIN');
+export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, users = [], onRegister, onResetPassword }) => {
+  // Sécurisation du mode par défaut
+  const userList = Array.isArray(users) ? users : [];
+  const [view, setView] = useState<ViewState>(userList.length === 0 ? 'LOGIN' : 'LOGIN');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -49,33 +51,44 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, users, onRegi
         const user = await dbService.login(username, password);
         onLogin(user);
     } catch (err: any) {
-        setError("Identifiants incorrects ou erreur serveur.");
+        setError(err.message || "Identifiants incorrects ou erreur serveur.");
     } finally {
         setIsLoading(false);
     }
   };
 
-  const handleRegisterSubmit = (e: React.FormEvent) => {
+  const handleRegisterSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     const cleanUser = username.trim();
     if (!cleanUser || !password.trim() || !securityAnswer.trim()) {
-      setError('Champs obligatoires manquants pour l\'initialisation du profil.');
+      setError('Champs obligatoires manquants.');
       return;
     }
-    onRegister(cleanUser, password, securityQuestion, securityAnswer);
+    
+    setIsLoading(true);
+    try {
+      await dbService.register(cleanUser, password, securityQuestion, securityAnswer);
+      setSuccess("Inscription réussie ! Votre compte est en attente d'approbation par un administrateur.");
+      setTimeout(() => setView('LOGIN'), 3000);
+    } catch (err: any) {
+      setError(err.message || "Erreur lors de l'inscription.");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleRecoveryIdentify = (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    const user = users.find(u => u.username.toLowerCase().trim() === username.toLowerCase().trim());
+    // On ne peut récupérer que si le serveur nous a envoyé la liste (fallback local)
+    const user = userList.find(u => u.username.toLowerCase().trim() === username.toLowerCase().trim());
     if (!user) {
-      setError('Identité introuvable dans la partition locale.');
+      setError('Identité introuvable ou service de récupération indisponible.');
       return;
     }
     if (!user.securityQuestion) {
-      setError('Profil hérité : Aucune question de sécurité configurée.');
+      setError('Aucune question de sécurité configurée pour ce compte.');
       return;
     }
     setRecoveryUser(user);
@@ -88,7 +101,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, users, onRegi
     if (securityAnswer.toLowerCase().trim() === recoveryUser?.securityAnswer?.toLowerCase().trim()) {
       setView('RECOVER_RESET');
     } else {
-      setError('Échec de la validation : Réponse incorrecte.');
+      setError('Réponse de sécurité incorrecte.');
     }
   };
 
@@ -102,7 +115,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, users, onRegi
     try {
         setIsLoading(true);
         await onResetPassword(recoveryUser!.username, newPassword, securityAnswer);
-        setSuccess('Identifiants mis à jour. Redirection...');
+        setSuccess('Mot de passe mis à jour avec succès.');
         setTimeout(() => { resetForm(); setView('LOGIN'); }, 2000);
     } catch (err: any) {
         setError(err.message);
@@ -119,7 +132,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, users, onRegi
     setNewPassword('');
   };
 
-  const isInitialSetup = users.length === 0;
+  const isInitialSetup = userList.length === 0;
 
   return (
     <div className="min-h-screen bg-slate-950 flex items-center justify-center p-6 font-sans overflow-hidden">
@@ -137,12 +150,9 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, users, onRegi
           <h1 className="text-4xl font-black text-white tracking-tighter">
             Invoice<span className="text-indigo-500">Command</span>
           </h1>
-          <div className="flex items-center mt-3 space-x-2">
-             <div className={`w-2 h-2 rounded-full ${isInitialSetup ? 'bg-amber-500' : 'bg-emerald-500'}`}></div>
-             <p className="text-[10px] font-black uppercase text-slate-500 tracking-[0.3em]">
-               {isInitialSetup ? 'Initialisation système requise' : 'Accès sécurisé actif'}
-             </p>
-          </div>
+          <p className="text-[10px] font-black uppercase text-slate-500 tracking-[0.3em] mt-3">
+             Accès Sécurisé - Partition Client
+          </p>
         </div>
 
         <div className="flex-1">
@@ -159,14 +169,14 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, users, onRegi
 
           {view === 'LOGIN' && (
             <form onSubmit={handleLoginSubmit} className="space-y-6 animate-in fade-in duration-500">
-              <FormGroup label="Identifiant Système" icon={UserCircle} value={username} onChange={setUsername} placeholder="Nom d'utilisateur" theme="dark" />
+              <FormGroup label="Identifiant" icon={UserCircle} value={username} onChange={setUsername} placeholder="votre.nom" theme="dark" />
               <FormGroup 
-                label="Accès sécurisé" 
+                label="Mot de passe" 
                 icon={Key} 
                 type={showPassword ? "text" : "password"} 
                 value={password} 
                 onChange={setPassword} 
-                placeholder="Mot de passe"
+                placeholder="••••••••"
                 theme="dark"
                 rightElement={
                     <button type="button" onClick={() => setShowPassword(!showPassword)} className="p-2 text-slate-500 hover:text-white transition-colors">
@@ -175,101 +185,79 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, users, onRegi
                 }
               />
               <button disabled={isLoading} type="submit" className="w-full bg-white hover:bg-slate-100 text-slate-950 font-black uppercase text-[11px] tracking-[0.2em] py-5 rounded-[1.5rem] flex items-center justify-center transition-all shadow-2xl active:scale-95 disabled:opacity-50">
-                {isLoading ? <RefreshCw className="w-5 h-5 animate-spin" /> : <LogIn className="w-5 h-5 mr-3" />} Lancer la connexion
+                {isLoading ? <RefreshCw className="w-5 h-5 animate-spin" /> : <LogIn className="w-5 h-5 mr-3" />} Connexion
               </button>
-              <div className="flex justify-center">
-                <button type="button" onClick={() => { resetForm(); setView('RECOVER_IDENTIFY'); }} className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 hover:text-indigo-400 transition-colors">
-                  Récupération de compte
+              <div className="flex justify-center mt-4">
+                <button type="button" onClick={() => { resetForm(); setView('RECOVER_IDENTIFY'); }} className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 hover:text-indigo-400">
+                  Mot de passe oublié ?
                 </button>
               </div>
             </form>
           )}
 
           {view === 'REGISTER' && (
-            <form onSubmit={handleRegisterSubmit} className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-              <div className="grid grid-cols-1 gap-5 max-h-[45vh] overflow-y-auto pr-2 custom-scrollbar p-1">
-                <FormGroup label="Nouvel Identifiant" icon={UserCircle} value={username} onChange={setUsername} placeholder="Choisissez un nom d'utilisateur" theme="dark" />
-                <FormGroup label="Mot de passe" icon={Key} type="password" value={password} onChange={setPassword} placeholder="Créez votre mot de passe" theme="dark" />
-                
-                <div className="pt-4 border-t border-white/5">
-                  <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3 ml-1">Question de sécurité</label>
-                  <div className="relative group">
-                    <HelpCircle className="w-5 h-5 absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-indigo-400 transition-colors" />
-                    <select 
-                      value={securityQuestion}
-                      onChange={(e) => setSecurityQuestion(e.target.value)}
-                      className="w-full pl-12 pr-10 py-4 rounded-2xl border border-white/10 bg-white/5 text-sm text-slate-200 font-black appearance-none outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all cursor-pointer"
-                    >
-                      {SECURITY_QUESTIONS.map(q => <option key={q} value={q} className="bg-slate-900 text-white">{q}</option>)}
-                    </select>
-                    <ChevronDown className="w-4 h-4 text-slate-500 absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none" />
-                  </div>
-                </div>
-                <FormGroup label="Réponse secrète" icon={ShieldCheck} value={securityAnswer} onChange={setSecurityAnswer} placeholder="Votre réponse" theme="dark" />
+            <form onSubmit={handleRegisterSubmit} className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
+              <FormGroup label="Nouvel identifiant" icon={UserCircle} value={username} onChange={setUsername} placeholder="votre.nom" theme="dark" />
+              <FormGroup label="Mot de passe" icon={Key} type="password" value={password} onChange={setPassword} placeholder="••••••••" theme="dark" />
+              
+              <div className="pt-2">
+                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3">Question de sécurité</label>
+                <select 
+                  value={securityQuestion}
+                  onChange={(e) => setSecurityQuestion(e.target.value)}
+                  className="w-full px-5 py-4 rounded-2xl border border-white/10 bg-white/5 text-sm text-slate-200 font-black outline-none focus:border-indigo-500 transition-all appearance-none"
+                >
+                  {SECURITY_QUESTIONS.map(q => <option key={q} value={q} className="bg-slate-900 text-white">{q}</option>)}
+                </select>
               </div>
+              <FormGroup label="Réponse" icon={ShieldCheck} value={securityAnswer} onChange={setSecurityAnswer} placeholder="Votre réponse" themeColor="indigo" theme="dark" />
 
-              <button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-black uppercase text-[11px] tracking-[0.2em] py-5 rounded-[1.5rem] flex items-center justify-center transition-all shadow-xl shadow-indigo-500/20 active:scale-95">
-                <UserPlus className="w-5 h-5 mr-3" /> Initialiser le profil
+              <button disabled={isLoading} type="submit" className="w-full bg-indigo-600 hover:bg-indigo-50 text-white font-black uppercase text-[11px] tracking-[0.2em] py-5 rounded-[1.5rem] flex items-center justify-center transition-all disabled:opacity-50">
+                {isLoading ? <RefreshCw className="w-5 h-5 mr-3 animate-spin" /> : <UserPlus className="w-5 h-5 mr-3" />} Créer mon compte
               </button>
             </form>
           )}
 
           {view === 'RECOVER_IDENTIFY' && (
-            <form onSubmit={handleRecoveryIdentify} className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
-              <div className="flex items-center space-x-3 mb-2">
-                 <div className="px-2 py-1 bg-white/5 rounded-md text-[9px] font-black text-slate-400 border border-white/5 uppercase tracking-widest">Étape 1/3</div>
-                 <h3 className="text-[11px] font-black text-white uppercase tracking-widest">Localiser le compte</h3>
-              </div>
-              <FormGroup label="Identifiant enregistré" icon={Fingerprint} value={username} onChange={setUsername} placeholder="Nom d'utilisateur" theme="dark" />
-              <button type="submit" className="w-full bg-white hover:bg-slate-100 text-slate-950 font-black uppercase text-[11px] tracking-[0.2em] py-5 rounded-[1.5rem] flex items-center justify-center transition-all shadow-2xl active:scale-95">
-                Valider l'identité <ArrowRight className="w-4 h-4 ml-3" />
+            <form onSubmit={handleRecoveryIdentify} className="space-y-6 animate-in fade-in">
+              <FormGroup label="Identifiant" icon={Fingerprint} value={username} onChange={setUsername} placeholder="Nom d'utilisateur" theme="dark" />
+              <button type="submit" className="w-full bg-white text-slate-950 font-black uppercase text-[11px] tracking-[0.2em] py-5 rounded-[1.5rem] flex items-center justify-center">
+                Vérifier <ArrowRight className="w-4 h-4 ml-3" />
               </button>
-              <button type="button" onClick={() => setView('LOGIN')} className="w-full text-[10px] font-black uppercase text-slate-500 hover:text-white transition-colors flex items-center justify-center">
-                 <ArrowLeft className="w-3 h-3 mr-2" /> Retour à la connexion
+              <button type="button" onClick={() => setView('LOGIN')} className="w-full text-[10px] font-black uppercase text-slate-500 hover:text-white">
+                Retour
               </button>
             </form>
           )}
 
           {view === 'RECOVER_CHALLENGE' && recoveryUser && (
-            <form onSubmit={handleRecoveryChallenge} className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
-              <div className="flex items-center space-x-3 mb-2">
-                 <div className="px-2 py-1 bg-indigo-500/20 rounded-md text-[9px] font-black text-indigo-400 border border-indigo-500/20 uppercase tracking-widest">Étape 2/3</div>
-                 <h3 className="text-[11px] font-black text-white uppercase tracking-widest">Vérification de sécurité</h3>
-              </div>
-              <div className="bg-white/5 border border-white/10 rounded-2xl p-6 mb-2">
-                 <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest block mb-2">Question de sécurité</label>
+            <form onSubmit={handleRecoveryChallenge} className="space-y-6 animate-in fade-in">
+              <div className="bg-white/5 border border-white/10 rounded-2xl p-6">
+                 <label className="text-[9px] font-black text-slate-500 uppercase block mb-2">Question de sécurité</label>
                  <p className="text-sm font-black text-indigo-400 italic">"{recoveryUser.securityQuestion}"</p>
               </div>
-              <FormGroup label="Réponse secrète" icon={ShieldCheck} value={securityAnswer} onChange={setSecurityAnswer} placeholder="Votre réponse" theme="dark" />
-              <button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-black uppercase text-[11px] tracking-[0.2em] py-5 rounded-[1.5rem] flex items-center justify-center transition-all shadow-xl shadow-indigo-500/20 active:scale-95">
-                Vérifier la réponse <ArrowRight className="w-4 h-4 ml-3" />
-              </button>
-              <button type="button" onClick={() => setView('RECOVER_IDENTIFY')} className="w-full text-[10px] font-black uppercase text-slate-500 hover:text-white transition-colors flex items-center justify-center">
-                 <ArrowLeft className="w-3 h-3 mr-2" /> Erreur d'utilisateur ? Retour
+              <FormGroup label="Réponse" icon={ShieldCheck} value={securityAnswer} onChange={setSecurityAnswer} placeholder="Votre réponse" theme="dark" />
+              <button type="submit" className="w-full bg-indigo-600 text-white font-black uppercase text-[11px] tracking-[0.2em] py-5 rounded-[1.5rem] flex items-center justify-center">
+                Valider
               </button>
             </form>
           )}
 
           {view === 'RECOVER_RESET' && (
-            <form onSubmit={handleRecoveryReset} className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
-              <div className="flex items-center space-x-3 mb-2">
-                 <div className="px-2 py-1 bg-emerald-500/20 rounded-md text-[9px] font-black text-emerald-400 border border-emerald-500/20 uppercase tracking-widest">Étape 3/3</div>
-                 <h3 className="text-[11px] font-black text-white uppercase tracking-widest">Réinitialisation d'accès</h3>
-              </div>
+            <form onSubmit={handleRecoveryReset} className="space-y-6 animate-in fade-in">
               <FormGroup label="Nouveau mot de passe" icon={Lock} type="password" value={newPassword} onChange={setNewPassword} placeholder="Saisissez le nouveau mot de passe" theme="dark" />
-              <button disabled={isLoading} type="submit" className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black uppercase text-[11px] tracking-[0.2em] py-5 rounded-[1.5rem] flex items-center justify-center transition-all shadow-xl shadow-emerald-500/20 active:scale-95 disabled:opacity-50">
-                {isLoading ? <RefreshCw className="w-4 h-4 mr-3 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-3" />}
-                Mettre à jour le mot de passe
+              <button disabled={isLoading} type="submit" className="w-full bg-emerald-600 text-white font-black uppercase text-[11px] tracking-[0.2em] py-5 rounded-[1.5rem] flex items-center justify-center">
+                Réinitialiser
               </button>
             </form>
           )}
         </div>
         
         {(view === 'LOGIN' || view === 'REGISTER') && (
-          <div className="mt-10 pt-10 border-t border-white/5 flex flex-col items-center space-y-6">
+          <div className="mt-10 pt-10 border-t border-white/5 flex flex-col items-center">
              <button 
                onClick={() => { resetForm(); setView(view === 'REGISTER' ? 'LOGIN' : 'REGISTER'); }}
-               className="text-[10px] font-black uppercase tracking-[0.3em] text-white hover:text-indigo-400 transition-all bg-white/5 px-10 py-3 rounded-full border border-white/5 hover:border-indigo-500/30"
+               className="text-[10px] font-black uppercase tracking-[0.3em] text-white hover:text-indigo-400 transition-all bg-white/5 px-10 py-3 rounded-full border border-white/5"
              >
                {view === 'REGISTER' ? 'Déjà un compte ? Connexion' : 'Créer un compte'}
              </button>
@@ -284,11 +272,11 @@ const FormGroup = ({ label, icon: Icon, value, onChange, placeholder, type = 'te
   const isDark = theme === 'dark';
   return (
     <div className="group transition-all">
-      <label className={`block text-[10px] font-black uppercase tracking-widest mb-3 ml-1 transition-colors ${isDark ? 'text-slate-500 group-focus-within:text-indigo-400' : 'text-slate-400 group-focus-within:text-indigo-600'}`}>
+      <label className={`block text-[10px] font-black uppercase tracking-widest mb-3 ml-1 ${isDark ? 'text-slate-500 group-focus-within:text-indigo-400' : 'text-slate-400 group-focus-within:text-indigo-600'}`}>
         {label}
       </label>
       <div className="relative">
-        <Icon className={`w-5 h-5 absolute left-4 top-1/2 -translate-y-1/2 transition-colors ${isDark ? 'text-slate-500 group-focus-within:text-indigo-400' : 'text-slate-400 group-focus-within:text-indigo-600'}`} />
+        <Icon className={`w-5 h-5 absolute left-4 top-1/2 -translate-y-1/2 ${isDark ? 'text-slate-500 group-focus-within:text-indigo-400' : 'text-slate-400 group-focus-within:text-indigo-600'}`} />
         <input
           type={type}
           value={value}
@@ -296,8 +284,8 @@ const FormGroup = ({ label, icon: Icon, value, onChange, placeholder, type = 'te
           placeholder={placeholder}
           className={`w-full pl-12 pr-12 py-4 rounded-2xl border outline-none transition-all text-sm font-black 
             ${isDark 
-              ? 'bg-white/5 border-white/10 text-white placeholder-slate-600 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10' 
-              : 'bg-slate-50/50 border-slate-200 text-slate-800 placeholder-slate-300 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10'
+              ? 'bg-white/5 border-white/10 text-white placeholder-slate-600 focus:border-indigo-500' 
+              : 'bg-slate-50 border-slate-200 text-slate-800 placeholder-slate-300 focus:border-indigo-500'
             }`}
           required
         />

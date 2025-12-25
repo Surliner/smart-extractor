@@ -29,7 +29,7 @@ const initDb = async () => {
       );
     `);
 
-    // 2. Table Utilisateurs (Structure de base)
+    // 2. Table Utilisateurs
     await client.query(`
       CREATE TABLE IF NOT EXISTS users (
           username TEXT PRIMARY KEY,
@@ -38,7 +38,7 @@ const initDb = async () => {
       );
     `);
 
-    // 3. MIGRATIONS : Forcer l'ajout des colonnes manquantes
+    // 3. MIGRATIONS : Forcer l'ajout des colonnes
     const migrations = [
       { table: 'users', col: 'company_id', type: 'UUID REFERENCES companies(id)' },
       { table: 'users', col: 'role', type: "TEXT DEFAULT 'USER'" },
@@ -64,32 +64,41 @@ const initDb = async () => {
       );
     `);
 
-    // 5. Initialisation Société Pilote & Admin Maître
+    // 5. Initialisation Société Pilote
     const compCount = await client.query('SELECT COUNT(*) FROM companies');
     let defaultCompId;
     if (parseInt(compCount.rows[0].count) === 0) {
       defaultCompId = uuidv4();
       await client.query('INSERT INTO companies (id, name) VALUES ($1, $2)', [defaultCompId, 'Société Pilote']);
-      console.log("Société Pilote créée.");
     } else {
       const firstComp = await client.query('SELECT id FROM companies LIMIT 1');
       defaultCompId = firstComp.rows[0].id;
     }
 
-    const userCheck = await client.query('SELECT * FROM users WHERE username = $1', ['admin']);
-    if (userCheck.rows.length === 0) {
+    // 6. RÉPARATION DES DONNÉES : Assigner company_id aux utilisateurs existants qui n'en ont pas
+    await client.query('UPDATE users SET company_id = $1 WHERE company_id IS NULL', [defaultCompId]);
+
+    // 7. Initialisation Admin Maître (Forcer si absent)
+    const adminCheck = await client.query('SELECT * FROM users WHERE LOWER(username) = $1', ['admin']);
+    if (adminCheck.rows.length === 0) {
       await client.query(
         'INSERT INTO users (username, password, role, company_id, is_approved) VALUES ($1, $2, $3, $4, $5)',
         ['admin', 'admin', 'SUPER_ADMIN', defaultCompId, true]
       );
-      console.log("Compte admin initialisé : admin / admin");
+      console.log("Compte admin initialisé par défaut.");
+    } else {
+      // S'il existe déjà, on s'assure qu'il est approuvé et rattaché à une société
+      await client.query(
+        'UPDATE users SET is_approved = TRUE, role = $1, company_id = $2 WHERE LOWER(username) = $3',
+        ['SUPER_ADMIN', defaultCompId, 'admin']
+      );
     }
 
     await client.query('COMMIT');
-    console.log("Base de données prête.");
+    console.log("Base de données synchronisée et réparée.");
   } catch (err) {
     await client.query('ROLLBACK');
-    console.error("Erreur critique DB:", err);
+    console.error("Erreur critique d'initialisation DB:", err);
   } finally {
     client.release();
   }
@@ -104,9 +113,10 @@ app.post('/api/auth/register', async (req, res) => {
   const { username, password, securityQuestion, securityAnswer } = req.body;
   try {
     const compRes = await pool.query('SELECT id FROM companies LIMIT 1');
+    if (compRes.rows.length === 0) throw new Error("Aucune société n'est configurée.");
+    
     const companyId = compRes.rows[0].id;
     
-    // Tout nouvel utilisateur est 'USER' et non approuvé par défaut
     await pool.query(
       `INSERT INTO users (username, password, role, company_id, security_question, security_answer, is_approved)
        VALUES ($1, $2, $3, $4, $5, $6, $7)`,
@@ -121,18 +131,23 @@ app.post('/api/auth/register', async (req, res) => {
 app.post('/api/auth/login', async (req, res) => {
   const { username, password } = req.body;
   try {
+    // Utilisation d'un LEFT JOIN pour ne pas perdre les utilisateurs sans société
     const result = await pool.query(
       `SELECT u.*, c.name as company_name, c.config as company_config
        FROM users u 
-       JOIN companies c ON u.company_id = c.id 
+       LEFT JOIN companies c ON u.company_id = c.id 
        WHERE LOWER(u.username) = LOWER($1)`,
       [username.trim()]
     );
     
-    if (result.rows.length === 0) return res.status(404).json({ error: "Utilisateur non trouvé." });
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "Utilisateur non trouvé." });
+    }
     
     const user = result.rows[0];
-    if (user.password !== password) return res.status(401).json({ error: "Mot de passe incorrect." });
+    if (user.password !== password) {
+      return res.status(401).json({ error: "Mot de passe incorrect." });
+    }
     
     if (!user.is_approved) {
       return res.status(403).json({ error: "Votre compte est en attente d'approbation par un administrateur." });
@@ -141,7 +156,7 @@ app.post('/api/auth/login', async (req, res) => {
     res.json({
       username: user.username,
       companyId: user.company_id,
-      companyName: user.company_name,
+      companyName: user.company_name || 'N/A',
       role: user.role,
       isApproved: user.is_approved,
       stats: user.stats,
@@ -176,6 +191,7 @@ app.post('/api/invoices', async (req, res) => {
   const invoice = req.body;
   try {
     const userRes = await pool.query('SELECT company_id FROM users WHERE username = $1', [invoice.owner]);
+    if (userRes.rows.length === 0) throw new Error("Utilisateur introuvable.");
     const cid = userRes.rows[0].company_id;
     await pool.query(
       'INSERT INTO invoices (id, owner, company_id, data) VALUES ($1, $2, $3, $4) ON CONFLICT (id) DO UPDATE SET data = $4', 
@@ -189,6 +205,6 @@ app.use(express.static(path.join(__dirname, 'dist')));
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'dist', 'index.html')));
 
 app.listen(port, async () => {
-  console.log(`Serveur actif sur le port ${port}`);
+  console.log(`Serveur prêt sur le port ${port}`);
   await initDb();
 });
