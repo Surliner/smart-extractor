@@ -1,5 +1,4 @@
 
-
 export interface InvoiceItem {
   articleId: string;
   description: string;
@@ -61,7 +60,7 @@ export interface SageX3Config {
 
 export interface InvoiceData {
   id: string;
-  companyId: string; // Relation multi-tenant
+  companyId: string;
   owner?: string; 
   sessionId?: string;
   extractionMode?: ExtractionMode;
@@ -157,11 +156,12 @@ export interface UserActivity {
 
 export interface UserProfile {
   username: string;
-  companyId: string; // Relation multi-tenant
+  companyId: string;
   companyName?: string;
-  companyConfig?: any; // Added for multi-tenant configuration storage
+  companyConfig?: any;
   password?: string;
   role: UserRole;
+  isApproved: boolean;
   createdAt: string;
   stats: {
     extractRequests: number;

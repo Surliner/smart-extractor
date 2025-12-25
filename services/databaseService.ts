@@ -12,22 +12,35 @@ export const dbService = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password })
     });
+    const data = await response.json();
     if (!response.ok) {
-      const err = await response.json();
-      throw new Error(err.error || "Identifiants invalides.");
+      throw new Error(data.error || "Une erreur est survenue lors de la connexion.");
     }
-    return await response.json();
+    return data;
   },
 
-  async register(username: string, password: string, securityQuestion: string, securityAnswer: string): Promise<void> {
+  async register(username: string, password: string, securityQuestion: string, securityAnswer: string): Promise<{pending: boolean}> {
     const response = await fetch(`${API_URL}/auth/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password, securityQuestion, securityAnswer })
     });
+    const data = await response.json();
     if (!response.ok) {
-      const err = await response.json();
-      throw new Error(err.error || "Échec de l'inscription.");
+      throw new Error(data.error || "Échec de l'inscription.");
+    }
+    return data;
+  },
+
+  async approveUser(username: string): Promise<void> {
+    const response = await fetch(`${API_URL}/admin/users/approve`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username })
+    });
+    if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || "Impossible d'approuver l'utilisateur.");
     }
   },
 

@@ -29,7 +29,7 @@ const initDb = async () => {
       );
     `);
 
-    // 2. Table Utilisateurs (Création de base)
+    // 2. Table Utilisateurs
     await client.query(`
       CREATE TABLE IF NOT EXISTS users (
           username TEXT PRIMARY KEY,
@@ -38,10 +38,11 @@ const initDb = async () => {
       );
     `);
 
-    // 3. MIGRATIONS : Ajout des colonnes si elles manquent
+    // 3. MIGRATIONS
     const migrations = [
       { table: 'users', col: 'company_id', type: 'UUID REFERENCES companies(id)' },
       { table: 'users', col: 'role', type: "TEXT DEFAULT 'USER'" },
+      { table: 'users', col: 'is_approved', type: "BOOLEAN DEFAULT FALSE" },
       { table: 'users', col: 'security_question', type: 'TEXT' },
       { table: 'users', col: 'security_answer', type: 'TEXT' },
       { table: 'users', col: 'stats', type: "JSONB DEFAULT '{\"extractRequests\": 0, \"totalTokens\": 0, \"lastActive\": \"\"}'" },
@@ -63,26 +64,25 @@ const initDb = async () => {
       );
     `);
 
-    // 5. Initialisation Société & Admin par défaut
+    // 5. Default Company
     const compCount = await client.query('SELECT COUNT(*) FROM companies');
     let defaultCompId;
-    
     if (parseInt(compCount.rows[0].count) === 0) {
       defaultCompId = uuidv4();
       await client.query('INSERT INTO companies (id, name) VALUES ($1, $2)', [defaultCompId, 'Société Pilote']);
-      console.log("Default company created.");
     } else {
       const firstComp = await client.query('SELECT id FROM companies LIMIT 1');
       defaultCompId = firstComp.rows[0].id;
     }
 
+    // 6. Default Admin (Always Approved)
     const userCount = await client.query('SELECT COUNT(*) FROM users');
     if (parseInt(userCount.rows[0].count) === 0) {
       await client.query(
-        'INSERT INTO users (username, password, role, company_id) VALUES ($1, $2, $3, $4)',
-        ['admin', 'admin', 'SUPER_ADMIN', defaultCompId]
+        'INSERT INTO users (username, password, role, company_id, is_approved) VALUES ($1, $2, $3, $4, $5)',
+        ['admin', 'admin', 'SUPER_ADMIN', defaultCompId, true]
       );
-      console.log("Default user created: admin / admin");
+      console.log("Default user created: admin / admin (Approved)");
     }
 
     await client.query('COMMIT');
@@ -107,17 +107,19 @@ app.post('/api/auth/register', async (req, res) => {
     if (compRes.rows.length === 0) return res.status(500).json({ error: "Aucune société disponible." });
     
     const companyId = compRes.rows[0].id;
+    // Super admin detection is handled in SQL: first user is approved and super_admin, others pending
     const userCount = await pool.query('SELECT COUNT(*) FROM users');
-    const role = parseInt(userCount.rows[0].count) === 0 ? 'SUPER_ADMIN' : 'USER';
+    const isFirst = parseInt(userCount.rows[0].count) === 0;
+    const role = isFirst ? 'SUPER_ADMIN' : 'USER';
+    const approved = isFirst; // First user approved by default
 
     await pool.query(
-      `INSERT INTO users (username, password, role, company_id, security_question, security_answer)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
-      [username.trim(), password, role, companyId, securityQuestion, securityAnswer]
+      `INSERT INTO users (username, password, role, company_id, security_question, security_answer, is_approved)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [username.trim(), password, role, companyId, securityQuestion, securityAnswer, approved]
     );
-    res.status(201).json({ success: true });
+    res.status(201).json({ success: true, pending: !approved });
   } catch (err) {
-    console.error("Register Error:", err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -137,57 +139,42 @@ app.post('/api/auth/login', async (req, res) => {
     
     const user = result.rows[0];
     if (user.password !== password) return res.status(401).json({ error: "Mot de passe incorrect." });
+    if (!user.is_approved) return res.status(403).json({ error: "Votre compte est en attente d'approbation par un administrateur." });
     
     res.json({
       username: user.username,
       companyId: user.company_id,
       companyName: user.company_name,
       role: user.role,
+      isApproved: user.is_approved,
       stats: user.stats,
       companyConfig: user.company_config,
       createdAt: user.created_at
     });
   } catch (err) {
-    console.error("Login Error:", err);
     res.status(500).json({ error: err.message });
   }
 });
 
-app.post('/api/auth/reset-password', async (req, res) => {
-  const { username, newPassword, answer } = req.body;
-  try {
-    const userRes = await pool.query('SELECT security_answer FROM users WHERE LOWER(username) = LOWER($1)', [username.trim()]);
-    if (userRes.rows.length === 0) return res.status(404).json({ error: "Utilisateur non trouvé." });
-    
-    if (userRes.rows[0].security_answer?.toLowerCase().trim() !== answer.toLowerCase().trim()) {
-      return res.status(401).json({ error: "Réponse de sécurité incorrecte." });
-    }
-
-    await pool.query('UPDATE users SET password = $1 WHERE LOWER(username) = LOWER($2)', [newPassword, username.trim()]);
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+app.post('/api/admin/users/approve', async (req, res) => {
+    const { username } = req.body;
+    try {
+        await pool.query('UPDATE users SET is_approved = TRUE WHERE username = $1', [username]);
+        res.json({ success: true });
+    } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.post('/api/company/config', async (req, res) => {
-  const { companyId, config } = req.body;
+app.get('/api/admin/users', async (req, res) => {
   try {
-    await pool.query('UPDATE companies SET config = $1 WHERE id = $2', [config, companyId]);
-    res.json({ success: true });
-  } catch (err) { res.status(500).json({ error: err.message }); }
-});
-
-app.get('/api/invoices', async (req, res) => {
-  const { user } = req.query;
-  try {
-    const userRes = await pool.query('SELECT company_id, role FROM users WHERE username = $1', [user]);
-    if (userRes.rows.length === 0) return res.json([]);
-    const u = userRes.rows[0];
-    let query = 'SELECT data FROM invoices WHERE company_id = $1';
-    if (u.role === 'SUPER_ADMIN') query = 'SELECT data FROM invoices';
-    const result = await pool.query(query, u.role === 'SUPER_ADMIN' ? [] : [u.company_id]);
-    res.json(result.rows.map(r => r.data));
+    const result = await pool.query(`
+      SELECT u.username, u.role, u.stats, u.created_at, u.company_id, u.is_approved, c.name as company_name
+      FROM users u 
+      LEFT JOIN companies c ON u.company_id = c.id
+    `);
+    res.json(result.rows.map(u => ({
+        ...u,
+        isApproved: u.is_approved // mapping snake_case to camelCase
+    })));
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -195,30 +182,13 @@ app.post('/api/invoices', async (req, res) => {
   const invoice = req.body;
   try {
     const userRes = await pool.query('SELECT company_id FROM users WHERE username = $1', [invoice.owner]);
+    if (userRes.rows.length === 0) return res.status(404).json({error: "User not found"});
     const cid = userRes.rows[0].company_id;
     await pool.query(
       'INSERT INTO invoices (id, owner, company_id, data) VALUES ($1, $2, $3, $4) ON CONFLICT (id) DO UPDATE SET data = $4', 
       [invoice.id, invoice.owner, cid, invoice]
     );
     res.json({ success: true });
-  } catch (err) { res.status(500).json({ error: err.message }); }
-});
-
-app.get('/api/admin/users', async (req, res) => {
-  try {
-    const result = await pool.query(`
-      SELECT u.username, u.role, u.stats, u.created_at, u.company_id, c.name as company_name
-      FROM users u 
-      JOIN companies c ON u.company_id = c.id
-    `);
-    res.json(result.rows);
-  } catch (err) { res.status(500).json({ error: err.message }); }
-});
-
-app.get('/api/admin/companies', async (req, res) => {
-  try {
-    const result = await pool.query('SELECT * FROM companies ORDER BY created_at DESC');
-    res.json(result.rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

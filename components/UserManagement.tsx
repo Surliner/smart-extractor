@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { UserProfile, UserRole, Company } from '../types';
-import { Shield, User, X, ShieldCheck, Building2, Plus, Globe, UserPlus, Key } from 'lucide-react';
+import { Shield, User, X, ShieldCheck, Building2, Plus, Globe, UserPlus, Key, CheckCircle, Clock } from 'lucide-react';
 import { dbService } from '../services/databaseService';
 
 interface UserManagementProps {
@@ -32,10 +32,20 @@ export const UserManagement: React.FC<UserManagementProps> = ({
 
   const isSuperAdmin = userRole === 'SUPER_ADMIN';
 
+  const fetchAll = async () => {
+    try {
+        const u = await dbService.getAllUsers();
+        setUsers(u);
+        if (isSuperAdmin) {
+            const c = await dbService.getAllCompanies();
+            setCompanies(c);
+        }
+    } catch (e) { console.error(e); }
+  };
+
   useEffect(() => {
     if (isOpen) {
-      dbService.getAllUsers().then(setUsers);
-      if (isSuperAdmin) dbService.getAllCompanies().then(setCompanies);
+      fetchAll();
     }
   }, [isOpen, isSuperAdmin]);
 
@@ -47,6 +57,13 @@ export const UserManagement: React.FC<UserManagementProps> = ({
     }
   };
 
+  const handleApprove = async (username: string) => {
+    try {
+        await dbService.approveUser(username);
+        fetchAll();
+    } catch (e: any) { alert(e.message); }
+  };
+
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
     await dbService.createAdminUser({
@@ -56,7 +73,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({
         companyId: newUserCompany || (companies[0]?.id)
     });
     setShowAddUser(false);
-    dbService.getAllUsers().then(setUsers);
+    fetchAll();
   };
 
   if (!isOpen) return null;
@@ -159,21 +176,45 @@ export const UserManagement: React.FC<UserManagementProps> = ({
                                 <tr>
                                     <th className="px-6 py-4">Utilisateur</th>
                                     <th className="px-6 py-4">Société</th>
-                                    <th className="px-6 py-4">Rôle</th>
-                                    <th className="px-6 py-4">Extractions</th>
+                                    <th className="px-6 py-4">Statut</th>
+                                    <th className="px-6 py-4">Action</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100">
                                 {users.map(u => (
-                                    <tr key={u.username} className="text-xs">
-                                        <td className="px-6 py-4 font-black text-slate-900">{u.username}</td>
-                                        <td className="px-6 py-4 text-slate-500 flex items-center space-x-2">
-                                            <Globe className="w-3 h-3" /> <span>{u.companyName}</span>
+                                    <tr key={u.username} className="text-xs group">
+                                        <td className="px-6 py-4">
+                                            <div className="flex flex-col">
+                                                <span className="font-black text-slate-900">{u.username}</span>
+                                                <span className="text-[8px] font-black text-indigo-500 uppercase">{u.role}</span>
+                                            </div>
+                                        </td>
+                                        <td className="px-6 py-4 text-slate-500">
+                                            <div className="flex items-center space-x-2">
+                                                <Building2 className="w-3 h-3" /> <span>{u.companyName || 'N/A'}</span>
+                                            </div>
                                         </td>
                                         <td className="px-6 py-4">
-                                            <span className="px-2 py-1 bg-slate-100 rounded-lg text-[9px] font-black uppercase">{u.role}</span>
+                                            {u.isApproved ? (
+                                                <span className="flex items-center text-emerald-600 font-black uppercase text-[9px]">
+                                                    <CheckCircle className="w-3 h-3 mr-1" /> Actif
+                                                </span>
+                                            ) : (
+                                                <span className="flex items-center text-amber-500 font-black uppercase text-[9px]">
+                                                    <Clock className="w-3 h-3 mr-1" /> En attente
+                                                </span>
+                                            )}
                                         </td>
-                                        <td className="px-6 py-4 font-bold">{u.stats?.extractRequests || 0}</td>
+                                        <td className="px-6 py-4">
+                                            {!u.isApproved && (isSuperAdmin || userRole === 'ADMIN') && (
+                                                <button 
+                                                    onClick={() => handleApprove(u.username)}
+                                                    className="bg-emerald-500 hover:bg-emerald-600 text-white px-3 py-1.5 rounded-lg text-[8px] font-black uppercase tracking-widest shadow-sm transition-all active:scale-95"
+                                                >
+                                                    Approuver
+                                                </button>
+                                            )}
+                                        </td>
                                     </tr>
                                 ))}
                             </tbody>

@@ -22,7 +22,7 @@ const SECURITY_QUESTIONS = [
 
 type ViewState = 'LOGIN' | 'REGISTER' | 'RECOVER_IDENTIFY' | 'RECOVER_CHALLENGE' | 'RECOVER_RESET';
 
-export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, users, onRegister, onResetPassword }) => {
+export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, users = [], onRegister, onResetPassword }) => {
   const [view, setView] = useState<ViewState>(users.length === 0 ? 'REGISTER' : 'LOGIN');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -49,13 +49,13 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, users, onRegi
         const user = await dbService.login(username, password);
         onLogin(user);
     } catch (err: any) {
-        setError("Identifiants incorrects ou erreur serveur.");
+        setError(err.message || "Identifiants incorrects ou erreur serveur.");
     } finally {
         setIsLoading(false);
     }
   };
 
-  const handleRegisterSubmit = (e: React.FormEvent) => {
+  const handleRegisterSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     const cleanUser = username.trim();
@@ -63,13 +63,28 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, users, onRegi
       setError('Champs obligatoires manquants pour l\'initialisation du profil.');
       return;
     }
-    onRegister(cleanUser, password, securityQuestion, securityAnswer);
+    setIsLoading(true);
+    try {
+        const res = await dbService.register(cleanUser, password, securityQuestion, securityAnswer);
+        if (res.pending) {
+            setSuccess("Inscription réussie ! Votre compte est en attente d'approbation par un administrateur.");
+            setTimeout(() => setView('LOGIN'), 4000);
+        } else {
+            setSuccess("Inscription réussie ! Vous pouvez maintenant vous connecter.");
+            setTimeout(() => setView('LOGIN'), 2000);
+        }
+    } catch (err: any) {
+        setError(err.message);
+    } finally {
+        setIsLoading(false);
+    }
   };
 
   const handleRecoveryIdentify = (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    const user = users.find(u => u.username.toLowerCase().trim() === username.toLowerCase().trim());
+    const userList = Array.isArray(users) ? users : [];
+    const user = userList.find(u => u.username.toLowerCase().trim() === username.toLowerCase().trim());
     if (!user) {
       setError('Identité introuvable dans la partition locale.');
       return;
@@ -152,7 +167,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, users, onRegi
             </div>
           )}
           {success && (
-            <div className="bg-emerald-500/10 text-emerald-400 px-5 py-4 rounded-2xl text-[11px] font-black uppercase tracking-widest flex items-center border border-emerald-500/20 mb-8 animate-in slide-in-from-top-2">
+            <div className="bg-emerald-500/10 text-emerald-400 px-5 py-4 rounded-2xl text-[11px] font-black uppercase tracking-widest flex items-center border border-emerald-500/20 mb-8 animate-in slide-in-from-top-2 leading-relaxed">
                <RefreshCw className="w-4 h-4 mr-3 shrink-0 animate-spin" /> {success}
             </div>
           )}
@@ -208,8 +223,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, users, onRegi
                 <FormGroup label="Réponse secrète" icon={ShieldCheck} value={securityAnswer} onChange={setSecurityAnswer} placeholder="Votre réponse" theme="dark" />
               </div>
 
-              <button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-black uppercase text-[11px] tracking-[0.2em] py-5 rounded-[1.5rem] flex items-center justify-center transition-all shadow-xl shadow-indigo-500/20 active:scale-95">
-                <UserPlus className="w-5 h-5 mr-3" /> Initialiser le profil
+              <button disabled={isLoading} type="submit" className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-black uppercase text-[11px] tracking-[0.2em] py-5 rounded-[1.5rem] flex items-center justify-center transition-all shadow-xl shadow-indigo-500/20 active:scale-95 disabled:opacity-50">
+                {isLoading ? <RefreshCw className="w-5 h-5 mr-3 animate-spin" /> : <UserPlus className="w-5 h-5 mr-3" />} Initialiser le profil
               </button>
             </form>
           )}
