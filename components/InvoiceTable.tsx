@@ -1,9 +1,10 @@
 
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { InvoiceData, InvoiceItem, ErpStatus, InvoiceType, LookupTable, ExportTemplate, XmlMappingProfile } from '../types';
-import { Trash2, ChevronDown, CheckCircle2, AlertCircle, Circle, Columns, X, FileCode, ArrowDownLeft, ArrowUpRight, Maximize2, LayoutList, FileSpreadsheet, FileDown, Zap, ListChecks, FileJson, ShieldCheck } from 'lucide-react';
+import { Trash2, ChevronDown, CheckCircle2, AlertCircle, Circle, Columns, X, FileCode, ArrowDownLeft, ArrowUpRight, Maximize2, LayoutList, FileSpreadsheet, FileDown, Zap, ListChecks, FileJson, ShieldCheck, FileCheck } from 'lucide-react';
 import { FacturXModal } from './FacturXModal';
 import { generateTemplatedCSV, generateTemplatedXML } from '../services/exportService';
+import { generateFacturXXML } from '../services/facturXService';
 
 interface InvoiceTableProps {
   invoices: InvoiceData[];
@@ -59,6 +60,25 @@ export const InvoiceTable: React.FC<InvoiceTableProps> = ({
     setShowExportMenu(false);
   };
 
+  const handleExportFacturX = () => {
+    const targets = invoices.filter(i => selectedIds.has(i.id));
+    
+    // Pour chaque facture, on génère un XML séparé conforme RFE
+    targets.forEach((inv, index) => {
+      setTimeout(() => {
+        const xml = generateFacturXXML(inv);
+        const blob = new Blob([xml], { type: 'application/xml;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `FACTUR-X_${inv.invoiceNumber || inv.id}.xml`;
+        link.click();
+      }, index * 200); // Petit délai pour éviter le blocage navigateur
+    });
+    
+    setShowExportMenu(false);
+  };
+
   return (
     <>
       {activeInvoice && (
@@ -101,23 +121,34 @@ export const InvoiceTable: React.FC<InvoiceTableProps> = ({
           {showExportMenu && (
             <div className="absolute bottom-full mb-4 left-1/2 -translate-x-1/2 w-80 bg-slate-900 border border-white/10 rounded-[2.5rem] shadow-2xl p-6 space-y-4 animate-in fade-in zoom-in-95">
               <div className="space-y-2">
+                <p className="text-[9px] font-black text-indigo-400 uppercase tracking-widest mb-2 flex items-center">
+                   <ShieldCheck className="w-3 h-3 mr-2" /> Formats RFE (Officiel)
+                </p>
+                <button onClick={handleExportFacturX} className="w-full text-left px-4 py-3 bg-indigo-600/20 border border-indigo-500/30 rounded-xl text-[10px] font-black hover:bg-indigo-600 hover:text-white flex items-center transition-all">
+                  <FileCheck className="w-4 h-4 mr-3 text-indigo-400" /> Factur-X (Profil Comfort)
+                </button>
+              </div>
+              
+              <div className="h-px bg-white/5"></div>
+
+              <div className="space-y-2">
                 <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-2">Templates CSV</p>
                 {templates.map(tpl => (
                   <button key={tpl.id} onClick={() => handleExportCSV(tpl)} className="w-full text-left px-4 py-3 bg-white/5 rounded-xl text-[10px] font-black hover:bg-white/10 flex items-center">
                     <FileSpreadsheet className="w-4 h-4 mr-3 text-emerald-400" /> {tpl.name}
                   </button>
                 ))}
-                {templates.length === 0 && <p className="text-[10px] text-slate-600 px-4">Aucun template CSV</p>}
               </div>
+              
               <div className="h-px bg-white/5"></div>
+
               <div className="space-y-2">
-                <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-2">Blueprints XML</p>
+                <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-2">Blueprints XML (Custom)</p>
                 {xmlProfiles.map(prof => (
                   <button key={prof.id} onClick={() => handleExportXML(prof)} className="w-full text-left px-4 py-3 bg-white/5 rounded-xl text-[10px] font-black hover:bg-white/10 flex items-center">
-                    <FileJson className="w-4 h-4 mr-3 text-indigo-400" /> {prof.name}
+                    <FileJson className="w-4 h-4 mr-3 text-amber-400" /> {prof.name}
                   </button>
                 ))}
-                {xmlProfiles.length === 0 && <p className="text-[10px] text-slate-600 px-4">Aucun blueprint XML</p>}
               </div>
             </div>
           )}
