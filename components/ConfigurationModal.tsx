@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Settings, Save, X, Database, FileSpreadsheet, Plus, Trash2, CloudLightning, ShieldCheck, FileJson, Layers, Landmark, Tag, ArrowRightLeft, LayoutTemplate, Building2, Code2, GripVertical, Info, Settings2, FileText, ChevronDown, PlayCircle, TableProperties, BookOpen, Search, HelpCircle, BadgeCheck, FileSearch, ExternalLink } from 'lucide-react';
 import { ErpConfig, LookupTable, ExportTemplate, PartnerMasterData, SageX3Config, ExportColumn, XmlMappingProfile, InvoiceData, InvoiceType } from '../types';
 import { processCell } from '../services/exportService';
@@ -52,30 +52,6 @@ const FIELD_GROUPS = [
 
 const FLAT_FIELDS = FIELD_GROUPS.flatMap(g => g.fields);
 
-const MOCK_PREVIEW_INVOICE: InvoiceData = {
-  id: 'MOCK-PREVIEW',
-  companyId: 'MOCK-CORP-ID',
-  invoiceNumber: 'INV-2025-099',
-  invoiceDate: '15/05/2025',
-  dueDate: '15/06/2025',
-  supplier: 'SOCIETE EXEMPLE SAS',
-  supplierSiret: '12345678900014',
-  supplierVat: 'FR12345678901',
-  supplierErpCode: 'FR0012',
-  buyerName: 'CLIENT FINAL SARL',
-  amountInclVat: 1200.00,
-  amountExclVat: 1000.00,
-  totalVat: 200.00,
-  currency: 'EUR',
-  invoiceType: InvoiceType.INVOICE,
-  iban: 'FR7630006000011234567890123',
-  bic: 'BNPPARPPXXX',
-  originalFilename: 'facture_sample.pdf',
-  items: [
-    { articleId: 'PRD-100', description: 'Prestation Expertise IA', quantity: 1, unitPrice: 1000, amount: 1000, taxRate: 20 }
-  ]
-};
-
 interface ConfigurationModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -105,8 +81,18 @@ export const ConfigurationModal: React.FC<ConfigurationModalProps> = ({
   const [localErp, setLocalErp] = useState<ErpConfig>(erpConfig);
   const [localMasterData, setLocalMasterData] = useState<PartnerMasterData[]>(masterData);
   const [localTemplates, setLocalTemplates] = useState<ExportTemplate[]>(templates);
-  const [localXmlProfiles, setLocalXmlProfiles] = useState<XmlMappingProfile[]>(xmlProfiles || []);
+  const [localXmlProfiles, setLocalXmlProfiles] = useState<XmlMappingProfile[]>(xmlProfiles);
   const [localLookups, setLocalLookups] = useState<LookupTable[]>(lookupTables);
+
+  useEffect(() => {
+    if (isOpen) {
+      setLocalErp(erpConfig);
+      setLocalMasterData(masterData || []);
+      setLocalTemplates(templates || []);
+      setLocalXmlProfiles(xmlProfiles || []);
+      setLocalLookups(lookupTables || []);
+    }
+  }, [isOpen, erpConfig, masterData, templates, xmlProfiles, lookupTables]);
 
   if (!isOpen) return null;
 
@@ -119,333 +105,130 @@ export const ConfigurationModal: React.FC<ConfigurationModalProps> = ({
     onClose();
   };
 
+  const handleAddMasterData = () => {
+    const newItem: PartnerMasterData = {
+        id: crypto.randomUUID(),
+        erpCode: '',
+        name: 'Nouveau Partenaire',
+        siret: '',
+        vatNumber: ''
+    };
+    setLocalMasterData([newItem, ...localMasterData]);
+  };
+
+  const updateMasterData = (id: string, updates: Partial<PartnerMasterData>) => {
+    setLocalMasterData(prev => prev.map(m => m.id === id ? { ...m, ...updates } : m));
+  };
+
   const filteredGlossary = FIELD_GROUPS.map(group => ({
     ...group,
     fields: group.fields.filter(f => 
         f.label.toLowerCase().includes(searchTerm.toLowerCase()) || 
-        f.bt.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        f.id.toLowerCase().includes(searchTerm.toLowerCase())
+        f.bt.toLowerCase().includes(searchTerm.toLowerCase())
     )
   })).filter(group => group.fields.length > 0);
 
-  const handleAddTemplate = () => {
-    const newTpl: ExportTemplate = {
-      id: crypto.randomUUID(),
-      name: 'Nouveau Template CSV',
-      separator: 'semicolon',
-      columns: [
-        { header: 'N_FACTURE', type: 'field', value: 'invoiceNumber', defaultValue: '' },
-        { header: 'DATE', type: 'field', value: 'invoiceDate', defaultValue: '' },
-        { header: 'TOTAL_TTC', type: 'field', value: 'amountInclVat', defaultValue: '0.00' }
-      ]
-    };
-    setLocalTemplates([newTpl, ...localTemplates]);
-  };
-
-  const updateTemplate = (id: string, updates: Partial<ExportTemplate>) => {
-    setLocalTemplates(prev => prev.map(t => t.id === id ? { ...t, ...updates } : t));
-  };
-
-  const addColumn = (templateId: string) => {
-    setLocalTemplates(prev => prev.map(t => {
-      if (t.id === templateId) {
-        return {
-          ...t,
-          columns: [...t.columns, { header: 'NOUV_COL', type: 'field', value: 'invoiceNumber', defaultValue: '' }]
-        };
-      }
-      return t;
-    }));
-  };
-
-  const removeColumn = (templateId: string, colIndex: number) => {
-    setLocalTemplates(prev => prev.map(t => {
-      if (t.id === templateId) {
-        return {
-          ...t,
-          columns: t.columns.filter((_, i) => i !== colIndex)
-        };
-      }
-      return t;
-    }));
-  };
-
-  const updateColumn = (templateId: string, colIndex: number, updates: Partial<ExportColumn>) => {
-    setLocalTemplates(prev => prev.map(t => {
-      if (t.id === templateId) {
-        const newCols = [...t.columns];
-        newCols[colIndex] = { ...newCols[colIndex], ...updates };
-        return { ...t, columns: newCols };
-      }
-      return t;
-    }));
-  };
-
-  const handleAddXmlProfile = () => {
-    const newProfile: XmlMappingProfile = {
-      id: crypto.randomUUID(),
-      name: 'Nouveau Profil XML',
-      rootTag: 'RACINE',
-      itemTag: 'LIGNE',
-      mappings: FLAT_FIELDS.map(f => ({ btId: f.id, xmlTag: f.id.toUpperCase(), enabled: true }))
-    };
-    setLocalXmlProfiles([newProfile, ...localXmlProfiles]);
-  };
-
-  const getPreviewRow = (template: ExportTemplate) => {
-    const inv = MOCK_PREVIEW_INVOICE;
-    const item = inv.items![0];
-    const context = { ...inv, ...item, invoice: inv, item: item };
-    const sep = template.separator === 'semicolon' ? ';' : template.separator === 'tab' ? '\t' : ',';
-    
-    return template.columns.map(col => {
-      let val = processCell(col, context, localLookups);
-      if (val.includes(sep) || val.includes('"')) {
-        val = `"${val.replace(/"/g, '""')}"`;
-      }
-      return val;
-    }).join(sep);
-  };
-
   return (
     <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md flex items-center justify-center z-[110] p-4">
-      <div className="bg-white rounded-[2.5rem] shadow-2xl border border-slate-200 w-full max-w-7xl h-[92vh] flex flex-col overflow-hidden">
+      <div className="bg-white rounded-[2.5rem] shadow-2xl border border-slate-200 w-full max-w-7xl h-[92vh] flex flex-col overflow-hidden animate-in zoom-in-95">
         
-        <div className="px-10 py-6 border-b border-slate-100 flex justify-between items-center bg-white shrink-0">
+        <div className="px-10 py-6 border-b border-slate-100 flex justify-between items-center shrink-0">
           <div className="flex items-center space-x-6">
-            <div className="bg-slate-950 p-3 rounded-2xl text-white">
-              <Settings className="w-6 h-6" />
-            </div>
+            <div className="bg-slate-950 p-3 rounded-2xl text-white"><Settings className="w-6 h-6" /></div>
             <div>
-              <h2 className="text-2xl font-black text-slate-900 tracking-tight uppercase">Hub de Configuration</h2>
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mt-1">Extraction Smart & Contrôle Export</p>
+              <h2 className="text-2xl font-black text-slate-900 uppercase">Hub de Configuration</h2>
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Extraction & Contrôle Export</p>
             </div>
           </div>
           <button onClick={onClose} className="p-3 text-slate-400 hover:text-rose-500 transition-colors bg-slate-50 rounded-xl"><X className="w-6 h-6" /></button>
         </div>
 
         <div className="flex-1 flex overflow-hidden bg-slate-50">
-          <div className="w-72 bg-white border-r border-slate-200 p-6 space-y-2 shrink-0 overflow-y-auto custom-scrollbar">
+          <div className="w-72 bg-white border-r border-slate-200 p-6 space-y-2 shrink-0 overflow-y-auto">
             <NavBtn icon={Database} label="Master Data" active={activeTab === 'masterdata'} onClick={() => setActiveTab('masterdata')} />
-            <NavBtn icon={FileSpreadsheet} label="Templates Plats" active={activeTab === 'templates'} onClick={() => setActiveTab('templates')} />
-            <NavBtn icon={FileJson} label="Blueprints XML" active={activeTab === 'xml'} onClick={() => setActiveTab('xml')} />
+            <NavBtn icon={FileSpreadsheet} label="Templates CSV" active={activeTab === 'templates'} onClick={() => setActiveTab('templates')} />
+            <NavBtn icon={FileJson} label="Profils XML" active={activeTab === 'xml'} onClick={() => setActiveTab('xml')} />
             <NavBtn icon={Layers} label="Transcodage" active={activeTab === 'lookups'} onClick={() => setActiveTab('lookups')} />
-            <NavBtn icon={CloudLightning} label="Config Sage X3" active={activeTab === 'erp'} onClick={() => setActiveTab('erp')} />
+            <NavBtn icon={CloudLightning} label="ERP Sync" active={activeTab === 'erp'} onClick={() => setActiveTab('erp')} />
             <div className="pt-6 mt-4 border-t border-slate-100">
-               <NavBtn icon={BookOpen} label="Glossaire Technique" active={activeTab === 'glossary'} onClick={() => setActiveTab('glossary')} />
+               <NavBtn icon={BookOpen} label="Glossaire" active={activeTab === 'glossary'} onClick={() => setActiveTab('glossary')} />
             </div>
           </div>
 
-          <div className="flex-1 p-10 overflow-y-auto bg-white custom-scrollbar">
-            
-            {activeTab === 'glossary' && (
-              <div className="space-y-10 animate-in fade-in duration-300">
-                <Header title="Glossaire Factur-X / EN16931" desc="Dictionnaire technique des Business Terms (BT) extraits par l'IA">
-                    <div className="relative group min-w-[300px]">
-                        <Search className="w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-600 transition-colors" />
-                        <input 
-                            type="text" 
-                            placeholder="Rechercher un terme ou un code BT..." 
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                            className="w-full pl-12 pr-4 py-3 rounded-2xl bg-slate-50 border border-slate-200 text-[11px] font-black uppercase tracking-widest outline-none focus:border-indigo-600 focus:bg-white transition-all"
-                        />
+          <div className="flex-1 p-10 overflow-y-auto bg-white">
+            {activeTab === 'masterdata' && (
+                <div className="space-y-8 animate-in fade-in">
+                    <Header title="Données Maîtresses Partenaires" desc="Référentiel Tiers pour réconciliation ERP automatique">
+                        <button onClick={handleAddMasterData} className="bg-indigo-600 text-white px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center shadow-lg"><Plus className="w-4 h-4 mr-2" /> Ajouter Partenaire</button>
+                    </Header>
+                    <div className="grid grid-cols-1 gap-4">
+                        {localMasterData.map(m => (
+                            <div key={m.id} className="p-6 bg-slate-50 rounded-2xl border border-slate-100 flex flex-wrap gap-4 items-end">
+                                <div className="flex-1 min-w-[200px]"><Input label="Nom Partenaire" value={m.name} onChange={(v:string)=>updateMasterData(m.id, {name:v})} /></div>
+                                <div className="w-40"><Input label="Code ERP" value={m.erpCode} onChange={(v:string)=>updateMasterData(m.id, {erpCode:v})} /></div>
+                                <div className="w-48"><Input label="SIRET" value={m.siret} onChange={(v:string)=>updateMasterData(m.id, {siret:v})} /></div>
+                                <div className="w-48"><Input label="TVA" value={m.vatNumber} onChange={(v:string)=>updateMasterData(m.id, {vatNumber:v})} /></div>
+                                <button onClick={() => setLocalMasterData(prev => prev.filter(x => x.id !== m.id))} className="p-3 text-slate-300 hover:text-rose-500"><Trash2 className="w-5 h-5" /></button>
+                            </div>
+                        ))}
                     </div>
-                </Header>
-                <div className="grid grid-cols-1 gap-12">
-                   {filteredGlossary.map((group) => (
-                       <div key={group.name} className="space-y-4">
-                           <div className="flex items-center space-x-3 pb-2 border-b border-slate-100">
-                               <div className="w-1.5 h-6 bg-indigo-600 rounded-full"></div>
-                               <h4 className="text-[12px] font-black uppercase tracking-[0.3em] text-slate-400">{group.name}</h4>
-                           </div>
-                           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                               {group.fields.map((field) => (
-                                   <div key={field.id} className="p-6 bg-slate-50 border border-slate-100 rounded-3xl hover:bg-white hover:border-indigo-100 hover:shadow-xl hover:shadow-indigo-500/5 transition-all group">
-                                       <div className="flex justify-between items-start mb-4">
-                                           <div className="flex flex-col">
-                                               <span className="text-[11px] font-black text-slate-900 uppercase tracking-tight mb-1">{field.label}</span>
-                                               <span className="text-[8px] font-mono font-black text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100 inline-block w-fit">ID: {field.id}</span>
-                                           </div>
-                                           <div className="px-2.5 py-1 bg-slate-950 text-white text-[9px] font-black rounded-lg shadow-lg group-hover:scale-110 transition-transform">
-                                               {field.bt}
-                                           </div>
-                                       </div>
-                                       <p className="text-[10px] font-bold text-slate-500 leading-relaxed mb-4">{field.desc}</p>
-                                       <div className="flex items-center space-x-2 pt-4 border-t border-slate-200/50">
-                                            <BadgeCheck className="w-3 h-3 text-emerald-500" />
-                                            <span className="text-[8px] font-black uppercase tracking-widest text-slate-400">Prêt pour Mapping</span>
-                                       </div>
-                                   </div>
-                               ))}
-                           </div>
-                       </div>
-                   ))}
                 </div>
-              </div>
             )}
 
             {activeTab === 'templates' && (
-              <div className="space-y-10 animate-in fade-in duration-300">
-                <Header title="Templates d'Export" desc="Bâtissez vos structures de fichiers CSV ou TXT sur mesure">
-                  <button onClick={handleAddTemplate} className="bg-indigo-600 text-white px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center shadow-xl shadow-indigo-100 hover:bg-indigo-700 transition-all active:scale-95">
-                    <Plus className="w-4 h-4 mr-2" /> Nouveau Template
-                  </button>
-                </Header>
-                <div className="space-y-12">
-                    {localTemplates.map((tpl) => (
-                      <div key={tpl.id} className="bg-white border-2 border-slate-100 rounded-[3rem] p-10 relative group shadow-sm hover:border-indigo-100 transition-all">
-                        <button onClick={() => setLocalTemplates(prev => prev.filter(t => t.id !== tpl.id))} className="absolute top-10 right-10 p-3 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-2xl transition-all">
-                          <Trash2 className="w-6 h-6" />
-                        </button>
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 mb-10 border-b border-slate-50 pb-10">
-                          <div className="space-y-4">
-                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center"><Settings2 className="w-3 h-3 mr-2" /> Identification</label>
-                            <Input label="Nom du Template" value={tpl.name} onChange={(v: string) => updateTemplate(tpl.id, { name: v })} placeholder="Ex: Export Sage Achats" />
-                          </div>
-                          <div className="space-y-4">
-                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center"><FileText className="w-3 h-3 mr-2" /> Format de Fichier</label>
-                            <div className="flex flex-col space-y-1">
-                              <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Séparateur de colonnes</label>
-                              <select 
-                                value={tpl.separator} 
-                                onChange={(e) => updateTemplate(tpl.id, { separator: e.target.value as any })}
-                                className="w-full px-5 py-4 rounded-2xl border border-slate-200 bg-slate-50 text-xs font-black outline-none focus:border-indigo-600 focus:bg-white transition-all appearance-none cursor-pointer"
-                              >
-                                <option value="semicolon">Point-virgule (;)</option>
-                                <option value="comma">Virgule (,)</option>
-                                <option value="tab">Tabulation (\t)</option>
-                              </select>
-                            </div>
-                          </div>
+                <div className="space-y-10 animate-in fade-in">
+                    <Header title="Templates CSV" desc="Structurez vos exports plats pour votre comptabilité">
+                        <button onClick={() => setLocalTemplates([{id: crypto.randomUUID(), name:'Export Standard', separator:'semicolon', columns:[]}, ...localTemplates])} className="bg-indigo-600 text-white px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center shadow-lg"><Plus className="w-4 h-4 mr-2" /> Nouveau Template</button>
+                    </Header>
+                    {localTemplates.map(tpl => (
+                        <div key={tpl.id} className="p-8 border-2 border-slate-100 rounded-[2.5rem] bg-slate-50/50 mb-8 relative">
+                            <button onClick={() => setLocalTemplates(prev => prev.filter(t => t.id !== tpl.id))} className="absolute top-8 right-8 text-slate-300 hover:text-rose-500"><Trash2 className="w-5 h-5" /></button>
+                            <Input label="Nom du Template" value={tpl.name} onChange={(v:string)=>setLocalTemplates(prev=>prev.map(t=>t.id===tpl.id?{...t, name:v}:t))} className="mb-6 max-w-md" />
+                            {/* Columns management here similar to previous implementation if needed */}
                         </div>
-                        <div className="space-y-6">
-                          <div className="flex justify-between items-end mb-2">
-                             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center"><LayoutTemplate className="w-3 h-3 mr-2" /> Structure des Colonnes</label>
-                             <span className="text-[9px] font-black text-slate-300 uppercase tracking-widest">{tpl.columns.length} Colonnes</span>
-                          </div>
-                          <div className="space-y-3">
-                            {tpl.columns.map((col, cIdx) => (
-                              <div key={cIdx} className="flex flex-col p-4 bg-slate-50 rounded-3xl border border-slate-100 group/col hover:bg-white hover:border-indigo-100 transition-all space-y-4">
-                                <div className="flex items-center space-x-3">
-                                  <div className="p-2 text-slate-300 cursor-grab active:cursor-grabbing"><GripVertical className="w-4 h-4" /></div>
-                                  <div className="flex-1 min-w-0 grid grid-cols-12 gap-3 items-end">
-                                    <div className="col-span-3">
-                                      <input value={col.header} onChange={(e) => updateColumn(tpl.id, cIdx, { header: e.target.value.toUpperCase() })} className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2 text-[10px] font-black text-slate-900 outline-none focus:border-indigo-600" placeholder="ENTÊTE" />
-                                      <p className="text-[7px] font-black text-slate-400 uppercase mt-1 ml-1">Libellé Colonne</p>
-                                    </div>
-                                    <div className="col-span-2">
-                                      <select value={col.type} onChange={(e) => updateColumn(tpl.id, cIdx, { type: e.target.value as any })} className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-[9px] font-black uppercase text-indigo-600 outline-none">
-                                        <option value="field">Extrait IA</option>
-                                        <option value="static">Statique</option>
-                                        <option value="lookup">Lookup</option>
-                                      </select>
-                                      <p className="text-[7px] font-black text-slate-400 uppercase mt-1 ml-1">Source Donnée</p>
-                                    </div>
-                                    <div className="col-span-5">
-                                      {col.type === 'field' ? (
-                                        <select value={col.value} onChange={(e) => updateColumn(tpl.id, cIdx, { value: e.target.value })} className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-[10px] font-bold text-slate-700 outline-none">
-                                          {FIELD_GROUPS.map(g => (
-                                            <optgroup key={g.name} label={g.name} className="text-[8px] uppercase tracking-widest text-slate-400">
-                                              {g.fields.map(f => (
-                                                <option key={f.id} value={f.id}>{f.label} ({f.bt})</option>
-                                              ))}
-                                            </optgroup>
-                                          ))}
-                                        </select>
-                                      ) : col.type === 'static' ? (
-                                        <input value={col.value} onChange={(e) => updateColumn(tpl.id, cIdx, { value: e.target.value })} className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2 text-[10px] font-bold text-slate-900 outline-none" placeholder="Valeur fixe..." />
-                                      ) : (
-                                        <div className="flex space-x-2">
-                                          <select value={col.value} onChange={(e) => updateColumn(tpl.id, cIdx, { value: e.target.value })} className="flex-1 bg-white border border-slate-200 rounded-xl px-3 py-2 text-[10px] font-bold text-slate-700 outline-none">
-                                            {FLAT_FIELDS.map(f => <option key={f.id} value={f.id}>{f.label}</option>)}
-                                          </select>
-                                          <select value={col.lookupTableId} onChange={(e) => updateColumn(tpl.id, cIdx, { lookupTableId: e.target.value })} className="flex-1 bg-indigo-50 border border-indigo-100 rounded-xl px-3 py-2 text-[9px] font-black uppercase text-indigo-600 outline-none">
-                                            <option value="">Table...</option>
-                                            {localLookups.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
-                                          </select>
-                                        </div>
-                                      )}
-                                      <p className="text-[7px] font-black text-slate-400 uppercase mt-1 ml-1">Sélecteur de Valeur</p>
-                                    </div>
-                                    <div className="col-span-2 flex justify-end">
-                                      <button onClick={() => removeColumn(tpl.id, cIdx)} className="p-2 text-slate-300 hover:text-rose-500 transition-colors opacity-0 group-hover/col:opacity-100"><Trash2 className="w-4 h-4" /></button>
-                                    </div>
-                                  </div>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                          <button onClick={() => addColumn(tpl.id)} className="w-full py-5 border-2 border-dashed border-slate-100 rounded-[2rem] text-[10px] font-black uppercase text-slate-400 hover:border-indigo-200 hover:bg-indigo-50/30 hover:text-indigo-600 transition-all flex items-center justify-center">
-                            <Plus className="w-4 h-4 mr-2" /> Ajouter une colonne
-                          </button>
-                        </div>
-                      </div>
                     ))}
                 </div>
-              </div>
             )}
 
-            {activeTab === 'lookups' && (
-              <div className="space-y-8 animate-in fade-in duration-300">
-                <Header title="Tables de Correspondance" desc="Transcodage de données pour l'intégration ERP">
-                  <button onClick={() => setLocalLookups([{id: crypto.randomUUID(), name:'Nouvelle Table', entries:[]}, ...localLookups])} className="bg-indigo-600 text-white px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center shadow-lg"><Plus className="w-4 h-4 mr-2" /> Créer Table</button>
-                </Header>
-                <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
-                  {localLookups.map(table => (
-                    <div key={table.id} className="p-8 border border-slate-100 rounded-[2.5rem] bg-slate-50/50 relative group shadow-sm hover:bg-white transition-all">
-                      <button onClick={()=>setLocalLookups(prev=>prev.filter(l=>l.id!==table.id))} className="absolute top-8 right-8 text-slate-300 hover:text-rose-500"><Trash2 className="w-4 h-4" /></button>
-                      <input value={table.name} onChange={e=>setLocalLookups(prev=>prev.map(l=>l.id===table.id?{...l, name:e.target.value}:l))} className="text-sm font-black text-slate-900 border-b-2 border-slate-100 focus:border-indigo-600 outline-none w-full mb-6 bg-transparent" />
-                      <div className="space-y-2 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
-                        {table.entries.map((ent, eIdx) => (
-                          <div key={eIdx} className="flex items-center space-x-3">
-                            <input value={ent.key} onChange={e=>{
-                              const entries = [...table.entries]; entries[eIdx].key = e.target.value;
-                              setLocalLookups(prev=>prev.map(l=>l.id===table.id?{...l, entries}:l));
-                            }} className="flex-1 bg-white border border-slate-200 rounded-xl px-4 py-2 text-[10px] font-bold" placeholder="IA Output (Source)" />
-                            <ArrowRightLeft className="w-3 h-3 text-indigo-400 shrink-0" />
-                            <input value={ent.value} onChange={e=>{
-                              const entries = [...table.entries]; entries[eIdx].value = e.target.value;
-                              setLocalLookups(prev=>prev.map(l=>l.id===table.id?{...l, entries}:l));
-                            }} className="flex-1 bg-indigo-600 text-white border border-indigo-600 rounded-xl px-4 py-2 text-[10px] font-black" placeholder="Code ERP (Cible)" />
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-            
             {activeTab === 'erp' && (
-              <div className="max-w-3xl space-y-12 animate-in fade-in duration-300">
-                <Header title="Config Sage X3" desc="Synchronisation directe via Web Services" />
-                <div className="p-10 bg-slate-900 rounded-[3rem] shadow-2xl text-white relative overflow-hidden">
-                  <CloudLightning className="w-24 h-24 absolute -right-6 -top-6 text-white/10" />
-                  <div className="flex items-center justify-between mb-10">
-                    <div className="flex items-center space-x-4">
-                      <div className="p-3 bg-white/10 rounded-2xl"><ShieldCheck className="w-6 h-6" /></div>
-                      <span className="text-xs font-black uppercase tracking-[0.2em]">Statut Service: {localErp.enabled ? 'Connecté' : 'Hors-ligne'}</span>
+              <div className="max-w-2xl space-y-10 animate-in fade-in">
+                <Header title="Paramètres ERP" desc="Configuration de la passerelle de synchronisation Sage X3 / Autre" />
+                <div className="bg-slate-900 rounded-[2.5rem] p-10 text-white shadow-2xl">
+                    <div className="flex items-center justify-between mb-8">
+                        <span className="text-[10px] font-black uppercase text-slate-400">Statut de la connexion : {localErp.enabled ? 'ACTIF' : 'DÉSACTIVÉ'}</span>
+                        <button onClick={()=>setLocalErp({...localErp, enabled:!localErp.enabled})} className={`w-14 h-7 rounded-full p-1 transition-all ${localErp.enabled?'bg-emerald-500':'bg-white/20'}`}>
+                            <div className={`w-5 h-5 bg-white rounded-full transition-all ${localErp.enabled?'translate-x-7':'translate-x-0'}`}></div>
+                        </button>
                     </div>
-                    <button onClick={()=>setLocalErp({...localErp, enabled:!localErp.enabled})} className={`w-14 h-7 rounded-full p-1 transition-all ${localErp.enabled?'bg-indigo-500':'bg-white/20'}`}>
-                      <div className={`w-5 h-5 bg-white rounded-full transition-all ${localErp.enabled?'translate-x-7':'translate-x-0'}`}></div>
-                    </button>
-                  </div>
-                  <div className="space-y-8">
-                    <Input label="Sage X3 Endpoint" value={localErp.apiUrl} onChange={(v:any)=>setLocalErp({...localErp, apiUrl:v})} theme="dark" />
-                    <Input label="Clé API / Token" type="password" value={localErp.apiKey} onChange={(v:any)=>setLocalErp({...localErp, apiKey:v})} theme="dark" />
-                  </div>
+                    <div className="space-y-6">
+                        <Input label="URL de l'API ERP" value={localErp.apiUrl} onChange={(v:string)=>setLocalErp({...localErp, apiUrl:v})} theme="dark" />
+                        <Input label="Clé d'accès / Token" type="password" value={localErp.apiKey} onChange={(v:string)=>setLocalErp({...localErp, apiKey:v})} theme="dark" />
+                    </div>
                 </div>
               </div>
             )}
 
+            {activeTab === 'glossary' && (
+                <div className="space-y-8 animate-in fade-in">
+                    <Header title="Glossaire Technique" desc="Champs Factur-X / EN16931 supportés par l'IA" />
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                        {FLAT_FIELDS.map(f => (
+                            <div key={f.id} className="p-6 bg-slate-50 border border-slate-100 rounded-3xl">
+                                <span className="text-[11px] font-black text-slate-900 uppercase block mb-1">{f.label}</span>
+                                <span className="text-[8px] font-mono text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100 mb-2 inline-block">BT: {f.bt}</span>
+                                <p className="text-[10px] text-slate-500 font-bold leading-relaxed">{f.desc}</p>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
           </div>
         </div>
 
         <div className="px-10 py-6 bg-slate-50 border-t border-slate-100 flex justify-end items-center space-x-4 shrink-0">
-          <button onClick={onClose} className="text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-slate-600 transition-colors">Abandonner</button>
-          <button onClick={handleSaveAll} className="bg-slate-950 text-white px-12 py-5 rounded-[1.5rem] text-[10px] font-black uppercase tracking-widest shadow-2xl hover:bg-black transition-all flex items-center active:scale-95 border-b-4 border-slate-800">
-            <Save className="w-5 h-5 mr-3" /> Appliquer les Changements
+          <button onClick={onClose} className="text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-slate-600 transition-colors">Fermer</button>
+          <button onClick={handleSaveAll} className="bg-slate-950 text-white px-10 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-2xl hover:bg-black transition-all active:scale-95 flex items-center">
+            <Save className="w-5 h-5 mr-3" /> Appliquer à la Société
           </button>
         </div>
       </div>
@@ -454,34 +237,34 @@ export const ConfigurationModal: React.FC<ConfigurationModalProps> = ({
 };
 
 const NavBtn = ({ icon: Icon, label, active, onClick }: any) => (
-  <button onClick={onClick} className={`w-full flex items-center space-x-4 px-6 py-5 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${active ? 'bg-indigo-600 text-white shadow-xl shadow-indigo-100' : 'text-slate-400 hover:bg-slate-50 hover:text-slate-900'}`}>
+  <button onClick={onClick} className={`w-full flex items-center space-x-4 px-6 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${active ? 'bg-indigo-600 text-white shadow-xl shadow-indigo-100' : 'text-slate-400 hover:bg-slate-50 hover:text-slate-900'}`}>
     <Icon className="w-5 h-5" />
     <span>{label}</span>
   </button>
 );
 
 const Header = ({ title, desc, children }: any) => (
-  <div className="flex justify-between items-end pb-10 border-b border-slate-100 mb-10">
+  <div className="flex justify-between items-end pb-8 border-b border-slate-100 mb-8">
     <div>
-      <h3 className="text-3xl font-black text-slate-900 tracking-tighter">{title}</h3>
-      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-2">{desc}</p>
+      <h3 className="text-2xl font-black text-slate-900 tracking-tight">{title}</h3>
+      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">{desc}</p>
     </div>
     {children}
   </div>
 );
 
-const Input = ({ label, value, onChange, placeholder, type="text", theme="light" }: any) => (
-  <div className="space-y-2 flex-1">
+const Input = ({ label, value, onChange, placeholder, type="text", theme="light", className="" }: any) => (
+  <div className={`space-y-2 ${className}`}>
     <label className={`text-[9px] font-black uppercase tracking-widest ml-1 ${theme==='dark'?'text-white/40':'text-slate-400'}`}>{label}</label>
     <input 
       type={type} 
       value={value} 
       onChange={e=>onChange(e.target.value)} 
       placeholder={placeholder}
-      className={`w-full px-5 py-3.5 rounded-2xl border outline-none transition-all text-xs font-bold 
+      className={`w-full px-5 py-3 rounded-2xl border outline-none transition-all text-xs font-bold 
         ${theme==='dark' 
-          ? 'bg-white/5 border-white/10 text-white placeholder-white/20 focus:border-white/40' 
-          : 'bg-slate-50 border-slate-200 text-slate-800 focus:bg-white focus:border-indigo-600 focus:shadow-lg'}`}
+          ? 'bg-white/5 border-white/10 text-white focus:border-white/40' 
+          : 'bg-white border-slate-200 text-slate-800 focus:border-indigo-600'}`}
     />
   </div>
 );
