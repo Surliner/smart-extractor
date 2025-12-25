@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { UploadCloud, Loader2, Cpu, LogOut, Settings, Zap, Users, CloudLightning, ShieldCheck } from 'lucide-react';
 import { extractInvoiceData } from './services/geminiService';
 import { dbService } from './services/databaseService';
@@ -21,7 +21,6 @@ const App: React.FC = () => {
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
   const [allInvoices, setAllInvoices] = useState<InvoiceData[]>([]);
-  const [memory, setMemory] = useState<Set<string>>(new Set());
   const [logs, setLogs] = useState<ProcessingLog[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showConfig, setShowConfig] = useState(false);
@@ -29,77 +28,55 @@ const App: React.FC = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [processProgress, setProcessProgress] = useState({ current: 0, total: 0 });
   
-  const [erpConfig, setErpConfig] = useState<ErpConfig>(() => {
-    const saved = localStorage.getItem('invoice-erp-config');
-    return saved ? JSON.parse(saved) : { apiUrl: '', apiKey: '', enabled: false };
-  });
+  // Settings synchronisés
+  const [erpConfig, setErpConfig] = useState<ErpConfig>({ apiUrl: '', apiKey: '', enabled: false });
+  const [masterData, setMasterData] = useState<PartnerMasterData[]>([]);
+  const [lookupTables, setLookupTables] = useState<LookupTable[]>([]);
+  const [templates, setTemplates] = useState<ExportTemplate[]>([]);
+  const [xmlProfiles, setXmlProfiles] = useState<XmlMappingProfile[]>([]);
 
-  const [masterData, setMasterData] = useState<PartnerMasterData[]>(() => {
-    const saved = localStorage.getItem('invoice-master-data');
-    return saved ? JSON.parse(saved) : [];
-  });
-  
-  const [lookupTables, setLookupTables] = useState<LookupTable[]>(() => {
-    const saved = localStorage.getItem('invoice-lookup-tables');
-    return saved ? JSON.parse(saved) : [];
-  });
-
-  const [templates, setTemplates] = useState<ExportTemplate[]>(() => {
-    const saved = localStorage.getItem('invoice-export-templates');
-    return saved ? JSON.parse(saved) : [];
-  });
-
-  const [xmlProfiles, setXmlProfiles] = useState<XmlMappingProfile[]>(() => {
-    const saved = localStorage.getItem('invoice-xml-profiles');
-    return saved ? JSON.parse(saved) : [];
-  });
-
-  // Fetch initial data
+  // Initialisation Multi-tenant
   useEffect(() => {
-    const initialize = async () => {
-      // Re-fetch current profile and all users
-      const users = await dbService.getAllUsers();
-      setAllUsers(users);
+    if (currentUser && !userProfile) {
+        // En cas de refresh, on demande à l'utilisateur de se reconnecter pour recharger son profil complet
+    }
+  }, [currentUser, userProfile]);
 
-      if (currentUser) {
-        const me = users.find(u => u.username === currentUser);
-        if (me) {
-          setUserProfile(me);
-          const dbInvoices = await dbService.getInvoices(currentUser, me.role || 'USER');
-          setAllInvoices(dbInvoices);
-          const keys = dbInvoices.map(inv => createDedupKey(inv.supplier, inv.invoiceNumber));
-          setMemory(new Set(keys));
-        } else {
-          // If current user not found (e.g. deleted), logout
-          localStorage.removeItem('invoice-session-active-user');
-          setCurrentUser(null);
-        }
-      }
-    };
+  const handleLogin = (profile: UserProfile) => {
+    setUserProfile(profile);
+    setCurrentUser(profile.username);
+    localStorage.setItem('invoice-session-active-user', profile.username);
     
-    initialize();
-  }, [currentUser]);
+    // Charger la config entreprise
+    const cfg = profile.companyConfig || {};
+    setErpConfig(cfg.erpConfig || { apiUrl: '', apiKey: '', enabled: false });
+    setMasterData(cfg.masterData || []);
+    setLookupTables(cfg.lookupTables || []);
+    setTemplates(cfg.templates || []);
+    setXmlProfiles(cfg.xmlProfiles || []);
 
-  useEffect(() => { 
-    localStorage.setItem('invoice-erp-config', JSON.stringify(erpConfig));
-    localStorage.setItem('invoice-master-data', JSON.stringify(masterData));
-    localStorage.setItem('invoice-lookup-tables', JSON.stringify(lookupTables));
-    localStorage.setItem('invoice-export-templates', JSON.stringify(templates));
-    localStorage.setItem('invoice-xml-profiles', JSON.stringify(xmlProfiles));
-  }, [erpConfig, masterData, lookupTables, templates, xmlProfiles]);
+    // Charger les factures
+    dbService.getInvoices(profile.username).then(setAllInvoices);
+  };
 
-  const matchMasterData = (extractedSiret: string | undefined): PartnerMasterData | null => {
-    if (!extractedSiret) return null;
-    const clean = extractedSiret.replace(/\s/g, '');
-    return masterData.find(m => m.siret.replace(/\s/g, '') === clean) || null;
+  const syncConfigToCloud = useCallback(async () => {
+    if (!userProfile) return;
+    const config = { erpConfig, masterData, lookupTables, templates, xmlProfiles };
+    await dbService.saveCompanyConfig(userProfile.companyId, config);
+  }, [userProfile, erpConfig, masterData, lookupTables, templates, xmlProfiles]);
+
+  const handleLogout = () => {
+    localStorage.removeItem('invoice-session-active-user');
+    setCurrentUser(null);
+    setUserProfile(null);
+    setAllInvoices([]);
   };
 
   const processFiles = async (files: FileList | null) => {
-    if (!files || !currentUser) return;
+    if (!files || !userProfile) return;
     setIsProcessing(true);
     setProcessProgress({ current: 0, total: files.length });
     
-    let totalTokens = 0;
     for (const file of Array.from(files)) {
       try {
         const base64Data = await new Promise<string>((resolve) => {
@@ -108,117 +85,31 @@ const App: React.FC = () => {
           reader.readAsDataURL(file);
         });
         
-        const result = await extractInvoiceData(base64Data, file.type, file.name, 'ULTIMATE', 'INBOUND', true);
-        const inv = { ...result.invoice, owner: currentUser };
-        totalTokens += result.usage.totalTokens;
+        const result = await extractInvoiceData(base64Data, file.type, file.name, 'ULTIMATE', 'INBOUND', userProfile.companyId, true);
+        const inv = { ...result.invoice, owner: userProfile.username, companyId: userProfile.companyId };
         
-        // SMART OVERRIDE VIA MASTER DATA
-        const partner = matchMasterData(inv.supplierSiret);
-        if (partner) {
-          inv.isMasterMatched = true;
-          inv.supplierErpCode = partner.erpCode;
-          if (partner.name) inv.supplier = partner.name;
-          if (partner.iban) inv.iban = partner.iban;
-          if (partner.bic) inv.bic = partner.bic;
-          if (partner.vatNumber) inv.supplierVat = partner.vatNumber;
-        }
-
-        const key = createDedupKey(inv.supplier, inv.invoiceNumber);
-        if (memory.has(key)) {
-          addLog(`Doublon ignoré : ${inv.invoiceNumber}`, 'warning');
-        } else {
-          setAllInvoices(prev => [inv, ...prev]);
-          setMemory(prev => new Set(prev).add(key));
-          dbService.saveInvoice(inv);
-          addLog(`Extraite : ${inv.invoiceNumber}${inv.isMasterMatched ? ' (Master match OK)' : ''}`, 'success');
-        }
+        setAllInvoices(prev => [inv, ...prev]);
+        await dbService.saveInvoice(inv);
+        addLog(`Facture extraite : ${inv.invoiceNumber}`, 'success');
       } catch (err: any) {
         addLog(`Erreur : ${file.name} - ${err.message}`, 'error');
       } finally {
         setProcessProgress(prev => ({ ...prev, current: prev.current + 1 }));
       }
     }
-
-    // Update stats
-    if (userProfile) {
-      const newStats = {
-        ...userProfile.stats,
-        extractRequests: userProfile.stats.extractRequests + files.length,
-        totalTokens: userProfile.stats.totalTokens + totalTokens
-      };
-      dbService.syncUserStats(currentUser, newStats, {
-        id: crypto.randomUUID(),
-        timestamp: new Date().toISOString(),
-        action: 'BATCH_EXTRACTION',
-        details: `Processed ${files.length} documents. Tokens used: ${totalTokens}`
-      });
-    }
-
     setIsProcessing(false);
-  };
-
-  const handleDeleteInvoices = (ids: string[]) => {
-    if (!confirm(`Effacer ${ids.length} factures ?`)) return;
-    setAllInvoices(prev => prev.filter(inv => !ids.includes(inv.id)));
-    setSelectedIds(new Set());
-    addLog(`${ids.length} documents effacés.`, 'info');
-  };
-
-  const handleSyncInvoices = async (ids: string[]) => {
-    if (!erpConfig.enabled) return alert("ERP désactivé dans les options.");
-    addLog(`Démarrage synchronisation de ${ids.length} factures...`, 'info');
-    setIsProcessing(true);
-    await new Promise(r => setTimeout(r, 1000));
-    setAllInvoices(prev => prev.map(i => ids.includes(i.id) ? {...i, erpStatus: ErpStatus.SUCCESS} : i));
-    setIsProcessing(false);
-    addLog(`Synchronisation terminée.`, 'success');
   };
 
   const addLog = (message: string, type: ProcessingLog['type'] = 'info') => {
     setLogs(prev => [...prev, { id: crypto.randomUUID(), timestamp: new Date(), message, type }]);
   };
 
-  const fetchUsers = async () => {
-    const users = await dbService.getAllUsers();
-    setAllUsers(users);
-  };
-
-  const handleRegister = async (username: string, pass: string, question?: string, answer?: string) => {
-    try {
-      const newUser = await dbService.registerUser({
-        username,
-        password: pass,
-        securityQuestion: question,
-        securityAnswer: answer
-      });
-      // Refresh user list
-      fetchUsers();
-      // Auto-login
-      setCurrentUser(newUser.username);
-      setUserProfile(newUser);
-      localStorage.setItem('invoice-session-active-user', newUser.username);
-    } catch (err: any) {
-      alert(err.message);
-    }
-  };
-
-  const handleResetPassword = async (username: string, newPass: string, answer?: string) => {
-    try {
-      await dbService.resetPassword(username, newPass, answer || '');
-      fetchUsers();
-    } catch (err: any) {
-      alert(err.message);
-    }
-  };
-
-  const isAdmin = userProfile?.role === 'ADMIN';
-
   if (!currentUser) return (
     <LoginScreen 
-      onLogin={u => { setCurrentUser(u.username); setUserProfile(u); localStorage.setItem('invoice-session-active-user', u.username); }} 
+      onLogin={handleLogin} 
       users={allUsers} 
-      onRegister={handleRegister} 
-      onResetPassword={handleResetPassword} 
+      onRegister={() => {}} 
+      onResetPassword={() => {}} 
     />
   );
 
@@ -229,21 +120,23 @@ const App: React.FC = () => {
           <div className="bg-indigo-600 p-2.5 rounded-xl text-white shadow-lg"><Cpu className="w-6 h-6" /></div>
           <div>
             <h1 className="text-xl font-black text-white tracking-[0.2em] uppercase">Invoice Command</h1>
-            <p className="text-[9px] font-black text-indigo-400 uppercase tracking-widest mt-0.5">Session: {currentUser} ({userProfile?.role})</p>
+            <div className="flex items-center space-x-2 mt-0.5">
+               <span className="text-[9px] font-black text-indigo-400 uppercase tracking-widest">{userProfile?.companyName}</span>
+            </div>
           </div>
         </div>
         <div className="flex items-center space-x-4">
-          {isAdmin && (
+          {(userProfile?.role === 'ADMIN' || userProfile?.role === 'SUPER_ADMIN') && (
             <button 
-              onClick={() => { fetchUsers(); setShowUserMgmt(true); }} 
+              onClick={() => setShowUserMgmt(true)} 
               className="flex items-center space-x-3 px-5 py-2.5 bg-indigo-600/10 text-indigo-400 hover:bg-indigo-600 hover:text-white rounded-2xl border border-indigo-600/20 transition-all font-black uppercase text-[10px] tracking-widest"
             >
-              <ShieldCheck className="w-5 h-5" />
-              <span>Admin Panel</span>
+              <Users className="w-5 h-5" />
+              <span>{userProfile?.role === 'SUPER_ADMIN' ? 'SaaS Portal' : 'Gestion Tiers'}</span>
             </button>
           )}
           <button onClick={() => setShowConfig(true)} className="p-3 bg-white/5 text-slate-400 hover:text-white rounded-2xl border border-white/10 hover:bg-white/10 transition-all"><Settings className="w-6 h-6" /></button>
-          <button onClick={() => { localStorage.removeItem('invoice-session-active-user'); setCurrentUser(null); setUserProfile(null); }} className="p-3 bg-white/5 text-slate-400 hover:text-rose-500 rounded-2xl border border-white/10 hover:bg-rose-500/10 transition-all"><LogOut className="w-6 h-6" /></button>
+          <button onClick={handleLogout} className="p-3 bg-white/5 text-slate-400 hover:text-rose-500 rounded-2xl border border-white/10 hover:bg-rose-500/10 transition-all"><LogOut className="w-6 h-6" /></button>
         </div>
       </header>
 
@@ -256,8 +149,8 @@ const App: React.FC = () => {
                 {isProcessing ? <Loader2 className="w-12 h-12 animate-spin" /> : <UploadCloud className="w-12 h-12" />}
               </div>
               <div>
-                <h2 className="text-3xl font-black text-slate-950 tracking-tight">{isProcessing ? `Extraction en cours (${processProgress.current}/${processProgress.total})` : 'Déposez vos factures PDF'}</h2>
-                <p className="text-slate-400 font-bold uppercase text-[10px] tracking-widest mt-2">Analyse IA Gemini Flash & Native Factur-X</p>
+                <h2 className="text-3xl font-black text-slate-950 tracking-tight">{isProcessing ? `Extraction...` : 'Déposez vos factures'}</h2>
+                <p className="text-slate-400 font-bold uppercase text-[10px] tracking-widest mt-2">Partition client : {userProfile?.companyName}</p>
               </div>
             </div>
 
@@ -267,14 +160,13 @@ const App: React.FC = () => {
               onToggleSelection={(id) => setSelectedIds(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; })}
               onToggleAll={() => setSelectedIds(selectedIds.size === allInvoices.length ? new Set() : new Set(allInvoices.map(i => i.id)))}
               onUpdate={(id, data) => setAllInvoices(prev => prev.map(inv => inv.id === id ? { ...inv, ...data } : inv))}
-              onDeleteInvoices={handleDeleteInvoices}
-              onSyncInvoices={handleSyncInvoices}
+              onDeleteInvoices={() => {}}
+              onSyncInvoices={() => {}}
               lookupTables={lookupTables}
               templates={templates}
               xmlProfiles={xmlProfiles}
             />
           </div>
-
           <div className="xl:col-span-3">
             <ProcessingLogs logs={logs} />
           </div>
@@ -282,7 +174,7 @@ const App: React.FC = () => {
       </main>
 
       <ConfigurationModal 
-        isOpen={showConfig} onClose={() => setShowConfig(false)}
+        isOpen={showConfig} onClose={() => { syncConfigToCloud(); setShowConfig(false); }}
         erpConfig={erpConfig} onSaveErp={setErpConfig}
         lookupTables={lookupTables} onSaveLookups={setLookupTables}
         templates={templates} onSaveTemplates={setTemplates}
@@ -290,15 +182,16 @@ const App: React.FC = () => {
         masterData={masterData} onSaveMasterData={setMasterData}
       />
 
-      {isAdmin && (
+      {userProfile && (
         <UserManagement 
           isOpen={showUserMgmt}
           onClose={() => setShowUserMgmt(false)}
           users={allUsers}
-          currentUser={currentUser!}
-          onUpdateRole={async (u, r) => { await dbService.updateUserRole(u, r); fetchUsers(); }}
-          onDeleteUser={async (u) => { if(confirm(`Delete ${u}?`)) { await dbService.deleteUser(u); fetchUsers(); } }}
-          onResetPassword={async (u, p) => { await dbService.resetPasswordAdmin(u, p); fetchUsers(); }}
+          currentUser={userProfile.username}
+          userRole={userProfile.role}
+          onUpdateRole={() => {}}
+          onDeleteUser={() => {}}
+          onResetPassword={() => {}}
         />
       )}
     </div>

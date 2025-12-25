@@ -1,4 +1,5 @@
 
+
 export interface InvoiceItem {
   articleId: string;
   description: string;
@@ -32,6 +33,13 @@ export type OperationCategory = 'GOODS' | 'SERVICES' | 'MIXED';
 export type TaxPointType = 'DEBIT' | 'CASH' | 'DELIVERY';
 export type ExtractionMode = 'BASIC' | 'ULTIMATE';
 
+export interface Company {
+  id: string;
+  name: string;
+  createdAt: string;
+  config?: any;
+}
+
 export interface PartnerMasterData {
   id: string;
   erpCode: string;
@@ -53,6 +61,7 @@ export interface SageX3Config {
 
 export interface InvoiceData {
   id: string;
+  companyId: string; // Relation multi-tenant
   owner?: string; 
   sessionId?: string;
   extractionMode?: ExtractionMode;
@@ -137,7 +146,7 @@ export interface XmlMappingProfile {
   mappings: { btId: string; xmlTag: string; enabled: boolean }[];
 }
 
-export type UserRole = 'ADMIN' | 'USER';
+export type UserRole = 'SUPER_ADMIN' | 'ADMIN' | 'USER';
 
 export interface UserActivity {
   id: string;
@@ -148,6 +157,9 @@ export interface UserActivity {
 
 export interface UserProfile {
   username: string;
+  companyId: string; // Relation multi-tenant
+  companyName?: string;
+  companyConfig?: any; // Added for multi-tenant configuration storage
   password?: string;
   role: UserRole;
   createdAt: string;
@@ -176,7 +188,6 @@ export interface ErpConfig {
   sageConfig?: SageX3Config;
 }
 
-// Added ExtractionResult interface to fix the module export error
 export interface ExtractionResult {
   invoice: InvoiceData;
   usage: {

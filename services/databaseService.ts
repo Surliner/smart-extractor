@@ -1,115 +1,66 @@
 
-import { InvoiceData, UserProfile, UserActivity, UserRole } from '../types';
+import { InvoiceData, UserProfile, UserActivity, UserRole, Company } from '../types';
 
 const API_URL = window.location.hostname === 'localhost' 
   ? 'http://localhost:3000/api' 
   : `${window.location.origin}/api`; 
 
 export const dbService = {
-  // --- AUTHENTIFICATION ---
-  async registerUser(user: any): Promise<UserProfile> {
-    const response = await fetch(`${API_URL}/auth/register`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(user)
-    });
-    if (!response.ok) {
-      const err = await response.json();
-      throw new Error(err.error || "Erreur lors de la création du compte.");
-    }
-    return await response.json();
-  },
-
   async login(username: string, password: string): Promise<UserProfile> {
     const response = await fetch(`${API_URL}/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password })
     });
-    if (!response.ok) {
-      const err = await response.json();
-      throw new Error(err.error || "Échec de l'authentification.");
-    }
+    if (!response.ok) throw new Error("Identifiants invalides.");
     return await response.json();
   },
 
-  async resetPassword(username: string, newPassword: string, securityAnswer: string): Promise<void> {
-    const response = await fetch(`${API_URL}/auth/reset-password`, {
+  async saveCompanyConfig(companyId: string, config: any): Promise<void> {
+    await fetch(`${API_URL}/company/config`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, newPassword, securityAnswer })
+      body: JSON.stringify({ companyId, config })
     });
-    if (!response.ok) {
-      const err = await response.json();
-      throw new Error(err.error || "Échec de la réinitialisation du mot de passe.");
-    }
   },
 
-  // --- FACTURES ---
-  async saveInvoice(invoice: InvoiceData): Promise<boolean> {
-    try {
-      const response = await fetch(`${API_URL}/invoices`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(invoice)
-      });
-      return response.ok;
-    } catch (e) {
-      return false; 
-    }
+  async getAllCompanies(): Promise<Company[]> {
+    const response = await fetch(`${API_URL}/admin/companies`);
+    return await response.json();
   },
 
-  async getInvoices(username: string, role: string): Promise<InvoiceData[]> {
-    try {
-      const response = await fetch(`${API_URL}/invoices?user=${username}&role=${role}`);
-      if (response.ok) return await response.json();
-      throw new Error();
-    } catch (e) {
-      const saved = localStorage.getItem('invoice-queue-persistent-all');
-      return saved ? JSON.parse(saved) : [];
-    }
+  async createCompany(name: string): Promise<Company> {
+    const response = await fetch(`${API_URL}/admin/companies`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name })
+    });
+    return await response.json();
   },
 
-  // --- UTILISATEURS & MONITORING ---
-  async syncUserStats(username: string, stats: any, activity: UserActivity): Promise<void> {
-    try {
-      await fetch(`${API_URL}/users/sync`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, stats, activity })
-      });
-    } catch (e) { }
+  async createAdminUser(userData: any): Promise<void> {
+    await fetch(`${API_URL}/admin/users`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(userData)
+    });
+  },
+
+  async saveInvoice(invoice: InvoiceData): Promise<void> {
+    await fetch(`${API_URL}/invoices`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(invoice)
+    });
+  },
+
+  async getInvoices(username: string): Promise<InvoiceData[]> {
+    const response = await fetch(`${API_URL}/invoices?user=${username}`);
+    return await response.json();
   },
 
   async getAllUsers(): Promise<UserProfile[]> {
-    try {
-      const response = await fetch(`${API_URL}/admin/users`);
-      if (response.ok) return await response.json();
-      throw new Error();
-    } catch (e) {
-      return [];
-    }
-  },
-
-  async updateUserRole(username: string, role: UserRole): Promise<void> {
-    await fetch(`${API_URL}/admin/users/role`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, role })
-    });
-  },
-
-  async deleteUser(username: string): Promise<void> {
-    await fetch(`${API_URL}/admin/users?username=${username}`, {
-      method: 'DELETE'
-    });
-  },
-
-  async resetPasswordAdmin(username: string, newPass: string): Promise<void> {
-    await fetch(`${API_URL}/admin/users/password`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password: newPass })
-    });
+    const response = await fetch(`${API_URL}/admin/users`);
+    return await response.json();
   }
 };

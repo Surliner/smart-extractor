@@ -54,6 +54,7 @@ const FLAT_FIELDS = FIELD_GROUPS.flatMap(g => g.fields);
 
 const MOCK_PREVIEW_INVOICE: InvoiceData = {
   id: 'MOCK-PREVIEW',
+  companyId: 'MOCK-CORP-ID', // Satisfying the required companyId property in InvoiceData
   invoiceNumber: 'INV-2025-099',
   invoiceDate: '15/05/2025',
   dueDate: '15/06/2025',
@@ -475,6 +476,7 @@ export const ConfigurationModal: React.FC<ConfigurationModalProps> = ({
                             ))}
                           </div>
 
+                          {/* Fix: use tpl.id instead of undefined templateId */}
                           <button onClick={() => addColumn(tpl.id)} className="w-full py-5 border-2 border-dashed border-slate-100 rounded-[2rem] text-[10px] font-black uppercase text-slate-400 hover:border-indigo-200 hover:bg-indigo-50/30 hover:text-indigo-600 transition-all flex items-center justify-center">
                             <Plus className="w-4 h-4 mr-2" /> Ajouter une colonne
                           </button>

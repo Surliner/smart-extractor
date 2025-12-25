@@ -1,4 +1,5 @@
 
+
 import { GoogleGenAI, Type } from "@google/genai";
 import { InvoiceData, InvoiceItem, InvoiceType, ExtractionMode, ExtractionResult, OperationCategory, TaxPointType } from "../types";
 
@@ -30,6 +31,7 @@ export const extractInvoiceData = async (
   filename: string,
   mode: ExtractionMode,
   direction: 'INBOUND' | 'OUTBOUND',
+  companyId: string, // Added companyId parameter to satisfy InvoiceData interface requirements
   withItems: boolean = false
 ): Promise<ExtractionResult> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
@@ -108,7 +110,6 @@ export const extractInvoiceData = async (
         responseMimeType: "application/json",
         responseSchema: ultimateSchema,
         temperature: 0,
-        maxOutputTokens: 20000, 
       },
     });
 
@@ -132,6 +133,7 @@ export const extractInvoiceData = async (
 
     const invoiceData: InvoiceData = {
       id: crypto.randomUUID(),
+      companyId: companyId, // Satisfying the required companyId property in InvoiceData
       extractionMode: 'ULTIMATE',
       direction: direction,
       invoiceType: rawData.invoice_type === 'CREDIT_NOTE' ? InvoiceType.CREDIT_NOTE : InvoiceType.INVOICE,

@@ -1,3 +1,4 @@
+
 import React, { useEffect, useRef } from 'react';
 import { ProcessingLog } from '../types';
 import { AlertCircle, CheckCircle, Info, FileWarning } from 'lucide-react';
@@ -26,10 +27,10 @@ export const ProcessingLogs: React.FC<ProcessingLogsProps> = ({ logs }) => {
 
   return (
     <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 h-48 flex flex-col">
-      <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Processing Logs</h3>
+      <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Logs de Traitement</h3>
       <div ref={scrollRef} className="flex-1 overflow-y-auto space-y-2 pr-2 custom-scrollbar">
         {logs.length === 0 && (
-          <p className="text-sm text-slate-400 italic">Ready to process invoices...</p>
+          <p className="text-sm text-slate-400 italic">Prêt pour l'extraction...</p>
         )}
         {logs.map((log) => (
           <div key={log.id} className="flex items-start space-x-2 text-sm">

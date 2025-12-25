@@ -239,9 +239,9 @@ export const InvoiceTable: React.FC<InvoiceTableProps> = ({
                 className="w-full px-4 py-2.5 bg-slate-50 border border-slate-100 rounded-xl text-[10px] font-bold outline-none focus:border-indigo-500"
               >
                 <option value="ALL">Tous les statuts</option>
-                <option value="PENDING">En attente (Pending)</option>
-                <option value="SUCCESS">Succès (Success)</option>
-                <option value="ERROR">Erreur (Error)</option>
+                <option value="PENDING">En attente</option>
+                <option value="SUCCESS">Synchronisé</option>
+                <option value="ERROR">Erreur</option>
               </select>
             </div>
 
@@ -275,7 +275,7 @@ export const InvoiceTable: React.FC<InvoiceTableProps> = ({
                   type="number" 
                   placeholder="Min"
                   value={minAmount}
-                  onChange={(e) => setMinAmount(e.target.value)}
+                  onChange={(v) => setMinAmount(v.target.value)}
                   className="w-full px-4 py-2 bg-slate-50 border border-slate-100 rounded-xl text-[9px] font-bold" 
                 />
                 <span className="text-slate-300">-</span>
@@ -283,7 +283,7 @@ export const InvoiceTable: React.FC<InvoiceTableProps> = ({
                   type="number" 
                   placeholder="Max"
                   value={maxAmount}
-                  onChange={(e) => setMaxAmount(e.target.value)}
+                  onChange={(v) => setMaxAmount(v.target.value)}
                   className="w-full px-4 py-2 bg-slate-50 border border-slate-100 rounded-xl text-[9px] font-bold" 
                 />
               </div>
@@ -320,7 +320,7 @@ export const InvoiceTable: React.FC<InvoiceTableProps> = ({
             </button>
             <button onClick={() => onSyncInvoices(Array.from(selectedIds))} className="flex items-center space-x-2 text-[10px] font-black uppercase tracking-widest hover:text-emerald-400 transition-colors group">
               <Zap className="w-5 h-5 text-emerald-500 group-hover:scale-110 transition-transform" />
-              <span>Sync Sage</span>
+              <span>Sync ERP</span>
             </button>
             <button onClick={() => onDeleteInvoices(Array.from(selectedIds))} className="flex items-center space-x-2 text-[10px] font-black uppercase tracking-widest hover:text-rose-400 transition-colors group">
               <Trash2 className="w-5 h-5 text-rose-500 group-hover:scale-110 transition-transform" />
@@ -332,7 +332,7 @@ export const InvoiceTable: React.FC<InvoiceTableProps> = ({
             <div className="absolute bottom-full mb-4 left-1/2 -translate-x-1/2 w-80 bg-slate-900 border border-white/10 rounded-[2.5rem] shadow-2xl p-6 space-y-4 animate-in fade-in zoom-in-95">
               <div className="space-y-2">
                 <p className="text-[9px] font-black text-indigo-400 uppercase tracking-widest mb-2 flex items-center">
-                   <ShieldCheck className="w-3 h-3 mr-2" /> Formats RFE (Officiel)
+                   <ShieldCheck className="w-3 h-3 mr-2" /> Formats RFE (Officiels)
                 </p>
                 <button onClick={handleExportFacturX} className="w-full text-left px-4 py-3 bg-indigo-600/20 border border-indigo-500/30 rounded-xl text-[10px] font-black hover:bg-indigo-600 hover:text-white flex items-center transition-all">
                   <FileCheck className="w-4 h-4 mr-3 text-indigo-400" /> Factur-X (Profil Comfort)
@@ -349,7 +349,7 @@ export const InvoiceTable: React.FC<InvoiceTableProps> = ({
               </div>
               <div className="h-px bg-white/5"></div>
               <div className="space-y-2">
-                <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-2">Blueprints XML (Custom)</p>
+                <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-2">Blueprints XML</p>
                 {xmlProfiles.map(prof => (
                   <button key={prof.id} onClick={() => handleExportXML(prof)} className="w-full text-left px-4 py-3 bg-white/5 rounded-xl text-[10px] font-black hover:bg-white/10 flex items-center">
                     <FileJson className="w-4 h-4 mr-3 text-amber-400" /> {prof.name}
@@ -371,7 +371,7 @@ export const InvoiceTable: React.FC<InvoiceTableProps> = ({
                 </th>
                 <th className="w-40 px-4 py-6 cursor-pointer group" onClick={() => requestSort('invoiceNumber')}>
                   <div className="flex items-center">
-                    Numéro Facture {getSortIcon('invoiceNumber')}
+                    N° Facture {getSortIcon('invoiceNumber')}
                   </div>
                 </th>
                 <th className="w-32 px-4 py-6 cursor-pointer" onClick={() => requestSort('invoiceDate')}>

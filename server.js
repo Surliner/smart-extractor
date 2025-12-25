@@ -3,69 +3,75 @@ const express = require('express');
 const { Pool } = require('pg');
 const cors = require('cors');
 const path = require('path');
+const { v4: uuidv4 } = require('uuid');
 
 const app = express();
 const port = process.env.PORT || 3000;
 
-// Configuration de la base de données PostgreSQL
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: {
-    rejectUnauthorized: false
-  }
+  ssl: { rejectUnauthorized: false }
 });
 
-// --- SYNC / MIGRATION SCRIPT ---
 const initDb = async () => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
 
+    // 1. Table Entreprises
     await client.query(`
-      CREATE TABLE IF NOT EXISTS users (
-          username TEXT PRIMARY KEY,
+      CREATE TABLE IF NOT EXISTS companies (
+          id UUID PRIMARY KEY,
+          name TEXT NOT NULL,
+          config JSONB DEFAULT '{}',
           created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       );
     `);
 
-    const columnsToEnsure = [
-      { name: 'password', type: 'TEXT' },
-      { name: 'role', type: "TEXT DEFAULT 'USER'" },
-      { name: 'security_question', type: 'TEXT' },
-      { name: 'security_answer', type: 'TEXT' },
-      { name: 'stats', type: "JSONB DEFAULT '{\"extractRequests\": 0, \"totalTokens\": 0, \"lastActive\": \"\"}'" },
-      { name: 'login_history', type: "JSONB DEFAULT '[]'" }
-    ];
+    // 2. Table Utilisateurs
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS users (
+          username TEXT PRIMARY KEY,
+          password TEXT,
+          role TEXT DEFAULT 'USER',
+          company_id UUID REFERENCES companies(id),
+          security_question TEXT,
+          security_answer TEXT,
+          stats JSONB DEFAULT '{"extractRequests": 0, "totalTokens": 0, "lastActive": ""}',
+          login_history JSONB DEFAULT '[]',
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
 
-    for (const col of columnsToEnsure) {
-      await client.query(`
-        DO $$ 
-        BEGIN 
-          BEGIN
-            ALTER TABLE users ADD COLUMN ${col.name} ${col.type};
-          EXCEPTION
-            WHEN duplicate_column THEN RAISE NOTICE 'column ${col.name} already exists';
-          END;
-        END $$;
-      `);
-    }
-
+    // 3. Table Invoices
     await client.query(`
       CREATE TABLE IF NOT EXISTS invoices (
           id UUID PRIMARY KEY,
           owner TEXT REFERENCES users(username) ON DELETE CASCADE,
+          company_id UUID REFERENCES companies(id),
           data JSONB,
           created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       );
+    `);
 
+    // 4. Table Activités
+    await client.query(`
       CREATE TABLE IF NOT EXISTS activities (
           id UUID PRIMARY KEY,
           username TEXT REFERENCES users(username) ON DELETE CASCADE,
+          company_id UUID REFERENCES companies(id),
           action TEXT,
           details TEXT,
           timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       );
     `);
+
+    // Migration initiale si vide
+    const compCount = await client.query('SELECT COUNT(*) FROM companies');
+    if (parseInt(compCount.rows[0].count) === 0) {
+      const defaultCompId = uuidv4();
+      await client.query('INSERT INTO companies (id, name) VALUES ($1, $2)', [defaultCompId, 'Société Pilote']);
+    }
 
     await client.query('COMMIT');
   } catch (err) {
@@ -79,175 +85,119 @@ const initDb = async () => {
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 
-// --- AUTH ---
-
-app.post('/api/auth/register', async (req, res) => {
-  const { username, password, securityQuestion, securityAnswer } = req.body;
-  try {
-    // Check if user exists
-    const existing = await pool.query('SELECT username FROM users WHERE LOWER(username) = LOWER($1)', [username.trim()]);
-    if (existing.rows.length > 0) {
-      return res.status(400).json({ error: "Ce nom d'utilisateur est déjà utilisé." });
-    }
-
-    // Determine role: First user is ADMIN. Also 'admin' and 'Jean Duhamel' are always ADMIN.
-    const userCount = await pool.query('SELECT COUNT(*) FROM users');
-    let role = 'USER';
-    const normalizedName = username.trim().toLowerCase();
-    if (parseInt(userCount.rows[0].count) === 0 || normalizedName === 'admin' || normalizedName === 'jean duhamel') {
-      role = 'ADMIN';
-    }
-
-    const result = await pool.query(
-      'INSERT INTO users (username, password, role, security_question, security_answer) VALUES ($1, $2, $3, $4, $5) RETURNING username, role, stats',
-      [username.trim(), password, role, securityQuestion, securityAnswer]
-    );
-
-    res.status(201).json(result.rows[0]);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+// --- AUTH & CONFIG ---
 
 app.post('/api/auth/login', async (req, res) => {
   const { username, password } = req.body;
   try {
     const result = await pool.query(
-      'SELECT username, password, role, stats, security_question, security_answer, created_at FROM users WHERE LOWER(username) = LOWER($1)',
+      `SELECT u.*, c.name as company_name, c.config as company_config
+       FROM users u 
+       JOIN companies c ON u.company_id = c.id 
+       WHERE LOWER(u.username) = LOWER($1)`,
       [username.trim()]
     );
     
-    if (result.rows.length === 0) return res.status(404).json({ error: "Identité inconnue." });
+    if (result.rows.length === 0) return res.status(404).json({ error: "Utilisateur non trouvé." });
     
     const user = result.rows[0];
-    if (user.password !== password) return res.status(401).json({ error: "Incorrect credentials." });
+    if (user.password !== password) return res.status(401).json({ error: "Mot de passe incorrect." });
     
-    // Update login history
-    await pool.query(
-      "UPDATE users SET login_history = login_history || $1::jsonb WHERE username = $2",
-      [JSON.stringify(new Date().toISOString()), user.username]
-    );
-
-    delete user.password;
-    res.json(user);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+    const profile = {
+      username: user.username,
+      companyId: user.company_id,
+      companyName: user.company_name,
+      role: user.role,
+      stats: user.stats,
+      companyConfig: user.company_config,
+      createdAt: user.created_at
+    };
+    res.json(profile);
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.post('/api/auth/reset-password', async (req, res) => {
-  const { username, newPassword, securityAnswer } = req.body;
+// Sauvegarde de la configuration de l'entreprise (ERP, Templates, etc)
+app.post('/api/company/config', async (req, res) => {
+  const { companyId, config } = req.body;
   try {
-    const userResult = await pool.query('SELECT security_answer FROM users WHERE LOWER(username) = LOWER($1)', [username.trim()]);
-    if (userResult.rows.length === 0) return res.status(404).json({ error: "Utilisateur non trouvé." });
-
-    if (userResult.rows[0].security_answer !== securityAnswer) {
-      return res.status(403).json({ error: "Réponse à la question de sécurité incorrecte." });
-    }
-
-    await pool.query('UPDATE users SET password = $1 WHERE LOWER(username) = LOWER($2)', [newPassword, username.trim()]);
+    await pool.query('UPDATE companies SET config = $1 WHERE id = $2', [config, companyId]);
     res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// --- ADMIN ROUTES ---
+// --- ADMIN / SUPER ADMIN ---
+
+app.get('/api/admin/companies', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM companies ORDER BY created_at DESC');
+    res.json(result.rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/admin/companies', async (req, res) => {
+  const { name } = req.body;
+  try {
+    const result = await pool.query('INSERT INTO companies (id, name) VALUES ($1, $2) RETURNING *', [uuidv4(), name]);
+    res.status(201).json(result.rows[0]);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/admin/users', async (req, res) => {
+  const { username, password, role, companyId } = req.body;
+  try {
+    const result = await pool.query(
+      'INSERT INTO users (username, password, role, company_id) VALUES ($1, $2, $3, $4) RETURNING username, role',
+      [username, password, role, companyId]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
 
 app.get('/api/admin/users', async (req, res) => {
+  const { requester, role } = req.query;
   try {
-    const result = await pool.query(`
-      SELECT u.username, u.role, u.stats, u.created_at, u.login_history, u.security_question, u.security_answer,
-             (SELECT json_agg(act) FROM (SELECT * FROM activities WHERE username = u.username ORDER BY timestamp DESC LIMIT 20) act) as activity_log
+    let query = `
+      SELECT u.username, u.role, u.stats, u.created_at, u.company_id, c.name as company_name
       FROM users u 
-      ORDER BY u.created_at DESC
-    `);
-    res.json(result.rows.map(u => ({
-      ...u,
-      stats: u.stats || {},
-      loginHistory: u.login_history || [],
-      activityLog: u.activity_log || []
-    })));
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+      JOIN companies c ON u.company_id = c.id
+    `;
+    const result = await pool.query(query);
+    res.json(result.rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.put('/api/admin/users/role', async (req, res) => {
-  const { username, role } = req.body;
-  try {
-    await pool.query('UPDATE users SET role = $1 WHERE username = $2', [role, username]);
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.put('/api/admin/users/password', async (req, res) => {
-  const { username, password } = req.body;
-  try {
-    await pool.query('UPDATE users SET password = $1 WHERE username = $2', [password, username]);
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.delete('/api/admin/users', async (req, res) => {
-  const { username } = req.query;
-  try {
-    await pool.query('DELETE FROM users WHERE username = $1', [username]);
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// --- INVOICES & SYNC ---
+// --- INVOICES (FILTERED BY COMPANY) ---
 
 app.get('/api/invoices', async (req, res) => {
-  const { user, role } = req.query;
+  const { user } = req.query;
   try {
-    let query = 'SELECT data FROM invoices';
-    let params = [];
-    if (role !== 'ADMIN') {
-      query += ' WHERE owner = $1';
-      params.push(user);
-    }
-    const result = await pool.query(query, params);
+    const userRes = await pool.query('SELECT company_id, role FROM users WHERE username = $1', [user]);
+    const u = userRes.rows[0];
+    let query = 'SELECT data FROM invoices WHERE company_id = $1';
+    if (u.role === 'SUPER_ADMIN') query = 'SELECT data FROM invoices';
+    
+    const result = await pool.query(query, u.role === 'SUPER_ADMIN' ? [] : [u.company_id]);
     res.json(result.rows.map(r => r.data));
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 app.post('/api/invoices', async (req, res) => {
   const invoice = req.body;
   try {
-    await pool.query('INSERT INTO invoices (id, owner, data) VALUES ($1, $2, $3) ON CONFLICT (id) DO UPDATE SET data = $3', [invoice.id, invoice.owner, invoice]);
-    res.status(201).json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.post('/api/users/sync', async (req, res) => {
-  const { username, stats, activity } = req.body;
-  try {
-    await pool.query('UPDATE users SET stats = $2 WHERE username = $1', [username, stats]);
-    if (activity) {
-      await pool.query('INSERT INTO activities (id, username, action, details, timestamp) VALUES ($1, $2, $3, $4, $5)', [activity.id, username, activity.action, activity.details, activity.timestamp]);
-    }
+    const userRes = await pool.query('SELECT company_id FROM users WHERE username = $1', [invoice.owner]);
+    const cid = userRes.rows[0].company_id;
+    await pool.query(
+      'INSERT INTO invoices (id, owner, company_id, data) VALUES ($1, $2, $3, $4) ON CONFLICT (id) DO UPDATE SET data = $4', 
+      [invoice.id, invoice.owner, cid, invoice]
+    );
     res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 app.use(express.static(path.join(__dirname, 'dist')));
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'dist', 'index.html')));
 
 app.listen(port, async () => {
-  console.log(`Server running on port ${port}`);
+  console.log(`SaaS Server running on port ${port}`);
   await initDb();
 });
