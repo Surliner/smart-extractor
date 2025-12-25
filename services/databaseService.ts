@@ -44,6 +44,28 @@ export const dbService = {
     }
   },
 
+  async updateUser(username: string, updates: { role: UserRole, companyId: string, isApproved: boolean }): Promise<void> {
+    const response = await fetch(`${API_URL}/admin/users/update`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, ...updates })
+    });
+    if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || "Impossible de mettre à jour l'utilisateur.");
+    }
+  },
+
+  async deleteUser(username: string): Promise<void> {
+    const response = await fetch(`${API_URL}/admin/users/${username}`, {
+      method: 'DELETE'
+    });
+    if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || "Impossible de supprimer l'utilisateur.");
+    }
+  },
+
   async resetPassword(username: string, newPassword: string, answer: string): Promise<void> {
     const response = await fetch(`${API_URL}/auth/reset-password`, {
       method: 'POST',

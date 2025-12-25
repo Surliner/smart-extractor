@@ -95,7 +95,7 @@ app.use(express.json({ limit: '50mb' }));
 // --- COMPANY API ---
 app.get('/api/admin/companies', async (req, res) => {
   try {
-    const result = await pool.query('SELECT * FROM companies ORDER BY created_at DESC');
+    const result = await pool.query('SELECT * FROM companies ORDER BY name ASC');
     res.json(result.rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -164,15 +164,33 @@ app.get('/api/admin/users', async (req, res) => {
       SELECT u.username, u.role, u.created_at, u.company_id, u.is_approved, c.name as company_name
       FROM users u 
       LEFT JOIN companies c ON u.company_id = c.id
+      ORDER BY u.created_at DESC
     `);
-    res.json(result.rows.map(u => ({ ...u, isApproved: u.is_approved })));
+    res.json(result.rows.map(u => ({ ...u, isApproved: u.is_approved, companyName: u.company_name, companyId: u.company_id, createdAt: u.created_at })));
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.post('/api/admin/users/approve', async (req, res) => {
-  const { username } = req.body;
+app.post('/api/admin/users/update', async (req, res) => {
+  const { username, role, companyId, isApproved } = req.body;
+  if (username.toLowerCase() === 'admin' && role !== 'SUPER_ADMIN') {
+    return res.status(400).json({ error: "Cannot downgrade master admin role." });
+  }
   try {
-    await pool.query('UPDATE users SET is_approved = TRUE WHERE username = $1', [username]);
+    await pool.query(
+      'UPDATE users SET role = $1, company_id = $2, is_approved = $3 WHERE LOWER(username) = LOWER($4)',
+      [role, companyId, isApproved, username]
+    );
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.delete('/api/admin/users/:username', async (req, res) => {
+  const { username } = req.params;
+  if (username.toLowerCase() === 'admin') {
+    return res.status(400).json({ error: "Cannot delete master admin account." });
+  }
+  try {
+    await pool.query('DELETE FROM users WHERE LOWER(username) = LOWER($1)', [username]);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });

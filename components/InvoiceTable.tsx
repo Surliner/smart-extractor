@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { InvoiceData, InvoiceItem, ErpStatus, InvoiceType, LookupTable, ExportTemplate, XmlMappingProfile } from '../types';
+import { InvoiceData, InvoiceItem, ErpStatus, InvoiceType, LookupTable, ExportTemplate, XmlMappingProfile, PartnerMasterData } from '../types';
 import { Trash2, ChevronDown, CheckCircle2, AlertCircle, Circle, Columns, X, FileCode, ArrowDownLeft, ArrowUpRight, Maximize2, LayoutList, FileSpreadsheet, FileDown, Zap, ListChecks, FileJson, ShieldCheck, FileCheck, Search, Filter, ArrowUpDown, ArrowUp, ArrowDown, Calendar, Banknote } from 'lucide-react';
 import { FacturXModal } from './FacturXModal';
 import { generateTemplatedCSV, generateTemplatedXML } from '../services/exportService';
@@ -17,6 +17,7 @@ interface InvoiceTableProps {
   lookupTables: LookupTable[];
   templates: ExportTemplate[];
   xmlProfiles: XmlMappingProfile[];
+  masterData?: PartnerMasterData[];
 }
 
 type SortConfig = {
@@ -34,7 +35,8 @@ export const InvoiceTable: React.FC<InvoiceTableProps> = ({
   onSyncInvoices,
   lookupTables,
   templates,
-  xmlProfiles
+  xmlProfiles,
+  masterData = []
 }) => {
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -199,6 +201,7 @@ export const InvoiceTable: React.FC<InvoiceTableProps> = ({
           invoice={activeInvoice}
           onSave={(u) => onUpdate(u.id, u)}
           lookupTables={lookupTables}
+          masterData={masterData}
         />
       )}
 
@@ -305,7 +308,7 @@ export const InvoiceTable: React.FC<InvoiceTableProps> = ({
       {selectedIds.size > 0 && (
         <div className="fixed bottom-12 left-1/2 -translate-x-1/2 z-[60] bg-slate-900/90 backdrop-blur-2xl text-white px-10 py-6 rounded-[3rem] shadow-2xl flex items-center space-x-12 animate-in slide-in-from-bottom-10 duration-500 border border-white/10">
           <div className="flex items-center space-x-4 border-r border-white/10 pr-10">
-            <div className="bg-indigo-600 p-3 rounded-2xl"><ListChecks className="w-5 h-5" /></div>
+            <div className="bg-indigo-600 p-3 rounded-2xl shadow-xl shadow-indigo-500/20"><ListChecks className="w-5 h-5" /></div>
             <div>
               <p className="text-[11px] font-black uppercase tracking-widest">{selectedIds.size} FACTURES</p>
               <p className="text-[8px] font-bold text-slate-500 uppercase mt-1">Sélection active</p>
@@ -396,7 +399,7 @@ export const InvoiceTable: React.FC<InvoiceTableProps> = ({
               {filteredAndSortedInvoices.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="px-4 py-20 text-center text-slate-400 font-bold uppercase tracking-widest text-[10px]">
-                    {invoices.length === 0 ? "Aucune facture dans le système" : "Aucun résultat pour ces filtres"}
+                    {invoices.length === 0 ? "Aucune facture" : "Aucun résultat"}
                   </td>
                 </tr>
               ) : (

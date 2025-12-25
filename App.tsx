@@ -47,7 +47,7 @@ const App: React.FC = () => {
   const handleRegister = async (username: string, pass: string, question?: string, answer?: string) => {
     try {
       await dbService.register(username, pass, question || '', answer || '');
-      alert("Inscription réussie ! Vous pouvez maintenant vous connecter.");
+      alert("Inscription réussie ! Votre compte est en attente d'approbation.");
       window.location.reload();
     } catch (err: any) {
       alert(err.message);
@@ -57,7 +57,7 @@ const App: React.FC = () => {
   const handleResetPassword = async (username: string, newPass: string, answer?: string) => {
     try {
       await dbService.resetPassword(username, newPass, answer || '');
-      alert("Mot de passe réinitialisé ! Veuillez vous connecter avec vos nouveaux identifiants.");
+      alert("Mot de passe mis à jour !");
     } catch (err: any) {
       alert(err.message);
     }
@@ -67,6 +67,8 @@ const App: React.FC = () => {
     if (!userProfile) return;
     const config = { erpConfig, masterData, lookupTables, templates, xmlProfiles };
     await dbService.saveCompanyConfig(userProfile.companyId, config);
+    // Refresh userProfile after sync to maintain coherence
+    setUserProfile(prev => prev ? { ...prev, companyConfig: config } : null);
   }, [userProfile, erpConfig, masterData, lookupTables, templates, xmlProfiles]);
 
   const handleLogout = () => {
@@ -121,7 +123,7 @@ const App: React.FC = () => {
     <div className="min-h-screen bg-slate-50 text-slate-800 font-sans pb-24">
       <header className="bg-slate-950 px-8 h-20 flex items-center justify-between sticky top-0 z-50 shadow-xl border-b border-white/5">
         <div className="flex items-center space-x-6">
-          <div className="bg-indigo-600 p-2.5 rounded-xl text-white shadow-lg"><Cpu className="w-6 h-6" /></div>
+          <div className="bg-indigo-600 p-2.5 rounded-xl text-white shadow-lg shadow-indigo-500/20"><Cpu className="w-6 h-6" /></div>
           <div>
             <h1 className="text-xl font-black text-white tracking-[0.2em] uppercase">Invoice Command</h1>
             <div className="flex items-center space-x-2 mt-0.5">
@@ -153,7 +155,7 @@ const App: React.FC = () => {
                 {isProcessing ? <Loader2 className="w-12 h-12 animate-spin" /> : <UploadCloud className="w-12 h-12" />}
               </div>
               <div>
-                <h2 className="text-3xl font-black text-slate-950 tracking-tight">{isProcessing ? `Extraction...` : 'Déposez vos factures'}</h2>
+                <h2 className="text-3xl font-black text-slate-950 tracking-tight">{isProcessing ? `Extraction en cours...` : 'Déposez vos factures PDF'}</h2>
                 <p className="text-slate-400 font-bold uppercase text-[10px] tracking-widest mt-2">Partition client : {userProfile?.companyName}</p>
               </div>
             </div>
@@ -169,6 +171,7 @@ const App: React.FC = () => {
               lookupTables={lookupTables}
               templates={templates}
               xmlProfiles={xmlProfiles}
+              masterData={masterData}
             />
           </div>
           <div className="xl:col-span-3">
