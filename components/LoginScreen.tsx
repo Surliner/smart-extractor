@@ -12,12 +12,12 @@ interface LoginScreenProps {
 }
 
 const SECURITY_QUESTIONS = [
-  "In what city were you born?",
-  "What is your mother's maiden name?",
-  "What was the name of your first pet?",
-  "What was the model of your first car?",
-  "What was the name of your elementary school?",
-  "What is your favorite secret code word?"
+  "Dans quelle ville êtes-vous né ?",
+  "Quel est le nom de jeune fille de votre mère ?",
+  "Quel était le nom de votre premier animal de compagnie ?",
+  "Quel était le modèle de votre première voiture ?",
+  "Quel était le nom de votre école primaire ?",
+  "Quel est votre mot de code secret préféré ?"
 ];
 
 type ViewState = 'LOGIN' | 'REGISTER' | 'RECOVER_IDENTIFY' | 'RECOVER_CHALLENGE' | 'RECOVER_RESET';
@@ -49,7 +49,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, users, onRegi
         const user = await dbService.login(username, password);
         onLogin(user);
     } catch (err: any) {
-        setError(err.message);
+        setError("Identifiants incorrects ou erreur serveur.");
     } finally {
         setIsLoading(false);
     }
@@ -60,7 +60,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, users, onRegi
     setError('');
     const cleanUser = username.trim();
     if (!cleanUser || !password.trim() || !securityAnswer.trim()) {
-      setError('Mandatory fields missing for profile initialization.');
+      setError('Champs obligatoires manquants pour l\'initialisation du profil.');
       return;
     }
     onRegister(cleanUser, password, securityQuestion, securityAnswer);
@@ -71,11 +71,11 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, users, onRegi
     setError('');
     const user = users.find(u => u.username.toLowerCase().trim() === username.toLowerCase().trim());
     if (!user) {
-      setError('Identity not found in Local Partition.');
+      setError('Identité introuvable dans la partition locale.');
       return;
     }
     if (!user.securityQuestion) {
-      setError('Legacy profile: No security challenge configured.');
+      setError('Profil hérité : Aucune question de sécurité configurée.');
       return;
     }
     setRecoveryUser(user);
@@ -88,7 +88,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, users, onRegi
     if (securityAnswer.toLowerCase().trim() === recoveryUser?.securityAnswer?.toLowerCase().trim()) {
       setView('RECOVER_RESET');
     } else {
-      setError('Validation failed: Incorrect challenge response.');
+      setError('Échec de la validation : Réponse incorrecte.');
     }
   };
 
@@ -96,13 +96,13 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, users, onRegi
     e.preventDefault();
     setError('');
     if (!newPassword.trim()) {
-      setError('New credential cannot be null.');
+      setError('Le nouveau mot de passe ne peut pas être vide.');
       return;
     }
     try {
         setIsLoading(true);
         await onResetPassword(recoveryUser!.username, newPassword, securityAnswer);
-        setSuccess('Partition Credentials Updated. Redirecting...');
+        setSuccess('Identifiants mis à jour. Redirection...');
         setTimeout(() => { resetForm(); setView('LOGIN'); }, 2000);
     } catch (err: any) {
         setError(err.message);
@@ -130,16 +130,6 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, users, onRegi
 
       <div className="bg-slate-900/40 backdrop-blur-3xl rounded-[3rem] shadow-[0_50px_100px_-20px_rgba(0,0,0,0.8)] border border-white/5 p-12 w-full max-w-xl relative z-10 flex flex-col min-h-[600px]">
         
-        <div className="bg-indigo-500/10 border border-indigo-500/20 rounded-2xl p-4 mb-10 flex items-center space-x-4">
-           <div className="bg-indigo-500 p-2 rounded-xl text-white">
-              <Database className="w-5 h-5" />
-           </div>
-           <div>
-              <p className="text-[10px] font-black text-indigo-400 uppercase tracking-[0.2em] leading-tight mb-0.5">Cloud Storage Active</p>
-              <p className="text-[10px] font-bold text-slate-400 leading-tight">Profiles are now persistent on Render PostgreSQL database.</p>
-           </div>
-        </div>
-
         <div className="flex flex-col items-center mb-10">
           <div className="bg-white p-6 rounded-[2.5rem] mb-6 shadow-2xl group transition-all cursor-pointer">
             <Cpu className="w-10 h-10 text-slate-950 group-hover:scale-110 transition-transform" />
@@ -150,7 +140,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, users, onRegi
           <div className="flex items-center mt-3 space-x-2">
              <div className={`w-2 h-2 rounded-full ${isInitialSetup ? 'bg-amber-500' : 'bg-emerald-500'}`}></div>
              <p className="text-[10px] font-black uppercase text-slate-500 tracking-[0.3em]">
-               {isInitialSetup ? 'System Initialization Pending' : 'Secure Vault Active'}
+               {isInitialSetup ? 'Initialisation système requise' : 'Accès sécurisé actif'}
              </p>
           </div>
         </div>
@@ -169,14 +159,14 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, users, onRegi
 
           {view === 'LOGIN' && (
             <form onSubmit={handleLoginSubmit} className="space-y-6 animate-in fade-in duration-500">
-              <FormGroup label="System Identifier" icon={UserCircle} value={username} onChange={setUsername} placeholder="Username" theme="dark" />
+              <FormGroup label="Identifiant Système" icon={UserCircle} value={username} onChange={setUsername} placeholder="Nom d'utilisateur" theme="dark" />
               <FormGroup 
-                label="Access Credential" 
+                label="Accès sécurisé" 
                 icon={Key} 
                 type={showPassword ? "text" : "password"} 
                 value={password} 
                 onChange={setPassword} 
-                placeholder="Password"
+                placeholder="Mot de passe"
                 theme="dark"
                 rightElement={
                     <button type="button" onClick={() => setShowPassword(!showPassword)} className="p-2 text-slate-500 hover:text-white transition-colors">
@@ -185,11 +175,11 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, users, onRegi
                 }
               />
               <button disabled={isLoading} type="submit" className="w-full bg-white hover:bg-slate-100 text-slate-950 font-black uppercase text-[11px] tracking-[0.2em] py-5 rounded-[1.5rem] flex items-center justify-center transition-all shadow-2xl active:scale-95 disabled:opacity-50">
-                {isLoading ? <RefreshCw className="w-5 h-5 animate-spin" /> : <LogIn className="w-5 h-5 mr-3" />} Execute Login Sequence
+                {isLoading ? <RefreshCw className="w-5 h-5 animate-spin" /> : <LogIn className="w-5 h-5 mr-3" />} Lancer la connexion
               </button>
               <div className="flex justify-center">
                 <button type="button" onClick={() => { resetForm(); setView('RECOVER_IDENTIFY'); }} className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 hover:text-indigo-400 transition-colors">
-                  Credential Recovery
+                  Récupération de compte
                 </button>
               </div>
             </form>
@@ -197,18 +187,12 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, users, onRegi
 
           {view === 'REGISTER' && (
             <form onSubmit={handleRegisterSubmit} className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-              {isInitialSetup && (
-                <div className="p-4 bg-indigo-600 rounded-2xl mb-2 text-center shadow-xl shadow-indigo-500/20 border border-indigo-400/30">
-                   <p className="text-[10px] font-black uppercase text-white tracking-widest">Master Admin Initialization</p>
-                   <p className="text-[9px] text-indigo-100 mt-1">First user or names 'admin', ' Jean Duhamel' get ADMIN role.</p>
-                </div>
-              )}
               <div className="grid grid-cols-1 gap-5 max-h-[45vh] overflow-y-auto pr-2 custom-scrollbar p-1">
-                <FormGroup label="New Identifier" icon={UserCircle} value={username} onChange={setUsername} placeholder="Create username" theme="dark" />
-                <FormGroup label="Security Credential" icon={Key} type="password" value={password} onChange={setPassword} placeholder="Create password" theme="dark" />
+                <FormGroup label="Nouvel Identifiant" icon={UserCircle} value={username} onChange={setUsername} placeholder="Choisissez un nom d'utilisateur" theme="dark" />
+                <FormGroup label="Mot de passe" icon={Key} type="password" value={password} onChange={setPassword} placeholder="Créez votre mot de passe" theme="dark" />
                 
                 <div className="pt-4 border-t border-white/5">
-                  <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3 ml-1">Recovery Challenge Question</label>
+                  <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3 ml-1">Question de sécurité</label>
                   <div className="relative group">
                     <HelpCircle className="w-5 h-5 absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-indigo-400 transition-colors" />
                     <select 
@@ -221,11 +205,11 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, users, onRegi
                     <ChevronDown className="w-4 h-4 text-slate-500 absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none" />
                   </div>
                 </div>
-                <FormGroup label="Challenge Response" icon={ShieldCheck} value={securityAnswer} onChange={setSecurityAnswer} placeholder="Your secret answer" theme="dark" />
+                <FormGroup label="Réponse secrète" icon={ShieldCheck} value={securityAnswer} onChange={setSecurityAnswer} placeholder="Votre réponse" theme="dark" />
               </div>
 
               <button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-black uppercase text-[11px] tracking-[0.2em] py-5 rounded-[1.5rem] flex items-center justify-center transition-all shadow-xl shadow-indigo-500/20 active:scale-95">
-                <UserPlus className="w-5 h-5 mr-3" /> Initialize Profile
+                <UserPlus className="w-5 h-5 mr-3" /> Initialiser le profil
               </button>
             </form>
           )}
@@ -233,15 +217,15 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, users, onRegi
           {view === 'RECOVER_IDENTIFY' && (
             <form onSubmit={handleRecoveryIdentify} className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
               <div className="flex items-center space-x-3 mb-2">
-                 <div className="px-2 py-1 bg-white/5 rounded-md text-[9px] font-black text-slate-400 border border-white/5 uppercase tracking-widest">Step 1/3</div>
-                 <h3 className="text-[11px] font-black text-white uppercase tracking-widest">Locate Account Node</h3>
+                 <div className="px-2 py-1 bg-white/5 rounded-md text-[9px] font-black text-slate-400 border border-white/5 uppercase tracking-widest">Étape 1/3</div>
+                 <h3 className="text-[11px] font-black text-white uppercase tracking-widest">Localiser le compte</h3>
               </div>
-              <FormGroup label="Enter Registered Identifier" icon={Fingerprint} value={username} onChange={setUsername} placeholder="Search username" theme="dark" />
+              <FormGroup label="Identifiant enregistré" icon={Fingerprint} value={username} onChange={setUsername} placeholder="Nom d'utilisateur" theme="dark" />
               <button type="submit" className="w-full bg-white hover:bg-slate-100 text-slate-950 font-black uppercase text-[11px] tracking-[0.2em] py-5 rounded-[1.5rem] flex items-center justify-center transition-all shadow-2xl active:scale-95">
-                Validate Identity <ArrowRight className="w-4 h-4 ml-3" />
+                Valider l'identité <ArrowRight className="w-4 h-4 ml-3" />
               </button>
               <button type="button" onClick={() => setView('LOGIN')} className="w-full text-[10px] font-black uppercase text-slate-500 hover:text-white transition-colors flex items-center justify-center">
-                 <ArrowLeft className="w-3 h-3 mr-2" /> Back to Login
+                 <ArrowLeft className="w-3 h-3 mr-2" /> Retour à la connexion
               </button>
             </form>
           )}
@@ -249,19 +233,19 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, users, onRegi
           {view === 'RECOVER_CHALLENGE' && recoveryUser && (
             <form onSubmit={handleRecoveryChallenge} className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
               <div className="flex items-center space-x-3 mb-2">
-                 <div className="px-2 py-1 bg-indigo-500/20 rounded-md text-[9px] font-black text-indigo-400 border border-indigo-500/20 uppercase tracking-widest">Step 2/3</div>
-                 <h3 className="text-[11px] font-black text-white uppercase tracking-widest">Security Challenge Verification</h3>
+                 <div className="px-2 py-1 bg-indigo-500/20 rounded-md text-[9px] font-black text-indigo-400 border border-indigo-500/20 uppercase tracking-widest">Étape 2/3</div>
+                 <h3 className="text-[11px] font-black text-white uppercase tracking-widest">Vérification de sécurité</h3>
               </div>
               <div className="bg-white/5 border border-white/10 rounded-2xl p-6 mb-2">
-                 <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest block mb-2">Security Question</label>
+                 <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest block mb-2">Question de sécurité</label>
                  <p className="text-sm font-black text-indigo-400 italic">"{recoveryUser.securityQuestion}"</p>
               </div>
-              <FormGroup label="Challenge Response" icon={ShieldCheck} value={securityAnswer} onChange={setSecurityAnswer} placeholder="Enter your secret answer" theme="dark" />
+              <FormGroup label="Réponse secrète" icon={ShieldCheck} value={securityAnswer} onChange={setSecurityAnswer} placeholder="Votre réponse" theme="dark" />
               <button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-black uppercase text-[11px] tracking-[0.2em] py-5 rounded-[1.5rem] flex items-center justify-center transition-all shadow-xl shadow-indigo-500/20 active:scale-95">
-                Verify Credentials <ArrowRight className="w-4 h-4 ml-3" />
+                Vérifier la réponse <ArrowRight className="w-4 h-4 ml-3" />
               </button>
               <button type="button" onClick={() => setView('RECOVER_IDENTIFY')} className="w-full text-[10px] font-black uppercase text-slate-500 hover:text-white transition-colors flex items-center justify-center">
-                 <ArrowLeft className="w-3 h-3 mr-2" /> Wrong user? Back
+                 <ArrowLeft className="w-3 h-3 mr-2" /> Erreur d'utilisateur ? Retour
               </button>
             </form>
           )}
@@ -269,13 +253,13 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, users, onRegi
           {view === 'RECOVER_RESET' && (
             <form onSubmit={handleRecoveryReset} className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
               <div className="flex items-center space-x-3 mb-2">
-                 <div className="px-2 py-1 bg-emerald-500/20 rounded-md text-[9px] font-black text-emerald-400 border border-emerald-500/20 uppercase tracking-widest">Step 3/3</div>
-                 <h3 className="text-[11px] font-black text-white uppercase tracking-widest">Credential Re-Initialization</h3>
+                 <div className="px-2 py-1 bg-emerald-500/20 rounded-md text-[9px] font-black text-emerald-400 border border-emerald-500/20 uppercase tracking-widest">Étape 3/3</div>
+                 <h3 className="text-[11px] font-black text-white uppercase tracking-widest">Réinitialisation d'accès</h3>
               </div>
-              <FormGroup label="New Access Credential" icon={Lock} type="password" value={newPassword} onChange={setNewPassword} placeholder="Enter new password" theme="dark" />
+              <FormGroup label="Nouveau mot de passe" icon={Lock} type="password" value={newPassword} onChange={setNewPassword} placeholder="Saisissez le nouveau mot de passe" theme="dark" />
               <button disabled={isLoading} type="submit" className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black uppercase text-[11px] tracking-[0.2em] py-5 rounded-[1.5rem] flex items-center justify-center transition-all shadow-xl shadow-emerald-500/20 active:scale-95 disabled:opacity-50">
                 {isLoading ? <RefreshCw className="w-4 h-4 mr-3 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-3" />}
-                Reset Account Password
+                Mettre à jour le mot de passe
               </button>
             </form>
           )}
@@ -287,7 +271,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, users, onRegi
                onClick={() => { resetForm(); setView(view === 'REGISTER' ? 'LOGIN' : 'REGISTER'); }}
                className="text-[10px] font-black uppercase tracking-[0.3em] text-white hover:text-indigo-400 transition-all bg-white/5 px-10 py-3 rounded-full border border-white/5 hover:border-indigo-500/30"
              >
-               {view === 'REGISTER' ? 'Switch to Login' : 'Register Profile'}
+               {view === 'REGISTER' ? 'Déjà un compte ? Connexion' : 'Créer un compte'}
              </button>
           </div>
         )}

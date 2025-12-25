@@ -54,7 +54,7 @@ const FLAT_FIELDS = FIELD_GROUPS.flatMap(g => g.fields);
 
 const MOCK_PREVIEW_INVOICE: InvoiceData = {
   id: 'MOCK-PREVIEW',
-  companyId: 'MOCK-CORP-ID', // Satisfying the required companyId property in InvoiceData
+  companyId: 'MOCK-CORP-ID',
   invoiceNumber: 'INV-2025-099',
   invoiceDate: '15/05/2025',
   dueDate: '15/06/2025',
@@ -151,7 +151,7 @@ export const ConfigurationModal: React.FC<ConfigurationModalProps> = ({
       if (t.id === templateId) {
         return {
           ...t,
-          columns: [...t.columns, { header: 'NEW_COL', type: 'field', value: 'invoiceNumber', defaultValue: '' }]
+          columns: [...t.columns, { header: 'NOUV_COL', type: 'field', value: 'invoiceNumber', defaultValue: '' }]
         };
       }
       return t;
@@ -185,8 +185,8 @@ export const ConfigurationModal: React.FC<ConfigurationModalProps> = ({
     const newProfile: XmlMappingProfile = {
       id: crypto.randomUUID(),
       name: 'Nouveau Profil XML',
-      rootTag: 'ROOT',
-      itemTag: 'ITEM',
+      rootTag: 'RACINE',
+      itemTag: 'LIGNE',
       mappings: FLAT_FIELDS.map(f => ({ btId: f.id, xmlTag: f.id.toUpperCase(), enabled: true }))
     };
     setLocalXmlProfiles([newProfile, ...localXmlProfiles]);
@@ -211,37 +211,33 @@ export const ConfigurationModal: React.FC<ConfigurationModalProps> = ({
     <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md flex items-center justify-center z-[110] p-4">
       <div className="bg-white rounded-[2.5rem] shadow-2xl border border-slate-200 w-full max-w-7xl h-[92vh] flex flex-col overflow-hidden">
         
-        {/* Header */}
         <div className="px-10 py-6 border-b border-slate-100 flex justify-between items-center bg-white shrink-0">
           <div className="flex items-center space-x-6">
             <div className="bg-slate-950 p-3 rounded-2xl text-white">
               <Settings className="w-6 h-6" />
             </div>
             <div>
-              <h2 className="text-2xl font-black text-slate-900 tracking-tight uppercase">Configuration Hub</h2>
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mt-1">Smart Extraction & Export Control</p>
+              <h2 className="text-2xl font-black text-slate-900 tracking-tight uppercase">Hub de Configuration</h2>
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mt-1">Extraction Smart & Contrôle Export</p>
             </div>
           </div>
           <button onClick={onClose} className="p-3 text-slate-400 hover:text-rose-500 transition-colors bg-slate-50 rounded-xl"><X className="w-6 h-6" /></button>
         </div>
 
         <div className="flex-1 flex overflow-hidden bg-slate-50">
-          {/* Sidebar Navigation */}
           <div className="w-72 bg-white border-r border-slate-200 p-6 space-y-2 shrink-0 overflow-y-auto custom-scrollbar">
             <NavBtn icon={Database} label="Master Data" active={activeTab === 'masterdata'} onClick={() => setActiveTab('masterdata')} />
-            <NavBtn icon={FileSpreadsheet} label="Flat Templates" active={activeTab === 'templates'} onClick={() => setActiveTab('templates')} />
-            <NavBtn icon={FileJson} label="XML Blueprints" active={activeTab === 'xml'} onClick={() => setActiveTab('xml')} />
-            <NavBtn icon={Layers} label="Transcoding" active={activeTab === 'lookups'} onClick={() => setActiveTab('lookups')} />
-            <NavBtn icon={CloudLightning} label="Sage X3 Setup" active={activeTab === 'erp'} onClick={() => setActiveTab('erp')} />
+            <NavBtn icon={FileSpreadsheet} label="Templates Plats" active={activeTab === 'templates'} onClick={() => setActiveTab('templates')} />
+            <NavBtn icon={FileJson} label="Blueprints XML" active={activeTab === 'xml'} onClick={() => setActiveTab('xml')} />
+            <NavBtn icon={Layers} label="Transcodage" active={activeTab === 'lookups'} onClick={() => setActiveTab('lookups')} />
+            <NavBtn icon={CloudLightning} label="Config Sage X3" active={activeTab === 'erp'} onClick={() => setActiveTab('erp')} />
             <div className="pt-6 mt-4 border-t border-slate-100">
                <NavBtn icon={BookOpen} label="Glossaire Technique" active={activeTab === 'glossary'} onClick={() => setActiveTab('glossary')} />
             </div>
           </div>
 
-          {/* Content Area */}
           <div className="flex-1 p-10 overflow-y-auto bg-white custom-scrollbar">
             
-            {/* GLOSSARY */}
             {activeTab === 'glossary' && (
               <div className="space-y-10 animate-in fade-in duration-300">
                 <Header title="Glossaire Factur-X / EN16931" desc="Dictionnaire technique des Business Terms (BT) extraits par l'IA">
@@ -256,7 +252,6 @@ export const ConfigurationModal: React.FC<ConfigurationModalProps> = ({
                         />
                     </div>
                 </Header>
-
                 <div className="grid grid-cols-1 gap-12">
                    {filteredGlossary.map((group) => (
                        <div key={group.name} className="space-y-4">
@@ -276,9 +271,7 @@ export const ConfigurationModal: React.FC<ConfigurationModalProps> = ({
                                                {field.bt}
                                            </div>
                                        </div>
-                                       <p className="text-[10px] font-bold text-slate-500 leading-relaxed mb-4">
-                                           {field.desc}
-                                       </p>
+                                       <p className="text-[10px] font-bold text-slate-500 leading-relaxed mb-4">{field.desc}</p>
                                        <div className="flex items-center space-x-2 pt-4 border-t border-slate-200/50">
                                             <BadgeCheck className="w-3 h-3 text-emerald-500" />
                                             <span className="text-[8px] font-black uppercase tracking-widest text-slate-400">Prêt pour Mapping</span>
@@ -288,65 +281,23 @@ export const ConfigurationModal: React.FC<ConfigurationModalProps> = ({
                            </div>
                        </div>
                    ))}
-                   {filteredGlossary.length === 0 && (
-                       <div className="flex flex-col items-center justify-center py-20 text-slate-400">
-                           <FileSearch className="w-16 h-16 mb-4 opacity-20" />
-                           <p className="text-sm font-black uppercase tracking-widest">Aucun résultat pour "{searchTerm}"</p>
-                       </div>
-                   )}
-                </div>
-
-                <div className="bg-indigo-950 rounded-[2.5rem] p-10 text-white relative overflow-hidden mt-20">
-                    <div className="absolute top-0 right-0 w-96 h-96 bg-indigo-500/10 rounded-full blur-[100px] -mr-48 -mt-48"></div>
-                    <div className="flex items-start space-x-8 relative z-10">
-                        <div className="p-5 bg-white/10 rounded-3xl border border-white/10">
-                            <Info className="w-10 h-10 text-indigo-300" />
-                        </div>
-                        <div>
-                            <h4 className="text-2xl font-black tracking-tight mb-3 italic">À quoi servent les codes BT ?</h4>
-                            <p className="text-sm font-medium text-indigo-100/70 max-w-3xl leading-relaxed">
-                                Les "Business Terms" (BT) sont les identifiants normés de la sémantique EN16931 utilisée par Factur-X. 
-                                En utilisant ces codes dans vos templates XML ou CSV, vous assurez une interopérabilité totale avec les plateformes 
-                                de dématérialisation et les ERP modernes. L'IA de <strong>Invoice Command</strong> extrait nativement ces valeurs 
-                                avec un taux de précision de 99.8%.
-                            </p>
-                            <div className="flex space-x-4 mt-8">
-                                <a href="https://fnfe-mve.org/factur-x/" target="_blank" className="flex items-center space-x-2 px-5 py-2.5 bg-white/5 hover:bg-white/10 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border border-white/5">
-                                    <span>Documentation FNFE-MVE</span>
-                                    <ExternalLink className="w-3 h-3" />
-                                </a>
-                            </div>
-                        </div>
-                    </div>
                 </div>
               </div>
             )}
 
-            {/* FLAT TEMPLATES */}
             {activeTab === 'templates' && (
               <div className="space-y-10 animate-in fade-in duration-300">
-                <Header title="File Export Templates" desc="Bâtissez vos structures de fichiers CSV ou TXT sur mesure">
+                <Header title="Templates d'Export" desc="Bâtissez vos structures de fichiers CSV ou TXT sur mesure">
                   <button onClick={handleAddTemplate} className="bg-indigo-600 text-white px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center shadow-xl shadow-indigo-100 hover:bg-indigo-700 transition-all active:scale-95">
                     <Plus className="w-4 h-4 mr-2" /> Nouveau Template
                   </button>
                 </Header>
-
-                {localTemplates.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-20 border-2 border-dashed border-slate-100 rounded-[3rem] bg-slate-50/50">
-                    <div className="p-6 bg-white rounded-3xl shadow-sm mb-4">
-                      <FileSpreadsheet className="w-10 h-10 text-slate-300" />
-                    </div>
-                    <p className="text-sm font-black text-slate-400 uppercase tracking-widest">Aucun template configuré</p>
-                    <button onClick={handleAddTemplate} className="mt-4 text-[10px] font-black text-indigo-600 uppercase tracking-widest hover:text-indigo-800 underline">Créer votre premier template maintenant</button>
-                  </div>
-                ) : (
-                  <div className="space-y-12">
+                <div className="space-y-12">
                     {localTemplates.map((tpl) => (
                       <div key={tpl.id} className="bg-white border-2 border-slate-100 rounded-[3rem] p-10 relative group shadow-sm hover:border-indigo-100 transition-all">
                         <button onClick={() => setLocalTemplates(prev => prev.filter(t => t.id !== tpl.id))} className="absolute top-10 right-10 p-3 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-2xl transition-all">
                           <Trash2 className="w-6 h-6" />
                         </button>
-
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 mb-10 border-b border-slate-50 pb-10">
                           <div className="space-y-4">
                             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center"><Settings2 className="w-3 h-3 mr-2" /> Identification</label>
@@ -368,13 +319,11 @@ export const ConfigurationModal: React.FC<ConfigurationModalProps> = ({
                             </div>
                           </div>
                         </div>
-
                         <div className="space-y-6">
                           <div className="flex justify-between items-end mb-2">
                              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center"><LayoutTemplate className="w-3 h-3 mr-2" /> Structure des Colonnes</label>
                              <span className="text-[9px] font-black text-slate-300 uppercase tracking-widest">{tpl.columns.length} Colonnes</span>
                           </div>
-                          
                           <div className="space-y-3">
                             {tpl.columns.map((col, cIdx) => (
                               <div key={cIdx} className="flex flex-col p-4 bg-slate-50 rounded-3xl border border-slate-100 group/col hover:bg-white hover:border-indigo-100 transition-all space-y-4">
@@ -382,35 +331,20 @@ export const ConfigurationModal: React.FC<ConfigurationModalProps> = ({
                                   <div className="p-2 text-slate-300 cursor-grab active:cursor-grabbing"><GripVertical className="w-4 h-4" /></div>
                                   <div className="flex-1 min-w-0 grid grid-cols-12 gap-3 items-end">
                                     <div className="col-span-3">
-                                      <input 
-                                        value={col.header} 
-                                        onChange={(e) => updateColumn(tpl.id, cIdx, { header: e.target.value.toUpperCase() })}
-                                        className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2 text-[10px] font-black text-slate-900 outline-none focus:border-indigo-600"
-                                        placeholder="HEADER"
-                                      />
+                                      <input value={col.header} onChange={(e) => updateColumn(tpl.id, cIdx, { header: e.target.value.toUpperCase() })} className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2 text-[10px] font-black text-slate-900 outline-none focus:border-indigo-600" placeholder="ENTÊTE" />
                                       <p className="text-[7px] font-black text-slate-400 uppercase mt-1 ml-1">Libellé Colonne</p>
                                     </div>
-
                                     <div className="col-span-2">
-                                      <select 
-                                        value={col.type} 
-                                        onChange={(e) => updateColumn(tpl.id, cIdx, { type: e.target.value as any })}
-                                        className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-[9px] font-black uppercase text-indigo-600 outline-none"
-                                      >
+                                      <select value={col.type} onChange={(e) => updateColumn(tpl.id, cIdx, { type: e.target.value as any })} className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-[9px] font-black uppercase text-indigo-600 outline-none">
                                         <option value="field">Extrait IA</option>
                                         <option value="static">Statique</option>
                                         <option value="lookup">Lookup</option>
                                       </select>
                                       <p className="text-[7px] font-black text-slate-400 uppercase mt-1 ml-1">Source Donnée</p>
                                     </div>
-
                                     <div className="col-span-5">
                                       {col.type === 'field' ? (
-                                        <select 
-                                          value={col.value} 
-                                          onChange={(e) => updateColumn(tpl.id, cIdx, { value: e.target.value })}
-                                          className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-[10px] font-bold text-slate-700 outline-none"
-                                        >
+                                        <select value={col.value} onChange={(e) => updateColumn(tpl.id, cIdx, { value: e.target.value })} className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-[10px] font-bold text-slate-700 outline-none">
                                           {FIELD_GROUPS.map(g => (
                                             <optgroup key={g.name} label={g.name} className="text-[8px] uppercase tracking-widest text-slate-400">
                                               {g.fields.map(f => (
@@ -420,26 +354,13 @@ export const ConfigurationModal: React.FC<ConfigurationModalProps> = ({
                                           ))}
                                         </select>
                                       ) : col.type === 'static' ? (
-                                        <input 
-                                          value={col.value} 
-                                          onChange={(e) => updateColumn(tpl.id, cIdx, { value: e.target.value })}
-                                          className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2 text-[10px] font-bold text-slate-900 outline-none"
-                                          placeholder="Valeur fixe..."
-                                        />
+                                        <input value={col.value} onChange={(e) => updateColumn(tpl.id, cIdx, { value: e.target.value })} className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2 text-[10px] font-bold text-slate-900 outline-none" placeholder="Valeur fixe..." />
                                       ) : (
                                         <div className="flex space-x-2">
-                                          <select 
-                                            value={col.value} 
-                                            onChange={(e) => updateColumn(tpl.id, cIdx, { value: e.target.value })}
-                                            className="flex-1 bg-white border border-slate-200 rounded-xl px-3 py-2 text-[10px] font-bold text-slate-700 outline-none"
-                                          >
+                                          <select value={col.value} onChange={(e) => updateColumn(tpl.id, cIdx, { value: e.target.value })} className="flex-1 bg-white border border-slate-200 rounded-xl px-3 py-2 text-[10px] font-bold text-slate-700 outline-none">
                                             {FLAT_FIELDS.map(f => <option key={f.id} value={f.id}>{f.label}</option>)}
                                           </select>
-                                          <select 
-                                            value={col.lookupTableId} 
-                                            onChange={(e) => updateColumn(tpl.id, cIdx, { lookupTableId: e.target.value })}
-                                            className="flex-1 bg-indigo-50 border border-indigo-100 rounded-xl px-3 py-2 text-[9px] font-black uppercase text-indigo-600 outline-none"
-                                          >
+                                          <select value={col.lookupTableId} onChange={(e) => updateColumn(tpl.id, cIdx, { lookupTableId: e.target.value })} className="flex-1 bg-indigo-50 border border-indigo-100 rounded-xl px-3 py-2 text-[9px] font-black uppercase text-indigo-600 outline-none">
                                             <option value="">Table...</option>
                                             {localLookups.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
                                           </select>
@@ -447,144 +368,24 @@ export const ConfigurationModal: React.FC<ConfigurationModalProps> = ({
                                       )}
                                       <p className="text-[7px] font-black text-slate-400 uppercase mt-1 ml-1">Sélecteur de Valeur</p>
                                     </div>
-
                                     <div className="col-span-2 flex justify-end">
-                                      <button onClick={() => removeColumn(tpl.id, cIdx)} className="p-2 text-slate-300 hover:text-rose-500 transition-colors opacity-0 group-hover/col:opacity-100">
-                                        <Trash2 className="w-4 h-4" />
-                                      </button>
+                                      <button onClick={() => removeColumn(tpl.id, cIdx)} className="p-2 text-slate-300 hover:text-rose-500 transition-colors opacity-0 group-hover/col:opacity-100"><Trash2 className="w-4 h-4" /></button>
                                     </div>
-                                  </div>
-                                </div>
-                                
-                                <div className="border-t border-slate-100/50 pt-3 flex items-center space-x-6">
-                                  <div className="flex-1 flex items-center space-x-3">
-                                    <Tag className="w-3 h-3 text-slate-300" />
-                                    <div className="flex-1">
-                                      <input 
-                                        value={col.defaultValue || ''} 
-                                        onChange={(e) => updateColumn(tpl.id, cIdx, { defaultValue: e.target.value })}
-                                        className="w-full bg-transparent border-b border-transparent hover:border-slate-200 focus:border-indigo-400 text-[10px] font-bold text-slate-500 outline-none px-1 py-0.5 transition-all"
-                                        placeholder="Valeur par défaut si vide..."
-                                      />
-                                    </div>
-                                  </div>
-                                  <div className="flex items-center text-[8px] font-black text-slate-300 uppercase tracking-widest italic">
-                                    <Info className="w-2.5 h-2.5 mr-1" /> Requis pour le mapping ERP strict
                                   </div>
                                 </div>
                               </div>
                             ))}
                           </div>
-
-                          {/* Fix: use tpl.id instead of undefined templateId */}
                           <button onClick={() => addColumn(tpl.id)} className="w-full py-5 border-2 border-dashed border-slate-100 rounded-[2rem] text-[10px] font-black uppercase text-slate-400 hover:border-indigo-200 hover:bg-indigo-50/30 hover:text-indigo-600 transition-all flex items-center justify-center">
                             <Plus className="w-4 h-4 mr-2" /> Ajouter une colonne
                           </button>
                         </div>
-
-                        {/* Live Preview Section */}
-                        <div className="mt-10 bg-slate-900 rounded-[2rem] p-8 text-white relative overflow-hidden shadow-2xl">
-                          <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/10 rounded-full blur-3xl -mr-16 -mt-16"></div>
-                          <div className="flex items-center justify-between mb-6">
-                             <div className="flex items-center space-x-3">
-                                <PlayCircle className="w-5 h-5 text-indigo-400" />
-                                <div>
-                                   <p className="text-[10px] font-black uppercase tracking-widest text-indigo-300">Live Preview Output</p>
-                                   <p className="text-[8px] font-bold text-slate-500 uppercase tracking-widest">Basé sur une facture d'exemple fictive</p>
-                                </div>
-                             </div>
-                             <div className="flex items-center space-x-1.5 bg-white/5 px-3 py-1.5 rounded-xl border border-white/5">
-                                <TableProperties className="w-3 h-3 text-slate-500" />
-                                <span className="text-[8px] font-black uppercase tracking-widest text-slate-400">Preview Mode</span>
-                             </div>
-                          </div>
-                          
-                          <div className="bg-black/40 rounded-2xl p-6 font-mono text-xs overflow-x-auto custom-scrollbar border border-white/5">
-                             <div className="text-slate-500 mb-2 select-none">{tpl.columns.map(c => c.header).join(tpl.separator === 'semicolon' ? ';' : tpl.separator === 'tab' ? '\t' : ',')}</div>
-                             <div className="text-emerald-400 selection:bg-emerald-500/20">{getPreviewRow(tpl)}</div>
-                          </div>
-                          <div className="mt-4 flex items-center justify-center text-[7px] font-black uppercase tracking-[0.3em] text-slate-600">
-                             Visualisation temps réel • Auto-escape inclus • Separator: {tpl.separator}
-                          </div>
-                        </div>
                       </div>
                     ))}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* MASTER DATA */}
-            {activeTab === 'masterdata' && (
-              <div className="space-y-8 animate-in fade-in duration-300">
-                <Header title="Tiers Référentiels" desc="Auto-complétion intelligente via SIRET">
-                  <button onClick={() => setLocalMasterData([{id: crypto.randomUUID(), erpCode:'', name:'Nouveau Tiers', siret:'', vatNumber:'', iban:'', bic:''}, ...localMasterData])} className="bg-indigo-600 text-white px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center shadow-lg hover:bg-indigo-700"><Plus className="w-4 h-4 mr-2" /> Nouveau Tiers</button>
-                </Header>
-                <div className="space-y-4">
-                  {localMasterData.map(p => (
-                    <div key={p.id} className="p-8 border border-slate-100 rounded-[2rem] bg-slate-50/50 hover:bg-white hover:border-indigo-100 transition-all group relative">
-                      <button onClick={()=>setLocalMasterData(prev=>prev.filter(x=>x.id!==p.id))} className="absolute top-6 right-6 p-2 text-slate-300 hover:text-rose-500 transition-colors opacity-0 group-hover:opacity-100"><Trash2 className="w-5 h-5" /></button>
-                      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                        <div className="space-y-4">
-                          <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest flex items-center"><Building2 className="w-3 h-3 mr-2" /> Identité ERP</label>
-                          <Input label="Code Sage" value={p.erpCode} onChange={(v:any)=>setLocalMasterData(prev=>prev.map(x=>x.id===p.id?{...x, erpCode:v}:x))} />
-                          <Input label="Raison Sociale" value={p.name} onChange={(v:any)=>setLocalMasterData(prev=>prev.map(x=>x.id===p.id?{...x, name:v}:x))} />
-                        </div>
-                        <div className="space-y-4">
-                          <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest flex items-center"><ShieldCheck className="w-3 h-3 mr-2" /> Fiscalité</label>
-                          <Input label="SIRET" value={p.siret} onChange={(v:any)=>setLocalMasterData(prev=>prev.map(x=>x.id===p.id?{...x, siret:v.replace(/\s/g,'')}:x))} />
-                          <Input label="N° TVA" value={p.vatNumber} onChange={(v:any)=>setLocalMasterData(prev=>prev.map(x=>x.id===p.id?{...x, vatNumber:v}:x))} />
-                        </div>
-                        <div className="space-y-4">
-                          <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest flex items-center"><Landmark className="w-3 h-3 mr-2" /> Bancaire</label>
-                          <Input label="IBAN" value={p.iban || ''} onChange={(v:any)=>setLocalMasterData(prev=>prev.map(x=>x.id===p.id?{...x, iban:v.replace(/\s/g,'')}:x))} />
-                          <Input label="BIC" value={p.bic || ''} onChange={(v:any)=>setLocalMasterData(prev=>prev.map(x=>x.id===p.id?{...x, bic:v}:x))} />
-                        </div>
-                      </div>
-                    </div>
-                  ))}
                 </div>
               </div>
             )}
 
-            {/* XML BLUEPRINTS */}
-            {activeTab === 'xml' && (
-              <div className="space-y-8 animate-in fade-in duration-300">
-                <Header title="Mappeur XML Personnalisé" desc="Définissez vos propres balises et sauvegardes d'export">
-                  <button onClick={handleAddXmlProfile} className="bg-slate-950 text-white px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center shadow-lg"><LayoutTemplate className="w-4 h-4 mr-2" /> Créer Blueprint</button>
-                </Header>
-                {localXmlProfiles.map(prof => (
-                  <div key={prof.id} className="p-8 border-2 border-slate-100 rounded-[2.5rem] bg-white relative group shadow-sm hover:border-indigo-100 transition-all">
-                    <button onClick={()=>setLocalXmlProfiles(prev=>prev.filter(p=>p.id!==prof.id))} className="absolute top-8 right-8 text-slate-300 hover:text-rose-500"><Trash2 className="w-5 h-5" /></button>
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8 border-b border-slate-50 pb-8">
-                      <Input label="Nom du Profil" value={prof.name} onChange={(v:any)=>setLocalXmlProfiles(prev=>prev.map(p=>p.id===prof.id?{...p, name:v}:p))} />
-                      <Input label="Balise Racine" value={prof.rootTag} onChange={(v:any)=>setLocalXmlProfiles(prev=>prev.map(p=>p.id===prof.id?{...p, rootTag:v}:p))} />
-                      <Input label="Balise Ligne" value={prof.itemTag} onChange={(v:any)=>setLocalXmlProfiles(prev=>prev.map(p=>p.id===prof.id?{...p, itemTag:v}:p))} />
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {prof.mappings.map((m, mIdx) => (
-                        <div key={m.btId} className={`flex items-center space-x-3 p-4 rounded-2xl border transition-all ${m.enabled ? 'bg-indigo-50 border-indigo-100' : 'bg-slate-50 border-slate-200 opacity-60'}`}>
-                          <input type="checkbox" checked={m.enabled} onChange={e=>{
-                            const newMaps = [...prof.mappings]; newMaps[mIdx].enabled = e.target.checked;
-                            setLocalXmlProfiles(prev=>prev.map(p=>p.id===prof.id?{...p, mappings:newMaps}:p));
-                          }} className="w-4 h-4 rounded text-indigo-600" />
-                          <div className="flex-1 min-w-0">
-                            <p className="text-[8px] font-black text-slate-400 uppercase mb-1 truncate">{FLAT_FIELDS.find(f=>f.id===m.btId)?.label}</p>
-                            <input value={m.xmlTag} onChange={e=>{
-                              const newMaps = [...prof.mappings]; newMaps[mIdx].xmlTag = e.target.value.toUpperCase();
-                              setLocalXmlProfiles(prev=>prev.map(p=>p.id===prof.id?{...p, mappings:newMaps}:p));
-                            }} className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-[10px] font-black outline-none focus:border-indigo-600" />
-                          </div>
-                          <Code2 className="w-4 h-4 text-indigo-300" />
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* TRANSCODING */}
             {activeTab === 'lookups' && (
               <div className="space-y-8 animate-in fade-in duration-300">
                 <Header title="Tables de Correspondance" desc="Transcodage de données pour l'intégration ERP">
@@ -606,34 +407,25 @@ export const ConfigurationModal: React.FC<ConfigurationModalProps> = ({
                             <input value={ent.value} onChange={e=>{
                               const entries = [...table.entries]; entries[eIdx].value = e.target.value;
                               setLocalLookups(prev=>prev.map(l=>l.id===table.id?{...l, entries}:l));
-                            }} className="flex-1 bg-indigo-600 text-white border border-indigo-600 rounded-xl px-4 py-2 text-[10px] font-black" placeholder="ERP Code (Target)" />
-                            <button onClick={()=>{
-                              const entries = table.entries.filter((_, i) => i !== eIdx);
-                              setLocalLookups(prev=>prev.map(l=>l.id===table.id?{...l, entries}:l));
-                            }} className="text-slate-300 hover:text-rose-500 p-1"><X className="w-4 h-4" /></button>
+                            }} className="flex-1 bg-indigo-600 text-white border border-indigo-600 rounded-xl px-4 py-2 text-[10px] font-black" placeholder="Code ERP (Cible)" />
                           </div>
                         ))}
-                        <button onClick={()=>{
-                          const entries = [...table.entries, {key:'', value:''}];
-                          setLocalLookups(prev=>prev.map(l=>l.id===table.id?{...l, entries}:l));
-                        }} className="w-full py-4 border-2 border-dashed border-slate-200 rounded-2xl text-[9px] font-black uppercase text-slate-400 hover:text-indigo-600 hover:border-indigo-200 transition-all">Ajouter Entrée</button>
                       </div>
                     </div>
                   ))}
                 </div>
               </div>
             )}
-
-            {/* SAGE X3 SETUP */}
+            
             {activeTab === 'erp' && (
               <div className="max-w-3xl space-y-12 animate-in fade-in duration-300">
-                <Header title="Connecteur Sage X3" desc="Synchronisation directe via Web Services" />
+                <Header title="Config Sage X3" desc="Synchronisation directe via Web Services" />
                 <div className="p-10 bg-slate-900 rounded-[3rem] shadow-2xl text-white relative overflow-hidden">
                   <CloudLightning className="w-24 h-24 absolute -right-6 -top-6 text-white/10" />
                   <div className="flex items-center justify-between mb-10">
                     <div className="flex items-center space-x-4">
                       <div className="p-3 bg-white/10 rounded-2xl"><ShieldCheck className="w-6 h-6" /></div>
-                      <span className="text-xs font-black uppercase tracking-[0.2em]">Service Status: {localErp.enabled ? 'Linked' : 'Offline'}</span>
+                      <span className="text-xs font-black uppercase tracking-[0.2em]">Statut Service: {localErp.enabled ? 'Connecté' : 'Hors-ligne'}</span>
                     </div>
                     <button onClick={()=>setLocalErp({...localErp, enabled:!localErp.enabled})} className={`w-14 h-7 rounded-full p-1 transition-all ${localErp.enabled?'bg-indigo-500':'bg-white/20'}`}>
                       <div className={`w-5 h-5 bg-white rounded-full transition-all ${localErp.enabled?'translate-x-7':'translate-x-0'}`}></div>
@@ -641,11 +433,7 @@ export const ConfigurationModal: React.FC<ConfigurationModalProps> = ({
                   </div>
                   <div className="space-y-8">
                     <Input label="Sage X3 Endpoint" value={localErp.apiUrl} onChange={(v:any)=>setLocalErp({...localErp, apiUrl:v})} theme="dark" />
-                    <div className="grid grid-cols-2 gap-8">
-                      <Input label="Dossier (Folder)" value={localErp.sageConfig?.folder||''} onChange={(v:any)=>setLocalErp({...localErp, sageConfig: {...(localErp.sageConfig||{} as SageX3Config), folder:v}})} theme="dark" />
-                      <Input label="Utilisateur" value={localErp.sageConfig?.user||''} onChange={(v:any)=>setLocalErp({...localErp, sageConfig: {...(localErp.sageConfig||{} as SageX3Config), user:v}})} theme="dark" />
-                    </div>
-                    <Input label="API Key / Token" type="password" value={localErp.apiKey} onChange={(v:any)=>setLocalErp({...localErp, apiKey:v})} theme="dark" />
+                    <Input label="Clé API / Token" type="password" value={localErp.apiKey} onChange={(v:any)=>setLocalErp({...localErp, apiKey:v})} theme="dark" />
                   </div>
                 </div>
               </div>
@@ -654,11 +442,10 @@ export const ConfigurationModal: React.FC<ConfigurationModalProps> = ({
           </div>
         </div>
 
-        {/* Footer */}
         <div className="px-10 py-6 bg-slate-50 border-t border-slate-100 flex justify-end items-center space-x-4 shrink-0">
           <button onClick={onClose} className="text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-slate-600 transition-colors">Abandonner</button>
           <button onClick={handleSaveAll} className="bg-slate-950 text-white px-12 py-5 rounded-[1.5rem] text-[10px] font-black uppercase tracking-widest shadow-2xl hover:bg-black transition-all flex items-center active:scale-95 border-b-4 border-slate-800">
-            <Save className="w-5 h-5 mr-3" /> Commit Changes
+            <Save className="w-5 h-5 mr-3" /> Appliquer les Changements
           </button>
         </div>
       </div>
