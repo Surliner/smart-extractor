@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { InvoiceData, InvoiceItem, ErpStatus, InvoiceType, LookupTable, ExportTemplate, XmlMappingProfile, PartnerMasterData } from '../types';
-import { Trash2, ChevronDown, CheckCircle2, AlertCircle, Circle, Columns, X, FileCode, ArrowDownLeft, ArrowUpRight, Maximize2, LayoutList, FileSpreadsheet, FileDown, Zap, ListChecks, FileJson, ShieldCheck, FileCheck, Search, Filter, ArrowUpDown, ArrowUp, ArrowDown, Calendar, Banknote, Clock, HardDrive, FileText } from 'lucide-react';
+import { Trash2, ChevronDown, CheckCircle2, AlertCircle, Circle, Columns, X, FileCode, ArrowDownLeft, ArrowUpRight, Maximize2, LayoutList, FileSpreadsheet, FileDown, Zap, ListChecks, FileJson, ShieldCheck, FileCheck, Search, Filter, ArrowUpDown, ArrowUp, ArrowDown, Calendar, Banknote, Clock, HardDrive, FileText, Archive, ArchiveRestore } from 'lucide-react';
 import { FacturXModal } from './FacturXModal';
 import { generateTemplatedCSV, generateTemplatedXML } from '../services/exportService';
 import { generateFacturXXML } from '../services/facturXService';
@@ -13,11 +13,13 @@ interface InvoiceTableProps {
   onToggleAll: () => void;
   onUpdate: (id: string, data: Partial<InvoiceData>) => void;
   onDeleteInvoices: (ids: string[]) => void;
+  onArchiveInvoices: (ids: string[], archived: boolean) => void;
   onSyncInvoices: (ids: string[]) => void;
   lookupTables: LookupTable[];
   templates: ExportTemplate[];
   xmlProfiles: XmlMappingProfile[];
   masterData?: PartnerMasterData[];
+  isArchiveView?: boolean;
 }
 
 type SortConfig = {
@@ -32,16 +34,17 @@ export const InvoiceTable: React.FC<InvoiceTableProps> = ({
   onToggleAll,
   onUpdate, 
   onDeleteInvoices,
+  onArchiveInvoices,
   onSyncInvoices,
   lookupTables,
   templates,
   xmlProfiles,
-  masterData = []
+  masterData = [],
+  isArchiveView = false
 }) => {
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   
-  // Filtering states
   const [showFilters, setShowFilters] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
@@ -50,23 +53,19 @@ export const InvoiceTable: React.FC<InvoiceTableProps> = ({
   const [minAmount, setMinAmount] = useState('');
   const [maxAmount, setMaxAmount] = useState('');
 
-  // Sorting state - Tri par date d'extraction décroissante par défaut
   const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'extractedAt' as any, direction: 'desc' });
 
   const activeInvoice = useMemo(() => invoices.find(inv => inv.id === editingId), [invoices, editingId]);
 
-  // Helper to parse date DD/MM/YYYY to Date object
   const parseDate = (dStr: string) => {
     if (!dStr) return null;
     const [d, m, y] = dStr.split('/').map(Number);
     return new Date(y, m - 1, d);
   };
 
-  // Filter and Sort Logic
   const filteredAndSortedInvoices = useMemo(() => {
     let result = [...invoices];
 
-    // Search
     if (searchTerm) {
       const lowerSearch = searchTerm.toLowerCase();
       result = result.filter(inv => 
@@ -75,12 +74,10 @@ export const InvoiceTable: React.FC<InvoiceTableProps> = ({
       );
     }
 
-    // Status
     if (statusFilter !== 'ALL') {
       result = result.filter(inv => inv.erpStatus === statusFilter);
     }
 
-    // Date Range
     if (dateStart) {
       const start = new Date(dateStart);
       result = result.filter(inv => {
@@ -96,7 +93,6 @@ export const InvoiceTable: React.FC<InvoiceTableProps> = ({
       });
     }
 
-    // Amount Range
     if (minAmount) {
       result = result.filter(inv => (inv.amountInclVat || 0) >= parseFloat(minAmount));
     }
@@ -104,27 +100,23 @@ export const InvoiceTable: React.FC<InvoiceTableProps> = ({
       result = result.filter(inv => (inv.amountInclVat || 0) <= parseFloat(maxAmount));
     }
 
-    // Sort
     if (sortConfig) {
       result.sort((a, b) => {
         let aVal = a[sortConfig.key];
         let bVal = b[sortConfig.key];
 
-        // Specific handling for invoice date
         if (sortConfig.key === 'invoiceDate') {
           const dA = parseDate(a.invoiceDate)?.getTime() || 0;
           const dB = parseDate(b.invoiceDate)?.getTime() || 0;
           return sortConfig.direction === 'asc' ? dA - dB : dB - dA;
         }
         
-        // Specific handling for extracted date (ISO)
         if (sortConfig.key === ('extractedAt' as any)) {
           const dA = a.extractedAt ? new Date(a.extractedAt).getTime() : 0;
           const dB = b.extractedAt ? new Date(b.extractedAt).getTime() : 0;
           return sortConfig.direction === 'asc' ? dA - dB : dB - dA;
         }
 
-        // Default string/number sort
         if (aVal === undefined || aVal === null) aVal = '';
         if (bVal === undefined || bVal === null) bVal = '';
 
@@ -219,7 +211,6 @@ export const InvoiceTable: React.FC<InvoiceTableProps> = ({
         />
       )}
 
-      {/* FILTERS & SEARCH BAR */}
       <div className="mb-6 space-y-4">
         <div className="flex items-center justify-between">
           <div className="relative flex-1 max-w-md group">
@@ -318,7 +309,6 @@ export const InvoiceTable: React.FC<InvoiceTableProps> = ({
         )}
       </div>
 
-      {/* FLOATING ACTION BAR */}
       {selectedIds.size > 0 && (
         <div className="fixed bottom-12 left-1/2 -translate-x-1/2 z-[60] bg-slate-900/90 backdrop-blur-2xl text-white px-10 py-6 rounded-[3rem] shadow-2xl flex items-center space-x-12 animate-in slide-in-from-bottom-10 duration-500 border border-white/10">
           <div className="flex items-center space-x-4 border-r border-white/10 pr-10">
@@ -335,11 +325,20 @@ export const InvoiceTable: React.FC<InvoiceTableProps> = ({
               <span>Exporter</span>
               <ChevronDown className={`w-3 h-3 transition-all ${showExportMenu ? 'rotate-180' : ''}`} />
             </button>
-            <button onClick={() => onSyncInvoices(Array.from(selectedIds))} className="flex items-center space-x-2 text-[10px] font-black uppercase tracking-widest hover:text-emerald-400 transition-colors group">
-              <Zap className="w-5 h-5 text-emerald-500 group-hover:scale-110 transition-transform" />
-              <span>Sync ERP</span>
+            {!isArchiveView && (
+              <button onClick={() => onSyncInvoices(Array.from(selectedIds))} className="flex items-center space-x-2 text-[10px] font-black uppercase tracking-widest hover:text-emerald-400 transition-colors group">
+                <Zap className="w-5 h-5 text-emerald-500 group-hover:scale-110 transition-transform" />
+                <span>Sync ERP</span>
+              </button>
+            )}
+            <button 
+              onClick={() => onArchiveInvoices(Array.from(selectedIds), !isArchiveView)} 
+              className={`flex items-center space-x-2 text-[10px] font-black uppercase tracking-widest transition-colors group ${isArchiveView ? 'hover:text-emerald-400' : 'hover:text-indigo-400'}`}
+            >
+              {isArchiveView ? <ArchiveRestore className="w-5 h-5 text-emerald-500 group-hover:scale-110 transition-transform" /> : <Archive className="w-5 h-5 text-indigo-500 group-hover:scale-110 transition-transform" />}
+              <span>{isArchiveView ? 'Désarchiver' : 'Archiver'}</span>
             </button>
-            <button onClick={() => onDeleteInvoices(Array.from(selectedIds))} className="flex items-center space-x-2 text-[10px] font-black uppercase tracking-widest hover:text-rose-400 transition-colors group">
+            <button onClick={() => { if(confirm("Supprimer définitivement ces factures ?")) onDeleteInvoices(Array.from(selectedIds)); }} className="flex items-center space-x-2 text-[10px] font-black uppercase tracking-widest hover:text-rose-400 transition-colors group">
               <Trash2 className="w-5 h-5 text-rose-500 group-hover:scale-110 transition-transform" />
               <span>Effacer</span>
             </button>
@@ -445,7 +444,6 @@ export const InvoiceTable: React.FC<InvoiceTableProps> = ({
                       <div className="flex flex-col">
                         <div className="flex items-center">
                           <span className="text-xs font-bold text-slate-800">{inv.supplier}</span>
-                          {/* Fix: Lucide icons don't support 'title' prop directly in this environment, using wrapper span */}
                           {inv.isMasterMatched && <span title="Identifié Master Data"><ShieldCheck className="w-3 h-3 ml-2 text-emerald-500" /></span>}
                         </div>
                         <span className="text-[9px] font-medium text-slate-400 truncate max-w-[200px] mt-0.5 flex items-center">

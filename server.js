@@ -36,7 +36,6 @@ const initDb = async () => {
       );
     `);
 
-    // Table pour les logs personnels
     await client.query(`
       CREATE TABLE IF NOT EXISTS processing_logs (
           id UUID PRIMARY KEY,
@@ -47,7 +46,6 @@ const initDb = async () => {
       );
     `);
 
-    // Migrations USERS
     const userMigrations = [
       { table: 'users', col: 'company_id', type: 'UUID REFERENCES companies(id)' },
       { table: 'users', col: 'role', type: "TEXT DEFAULT 'USER'" },
@@ -72,7 +70,8 @@ const initDb = async () => {
     `);
 
     const invoiceMigrations = [
-      { table: 'invoices', col: 'company_id', type: 'UUID REFERENCES companies(id)' }
+      { table: 'invoices', col: 'company_id', type: 'UUID REFERENCES companies(id)' },
+      { table: 'invoices', col: 'is_archived', type: 'BOOLEAN DEFAULT FALSE' }
     ];
 
     for (const m of invoiceMigrations) {
@@ -112,7 +111,6 @@ const initDb = async () => {
 app.use(cors());
 app.use(express.json({ limit: '100mb' }));
 
-// --- ROUTES LOGS ---
 app.get('/api/logs/:username', async (req, res) => {
   try {
     const result = await pool.query(
@@ -135,7 +133,6 @@ app.post('/api/logs', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// --- AUTRES ROUTES ---
 app.post('/api/users/stats', async (req, res) => {
   const { username, tokens } = req.body;
   try {
@@ -150,10 +147,7 @@ app.post('/api/users/stats', async (req, res) => {
       [tokens || 0, username]
     );
     res.json({ success: true });
-  } catch (err) {
-    console.error("Stats update error:", err);
-    res.status(500).json({ error: err.message });
-  }
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 app.get('/api/admin/companies', async (req, res) => {
@@ -246,14 +240,47 @@ app.post('/api/auth/register', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+app.get('/api/auth/recovery/:username', async (req, res) => {
+  const { username } = req.params;
+  try {
+    const result = await pool.query(
+      'SELECT username, security_question FROM users WHERE LOWER(username) = LOWER($1)',
+      [username.trim()]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: "Utilisateur introuvable." });
+    res.json(result.rows[0]);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/auth/reset-password', async (req, res) => {
+  const { username, newPassword, answer } = req.body;
+  try {
+    const userRes = await pool.query(
+      'SELECT security_answer FROM users WHERE LOWER(username) = LOWER($1)',
+      [username.trim()]
+    );
+    if (userRes.rows.length === 0) return res.status(404).json({ error: "Utilisateur introuvable." });
+    
+    if (userRes.rows[0].security_answer.toLowerCase().trim() !== answer.toLowerCase().trim()) {
+      return res.status(401).json({ error: "Réponse de sécurité incorrecte." });
+    }
+
+    await pool.query(
+      'UPDATE users SET password = $1 WHERE LOWER(username) = LOWER($2)',
+      [newPassword, username.trim()]
+    );
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 app.get('/api/invoices', async (req, res) => {
   const { companyId } = req.query;
   try {
     const result = await pool.query(
-      'SELECT data FROM invoices WHERE company_id = $1 ORDER BY created_at DESC',
+      'SELECT data, is_archived FROM invoices WHERE company_id = $1 ORDER BY created_at DESC',
       [companyId]
     );
-    res.json(result.rows.map(row => row.data));
+    res.json(result.rows.map(row => ({ ...row.data, isArchived: row.is_archived })));
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -270,14 +297,29 @@ app.post('/api/invoices', async (req, res) => {
     const { username, company_id } = userRes.rows[0];
     
     await pool.query(
-      'INSERT INTO invoices (id, owner, company_id, data) VALUES ($1, $2, $3, $4) ON CONFLICT (id) DO UPDATE SET data = $4', 
-      [invoice.id, username, company_id, invoice]
+      'INSERT INTO invoices (id, owner, company_id, data, is_archived) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (id) DO UPDATE SET data = $4, is_archived = $5', 
+      [invoice.id, username, company_id, invoice, invoice.isArchived || false]
     );
     res.json({ success: true });
   } catch (err) { 
-    console.error("POST /api/invoices DATABASE ERROR:", err);
     res.status(500).json({ error: err.message }); 
   }
+});
+
+app.post('/api/invoices/bulk-delete', async (req, res) => {
+  const { ids } = req.body;
+  try {
+    await pool.query('DELETE FROM invoices WHERE id = ANY($1::uuid[])', [ids]);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/invoices/bulk-archive', async (req, res) => {
+  const { ids, archived } = req.body;
+  try {
+    await pool.query('UPDATE invoices SET is_archived = $1 WHERE id = ANY($2::uuid[])', [archived, ids]);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 app.get('/api/admin/users', async (req, res) => {

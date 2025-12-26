@@ -72,7 +72,7 @@ export interface InvoiceData {
   invoiceType: InvoiceType;
   invoiceNumber: string;
   invoiceDate: string;
-  extractedAt?: string; // Date technique d'extraction
+  extractedAt?: string; 
   dueDate?: string;
   taxPointDate?: string;
   currency: string;
@@ -114,6 +114,7 @@ export interface InvoiceData {
   erpStatus?: ErpStatus;
   erpReference?: string;
   isMasterMatched?: boolean;
+  isArchived?: boolean;
 }
 
 export interface ProcessingLog {

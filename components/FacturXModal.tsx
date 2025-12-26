@@ -67,7 +67,7 @@ const FormInput = ({ label, value, onChange, type = "text", placeholder, btId, r
   );
 };
 
-const Group = ({ title, icon: Icon, children, actions, variant = "indigo", className = "" }: any) => {
+const Group = ({ title, icon: Icon, children, actions, variant = "indigo", className = "", fullHeight = true }: any) => {
   const variants: Record<string, string> = {
     indigo: "border-slate-200 bg-white",
     orange: "border-slate-200 bg-white",
@@ -85,7 +85,7 @@ const Group = ({ title, icon: Icon, children, actions, variant = "indigo", class
   };
 
   return (
-    <div className={`rounded-2xl border flex flex-col h-full overflow-hidden transition-all duration-300 shadow-sm ${variants[variant]} ${className}`}>
+    <div className={`rounded-2xl border flex flex-col ${fullHeight ? 'h-full' : 'h-auto'} overflow-hidden transition-all duration-300 shadow-sm ${variants[variant]} ${className}`}>
       <div className="px-4 py-2 bg-slate-50/80 border-b border-slate-100 flex justify-between items-center shrink-0">
         <div className="flex items-center space-x-2">
           {Icon && (
@@ -97,7 +97,7 @@ const Group = ({ title, icon: Icon, children, actions, variant = "indigo", class
         </div>
         {actions && <div className="flex space-x-1.5">{actions}</div>}
       </div>
-      <div className="p-4 flex-1">{children}</div>
+      <div className={`p-4 ${fullHeight ? 'flex-1' : ''}`}>{children}</div>
     </div>
   );
 };
@@ -307,8 +307,8 @@ export const FacturXModal: React.FC<{
                       </Group>
                     </div>
 
-                    <Group title="Lignes Extraites (BG-25)" icon={Package} variant="slate" className="w-full">
-                      <div className="w-full rounded-xl border border-slate-200 overflow-x-auto bg-white custom-scrollbar h-[350px]">
+                    <Group title="Lignes Extraites (BG-25)" icon={Package} variant="slate" className="w-full" fullHeight={false}>
+                      <div className="w-full rounded-xl border border-slate-200 overflow-x-auto bg-white custom-scrollbar max-h-[500px]">
                         <table className="w-full text-[10px] border-collapse min-w-[1300px]">
                           <thead className="bg-slate-50 text-[8px] font-black uppercase text-slate-500 border-b border-slate-200 sticky top-0 z-10">
                             <tr>

@@ -41,6 +41,15 @@ export const dbService = {
     return data;
   },
 
+  async getRecoveryInfo(username: string): Promise<{username: string, security_question: string}> {
+    const response = await fetch(`${API_URL}/auth/recovery/${username}`);
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error || "Utilisateur introuvable.");
+    }
+    return data;
+  },
+
   async updateUserStats(username: string, tokens: number): Promise<void> {
     await fetch(`${API_URL}/users/stats`, {
       method: 'POST',
@@ -127,6 +136,22 @@ export const dbService = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(invoice)
+    });
+  },
+
+  async deleteInvoices(ids: string[]): Promise<void> {
+    await fetch(`${API_URL}/invoices/bulk-delete`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids })
+    });
+  },
+
+  async archiveInvoices(ids: string[], archived: boolean): Promise<void> {
+    await fetch(`${API_URL}/invoices/bulk-archive`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids, archived })
     });
   },
 
