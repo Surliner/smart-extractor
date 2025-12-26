@@ -36,7 +36,8 @@ const initDb = async () => {
       );
     `);
 
-    const migrations = [
+    // Migrations pour la table USERS
+    const userMigrations = [
       { table: 'users', col: 'company_id', type: 'UUID REFERENCES companies(id)' },
       { table: 'users', col: 'role', type: "TEXT DEFAULT 'USER'" },
       { table: 'users', col: 'is_approved', type: "BOOLEAN DEFAULT FALSE" },
@@ -46,7 +47,7 @@ const initDb = async () => {
       { table: 'users', col: 'login_history', type: "JSONB DEFAULT '[]'" }
     ];
 
-    for (const m of migrations) {
+    for (const m of userMigrations) {
       await client.query(`ALTER TABLE ${m.table} ADD COLUMN IF NOT EXISTS ${m.col} ${m.type};`);
     }
 
@@ -54,11 +55,20 @@ const initDb = async () => {
       CREATE TABLE IF NOT EXISTS invoices (
           id UUID PRIMARY KEY,
           owner TEXT REFERENCES users(username) ON DELETE CASCADE,
-          company_id UUID REFERENCES companies(id),
           data JSONB,
           created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       );
     `);
+
+    // Migration CRUCIALE pour la table INVOICES (évite l'erreur 500 column not found)
+    const invoiceMigrations = [
+      { table: 'invoices', col: 'company_id', type: 'UUID REFERENCES companies(id)' },
+      { table: 'invoices', col: 'owner', type: 'TEXT REFERENCES users(username) ON DELETE CASCADE' }
+    ];
+
+    for (const m of invoiceMigrations) {
+       await client.query(`ALTER TABLE ${m.table} ADD COLUMN IF NOT EXISTS ${m.col} ${m.type};`);
+    }
 
     const compCount = await client.query('SELECT COUNT(*) FROM companies');
     let defaultCompId;
@@ -81,6 +91,7 @@ const initDb = async () => {
     }
 
     await client.query('COMMIT');
+    console.log("Database initialized and migrated successfully.");
   } catch (err) {
     await client.query('ROLLBACK');
     console.error("DB Init Error:", err);
@@ -90,9 +101,9 @@ const initDb = async () => {
 };
 
 app.use(cors());
-app.use(express.json({ limit: '100mb' })); // Augmentation de la limite pour les gros PDF
+app.use(express.json({ limit: '100mb' }));
 
-// --- COMPANY API ---
+// --- API ROUTES ---
 app.get('/api/admin/companies', async (req, res) => {
   try {
     const result = await pool.query('SELECT * FROM companies ORDER BY name ASC');
@@ -117,7 +128,6 @@ app.post('/api/company/config', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// --- AUTH API ---
 app.post('/api/auth/login', async (req, res) => {
   const { username, password } = req.body;
   try {
@@ -182,7 +192,6 @@ app.post('/api/auth/register', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// --- INVOICE API ---
 app.get('/api/invoices', async (req, res) => {
   const { user } = req.query;
   try {
@@ -200,14 +209,12 @@ app.post('/api/invoices', async (req, res) => {
       return res.status(400).json({ error: "Missing Invoice ID or Owner" });
   }
   try {
-    // Crucial: Récupérer le nom d'utilisateur exact (casse) et le company_id
     const userRes = await pool.query('SELECT username, company_id FROM users WHERE LOWER(username) = LOWER($1)', [invoice.owner]);
     if (userRes.rows.length === 0) {
-        return res.status(404).json({ error: `User ${invoice.owner} not found in database.` });
+        return res.status(404).json({ error: `User ${invoice.owner} not found.` });
     }
     const { username, company_id } = userRes.rows[0];
     
-    // Upsert de la facture
     await pool.query(
       'INSERT INTO invoices (id, owner, company_id, data) VALUES ($1, $2, $3, $4) ON CONFLICT (id) DO UPDATE SET data = $4', 
       [invoice.id, username, company_id, invoice]
@@ -240,9 +247,6 @@ app.get('/api/admin/users', async (req, res) => {
 
 app.post('/api/admin/users/update', async (req, res) => {
   const { username, role, companyId, isApproved } = req.body;
-  if (username.toLowerCase() === 'admin' && role !== 'SUPER_ADMIN') {
-    return res.status(400).json({ error: "Cannot downgrade master admin role." });
-  }
   try {
     await pool.query(
       'UPDATE users SET role = $1, company_id = $2, is_approved = $3 WHERE LOWER(username) = LOWER($4)',
@@ -254,9 +258,6 @@ app.post('/api/admin/users/update', async (req, res) => {
 
 app.delete('/api/admin/users/:username', async (req, res) => {
   const { username } = req.params;
-  if (username.toLowerCase() === 'admin') {
-    return res.status(400).json({ error: "Cannot delete master admin account." });
-  }
   try {
     await pool.query('DELETE FROM users WHERE LOWER(username) = LOWER($1)', [username]);
     res.json({ success: true });

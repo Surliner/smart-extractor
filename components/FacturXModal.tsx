@@ -309,13 +309,13 @@ export const FacturXModal: React.FC<{
 
                     <Group title="Lignes Extraites (BG-25)" icon={Package} variant="slate" className="w-full">
                       <div className="w-full rounded-xl border border-slate-200 overflow-x-auto bg-white custom-scrollbar h-[350px]">
-                        <table className="w-full text-[10px] border-collapse min-w-[1200px]">
+                        <table className="w-full text-[10px] border-collapse min-w-[1300px]">
                           <thead className="bg-slate-50 text-[8px] font-black uppercase text-slate-500 border-b border-slate-200 sticky top-0 z-10">
                             <tr>
                               <th className="px-3 py-4 text-left w-24">Réf.</th>
                               <th className="px-3 py-4 text-left">Désignation</th>
                               <th className="px-3 py-4 text-right w-16">Qté</th>
-                              <th className="px-3 py-4 text-left w-32 min-w-[120px] bg-indigo-50/20">Unité (BT-130)</th>
+                              <th className="px-3 py-4 text-left w-40 min-w-[150px] bg-indigo-50/20">Unité (BT-130)</th>
                               <th className="px-3 py-4 text-right w-24">P.U Brut</th>
                               <th className="px-3 py-4 text-right w-20">Remise</th>
                               <th className="px-3 py-4 text-right w-24 bg-indigo-50/30">P.U Net</th>
@@ -334,7 +334,7 @@ export const FacturXModal: React.FC<{
                                         <select 
                                             value={item.unitOfMeasure || 'C62'} 
                                             onChange={e=>handleUpdateItem(idx, 'unitOfMeasure', e.target.value)}
-                                            className="w-full bg-white border border-slate-200 group-focus-within:border-indigo-500 rounded px-2 py-1.5 outline-none font-black text-[9px] appearance-none shadow-sm cursor-pointer pr-6"
+                                            className="w-full bg-white border border-slate-200 group-focus-within:border-indigo-500 rounded px-2 py-1.5 outline-none font-black text-[9px] appearance-none shadow-sm cursor-pointer pr-6 h-8"
                                         >
                                             {UNIT_CODES.map(u => <option key={u.code} value={u.code}>{u.label} ({u.code})</option>)}
                                         </select>
