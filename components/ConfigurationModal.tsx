@@ -7,58 +7,129 @@ const MD_PAGE_SIZE = 15;
 
 const FIELD_GROUPS = [
   { name: 'Identité Document', fields: [
-    { id: 'invoiceType', label: 'Type Doc (Facture/Avoir)' },
-    { id: 'invoiceNumber', label: 'N° Facture' },
-    { id: 'invoiceDate', label: 'Date Facture' },
-    { id: 'dueDate', label: 'Date Échéance' },
-    { id: 'taxPointDate', label: 'Point de Taxe' },
-    { id: 'currency', label: 'Devise (ISO)' },
-    { id: 'businessProcessId', label: 'Profil (urn:factur-x...)' },
+    { id: 'invoiceType', label: 'Type Document' },
+    { id: 'invoiceNumber', label: 'N° Facture (BT-1)' },
+    { id: 'invoiceDate', label: 'Date Facture (BT-2)' },
+    { id: 'dueDate', label: 'Date Échéance (BT-9)' },
+    { id: 'taxPointDate', label: 'Point de Taxe (BT-7)' },
+    { id: 'currency', label: 'Devise ISO (BT-5)' },
+    { id: 'businessProcessId', label: 'Profil Standard (BT-24)' },
     { id: 'extractionMode', label: 'Mode IA' },
-    { id: 'direction', label: 'Sens (Inbound/Outbound)' }
+    { id: 'direction', label: 'Sens Flux' }
   ]},
   { name: 'Vendeur (Seller)', fields: [
-    { id: 'supplier', label: 'Nom Vendeur' },
-    { id: 'supplierSiret', label: 'SIRET Vendeur' },
-    { id: 'supplierVat', label: 'TVA Vendeur' },
+    { id: 'supplier', label: 'Nom Vendeur (BT-27)' },
+    { id: 'supplierSiret', label: 'SIRET Vendeur (BT-29)' },
+    { id: 'supplierVat', label: 'TVA Vendeur (BT-31)' },
     { id: 'supplierErpCode', label: 'Code ERP Vendeur' },
-    { id: 'supplierAddress', label: 'Adresse Vendeur' },
-    { id: 'iban', label: 'IBAN Vendeur' },
-    { id: 'bic', label: 'BIC Vendeur' }
+    { id: 'supplierAddress', label: 'Adresse Vendeur (BG-5)' },
+    { id: 'iban', label: 'IBAN Vendeur (BT-84)' },
+    { id: 'bic', label: 'BIC/SWIFT Vendeur (BT-85)' }
   ]},
   { name: 'Acheteur (Buyer)', fields: [
-    { id: 'buyerName', label: 'Nom Acheteur' },
-    { id: 'buyerSiret', label: 'SIRET Acheteur' },
-    { id: 'buyerVat', label: 'TVA Acheteur' },
+    { id: 'buyerName', label: 'Nom Acheteur (BT-44)' },
+    { id: 'buyerSiret', label: 'SIRET Acheteur (BT-47)' },
+    { id: 'buyerVat', label: 'TVA Acheteur (BT-48)' },
     { id: 'buyerErpCode', label: 'Code ERP Acheteur' },
-    { id: 'buyerAddress', label: 'Adresse Acheteur' }
+    { id: 'buyerAddress', label: 'Adresse Acheteur (BG-8)' }
   ]},
   { name: 'Références & Logistique', fields: [
-    { id: 'poNumber', label: 'N° Commande (PO)' },
-    { id: 'buyerReference', label: 'Réf. Acheteur' },
-    { id: 'contractNumber', label: 'N° Contrat' },
-    { id: 'deliveryNoteNumber', label: 'N° Bon Livraison' },
-    { id: 'projectReference', label: 'Réf. Projet' },
-    { id: 'deliveryDate', label: 'Date Livraison' }
+    { id: 'poNumber', label: 'N° Commande (BT-13)' },
+    { id: 'buyerReference', label: 'Réf. Acheteur (BT-10)' },
+    { id: 'contractNumber', label: 'N° Contrat (BT-12)' },
+    { id: 'deliveryNoteNumber', label: 'N° Bon Livraison (BT-16)' },
+    { id: 'projectReference', label: 'Réf. Projet (BT-11)' },
+    { id: 'deliveryDate', label: 'Date Livraison (BT-72)' }
   ]},
   { name: 'Totaux Financiers', fields: [
-    { id: 'amountExclVat', label: 'Total HT' },
-    { id: 'totalVat', label: 'Total TVA' },
-    { id: 'amountInclVat', label: 'Total TTC' },
-    { id: 'prepaidAmount', label: 'Acomptes Payés' },
-    { id: 'globalDiscount', label: 'Remise Globale' },
-    { id: 'globalCharge', label: 'Frais Globaux' },
-    { id: 'paymentMethod', label: 'Méthode Paiement' }
+    { id: 'amountExclVat', label: 'Total HT Net (BT-109)' },
+    { id: 'totalVat', label: 'Total TVA (BT-110)' },
+    { id: 'amountInclVat', label: 'Total TTC (BT-112)' },
+    { id: 'prepaidAmount', label: 'Montant Acomptes (BT-113)' },
+    { id: 'globalDiscount', label: 'Remises Totales (BT-107)' },
+    { id: 'globalCharge', label: 'Frais Totaux (BT-108)' },
+    { id: 'paymentMethod', label: 'Mode Paiement' },
+    { id: 'paymentMeansCode', label: 'Code UN/CEFACT (BT-81)' }
   ]},
-  { name: 'Détail des Lignes', fields: [
-    { id: 'articleId', label: 'Ligne: Réf. Article' },
-    { id: 'description', label: 'Ligne: Désignation' },
-    { id: 'quantity', label: 'Ligne: Quantité' },
-    { id: 'unitOfMeasure', label: 'Ligne: Unité' },
-    { id: 'unitPrice', label: 'Ligne: P.U. Net' },
-    { id: 'taxRate', label: 'Ligne: Taux TVA %' },
-    { id: 'amount', label: 'Ligne: Montant Ligne HT' }
+  { name: 'Détail des Lignes (BG-25)', fields: [
+    { id: 'articleId', label: 'Ligne: Réf. Article (BT-128)' },
+    { id: 'description', label: 'Ligne: Désignation (BT-129)' },
+    { id: 'quantity', label: 'Ligne: Quantité (BT-131)' },
+    { id: 'unitOfMeasure', label: 'Ligne: Unité (BT-130)' },
+    { id: 'unitPrice', label: 'Ligne: P.U. Net (BT-146)' },
+    { id: 'grossPrice', label: 'Ligne: P.U. Brut (BT-149)' },
+    { id: 'discount', label: 'Ligne: Remise (BT-147)' },
+    { id: 'taxRate', label: 'Ligne: Taux TVA % (BT-152)' },
+    { id: 'amount', label: 'Ligne: Montant Ligne HT (BT-131)' }
   ]}
+];
+
+const GLOSSARY_DATA = [
+  {
+    category: "En-tête & Identité (Header)",
+    items: [
+      { bt: 'BT-1', label: 'Invoice Number', desc: 'Identifiant unique de la facture (ex: FAC-2024-001).' },
+      { bt: 'BT-2', label: 'Issue Date', desc: 'Date d\'émission légale du document.' },
+      { bt: 'BT-3', label: 'Invoice Type Code', desc: 'Code du type de document (380=Facture, 381=Avoir).' },
+      { bt: 'BT-9', label: 'Payment Due Date', desc: 'Date à laquelle le paiement est exigible.' },
+      { bt: 'BT-5', label: 'Currency Code', desc: 'Code devise ISO 4217 (ex: EUR).' },
+      { bt: 'BT-10', label: 'Buyer Reference', desc: 'Référence fournie par l\'acheteur pour son suivi interne.' },
+      { bt: 'BT-24', label: 'Business Process ID', desc: 'Identifiant du processus métier standardisé.' }
+    ]
+  },
+  {
+    category: "Vendeur (Seller)",
+    items: [
+      { bt: 'BT-27', label: 'Seller Name', desc: 'Raison sociale complète de l\'émetteur.' },
+      { bt: 'BT-29', label: 'Seller ID (SIRET)', desc: 'Identifiant légal (SIRET 14 chiffres en France).' },
+      { bt: 'BT-31', label: 'Seller VAT ID', desc: 'N° de TVA intracommunautaire du vendeur.' },
+      { bt: 'BT-34', label: 'Seller Address', desc: 'Adresse géographique complète du siège du vendeur.' },
+      { bt: 'BT-30', label: 'Seller Legal Registration', desc: 'Identifiant d\'enregistrement légal (ex: RCS).' }
+    ]
+  },
+  {
+    category: "Acheteur (Buyer)",
+    items: [
+      { bt: 'BT-44', label: 'Buyer Name', desc: 'Raison sociale complète du client acheteur.' },
+      { bt: 'BT-47', label: 'Buyer ID (SIRET)', desc: 'Identifiant légal SIRET du client.' },
+      { bt: 'BT-48', label: 'Buyer VAT ID', desc: 'N° de TVA intracommunautaire du client.' },
+      { bt: 'BT-49', label: 'Buyer Address', desc: 'Adresse de facturation du client.' }
+    ]
+  },
+  {
+    category: "Règlement (Payment)",
+    items: [
+      { bt: 'BT-81', label: 'Payment Means Code', desc: 'Code du mode de paiement (30=Virement, 48=Carte, etc.).' },
+      { bt: 'BT-83', label: 'Payment Reference', desc: 'Libellé à utiliser lors du virement (ex: N° Facture).' },
+      { bt: 'BT-84', label: 'IBAN', desc: 'Identifiant de compte bancaire international.' },
+      { bt: 'BT-85', label: 'BIC/SWIFT', desc: 'Code d\'identification de la banque.' }
+    ]
+  },
+  {
+    category: "Totaux Financiers (Monetary Summation)",
+    items: [
+      { bt: 'BT-106', label: 'Net Amount', desc: 'Somme des montants HT des lignes.' },
+      { bt: 'BT-107', label: 'Allowances Total', desc: 'Somme des remises au niveau en-tête.' },
+      { bt: 'BT-108', label: 'Charges Total', desc: 'Somme des frais au niveau en-tête.' },
+      { bt: 'BT-109', label: 'Total HT', desc: 'Montant total hors taxes du document.' },
+      { bt: 'BT-110', label: 'Total VAT', desc: 'Montant total de la TVA.' },
+      { bt: 'BT-112', label: 'Total TTC', desc: 'Montant total TTC de la facture.' },
+      { bt: 'BT-113', label: 'Prepaid Amount', desc: 'Montant des acomptes déjà réglés.' },
+      { bt: 'BT-115', label: 'Amount Due', desc: 'Montant net à payer (TTC - Acomptes).' }
+    ]
+  },
+  {
+    category: "Lignes (Invoice Lines)",
+    items: [
+      { bt: 'BT-126', label: 'Line ID', desc: 'Identifiant de la ligne (1, 2, 3...).' },
+      { bt: 'BT-129', label: 'Item Name', desc: 'Désignation de l\'article ou service.' },
+      { bt: 'BT-131', label: 'Quantity', desc: 'Quantité facturée pour la ligne.' },
+      { bt: 'BT-146', label: 'Net Price', desc: 'Prix unitaire net de remise.' },
+      { bt: 'BT-149', label: 'Gross Price', desc: 'Prix unitaire brut avant remise.' },
+      { bt: 'BT-151', label: 'VAT Category', desc: 'Code catégorie TVA (S=Standard, Z=Zéro...).' },
+      { bt: 'BT-152', label: 'VAT Rate', desc: 'Taux de TVA applicable en pourcentage.' }
+    ]
+  }
 ];
 
 interface ConfigurationModalProps {
@@ -115,8 +186,8 @@ export const ConfigurationModal: React.FC<ConfigurationModalProps> = ({
         if (c.length < 3) return null;
         return { 
           id: crypto.randomUUID(), name: c[0]?.trim(), erpCode: c[1]?.trim(), 
-          siret: c[2]?.replace(/\s/g, ''), vatNumber: c[3]?.trim(), 
-          iban: c[4]?.replace(/\s/g, ''), bic: c[5]?.trim() 
+          siret: c[2]?.replace(/\s/g, ''), vatNumber: c[3]?.trim() || '', 
+          iban: c[4]?.replace(/\s/g, '') || '', bic: c[5]?.trim() || '' 
         } as PartnerMasterData;
       }).filter(Boolean) as PartnerMasterData[];
       setLocalMasterData(prev => [...imported, ...prev]);
@@ -167,8 +238,8 @@ export const ConfigurationModal: React.FC<ConfigurationModalProps> = ({
                   <StatCard icon={Zap} label="Mode" value="Flash-Opt" color="purple" />
                 </div>
                 <div className="bg-slate-900 rounded-[2.5rem] p-10 text-white shadow-inner">
-                  <h4 className="text-lg font-black uppercase mb-4 tracking-tighter">Performance & Cost-Efficiency</h4>
-                  <p className="text-xs text-slate-400 leading-relaxed font-medium">Pipeline optimisé pour <b>Render</b>. Prompt Gemini 3 Flash compressé pour une facturation minimale. Support complet de la norme EN16931 pour l'archivage légal et l'extraction PDP.</p>
+                  <h4 className="text-lg font-black uppercase mb-4 tracking-tighter">Performance & RFE Readiness</h4>
+                  <p className="text-xs text-slate-400 leading-relaxed font-medium">Pipeline optimisé pour <b>Render</b>. Prompt Gemini 3 Flash compressé. Support complet de la norme EN16931 pour l'archivage légal et l'extraction PDP agréée.</p>
                 </div>
               </div>
             )}
@@ -195,9 +266,9 @@ export const ConfigurationModal: React.FC<ConfigurationModalProps> = ({
                           <td className="px-6 py-4"><input value={m.name} onChange={e => setLocalMasterData(prev => prev.map(x => x.id === m.id ? {...x, name: e.target.value} : x))} className="bg-transparent outline-none font-bold text-xs w-full focus:text-indigo-600" /></td>
                           <td className="px-6 py-4"><input value={m.erpCode} onChange={e => setLocalMasterData(prev => prev.map(x => x.id === m.id ? {...x, erpCode: e.target.value} : x))} className="bg-transparent outline-none font-black text-indigo-600 text-xs w-full uppercase" /></td>
                           <td className="px-6 py-4"><input value={m.siret} onChange={e => setLocalMasterData(prev => prev.map(x => x.id === m.id ? {...x, siret: e.target.value} : x))} className="bg-transparent outline-none font-mono text-[10px] w-full" /></td>
-                          <td className="px-6 py-4"><input value={m.vatNumber} onChange={e => setLocalMasterData(prev => prev.map(x => x.id === m.id ? {...x, vatNumber: e.target.value} : x))} className="bg-transparent outline-none font-mono text-[10px] w-full" /></td>
-                          <td className="px-6 py-4"><input value={m.iban} onChange={e => setLocalMasterData(prev => prev.map(x => x.id === m.id ? {...x, iban: e.target.value} : x))} className="bg-transparent outline-none font-mono text-[10px] w-full" /></td>
-                          <td className="px-6 py-4"><input value={m.bic} onChange={e => setLocalMasterData(prev => prev.map(x => x.id === m.id ? {...x, bic: e.target.value} : x))} className="bg-transparent outline-none font-mono text-[10px] w-full" /></td>
+                          <td className="px-6 py-4"><input value={m.vatNumber || ''} onChange={e => setLocalMasterData(prev => prev.map(x => x.id === m.id ? {...x, vatNumber: e.target.value} : x))} className="bg-transparent outline-none font-mono text-[10px] w-full" /></td>
+                          <td className="px-6 py-4"><input value={m.iban || ''} onChange={e => setLocalMasterData(prev => prev.map(x => x.id === m.id ? {...x, iban: e.target.value} : x))} className="bg-transparent outline-none font-mono text-[10px] w-full" /></td>
+                          <td className="px-6 py-4"><input value={m.bic || ''} onChange={e => setLocalMasterData(prev => prev.map(x => x.id === m.id ? {...x, bic: e.target.value} : x))} className="bg-transparent outline-none font-mono text-[10px] w-full" /></td>
                           <td className="px-6 py-4 text-right"><button onClick={() => setLocalMasterData(prev => prev.filter(x => x.id !== m.id))} className="text-slate-300 hover:text-rose-500"><Trash2 className="w-4 h-4" /></button></td>
                         </tr>
                       ))}
@@ -253,7 +324,7 @@ export const ConfigurationModal: React.FC<ConfigurationModalProps> = ({
                  <div className="flex justify-between items-end"><h3 className="text-2xl font-black text-slate-900 uppercase">Profils XML & Factur-X</h3></div>
                  <div className="p-10 border border-slate-200 rounded-[2.5rem] bg-indigo-50/30 flex flex-col items-center justify-center space-y-4">
                     <div className="p-4 bg-white rounded-full shadow-lg"><FileJson className="w-10 h-10 text-indigo-500" /></div>
-                    <p className="text-xs font-black uppercase text-slate-500 text-center leading-relaxed">Les flux XML Factur-X sont générés nativement<br/>selon le profil <b>Comfort EN16931</b>.<br/>L'extraction IA remplit les identifiants BG/BT du standard CII.</p>
+                    <p className="text-xs font-black uppercase text-slate-500 text-center leading-relaxed">Les flux XML CII (Factur-X) sont générés nativement<br/>selon le profil <b>Comfort EN16931</b>.<br/>L'extraction IA remplit les identifiants BG/BT du standard de facturation électronique.</p>
                  </div>
               </div>
             )}
@@ -298,25 +369,28 @@ export const ConfigurationModal: React.FC<ConfigurationModalProps> = ({
 
             {activeTab === 'glossary' && (
               <div className="space-y-10 animate-in fade-in">
-                <div className="flex justify-between items-end"><h3 className="text-2xl font-black text-slate-900 uppercase">Glossaire RFE Factur-X</h3></div>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {[
-                    {bt:'BT-1', label:'Invoice Number', desc:'Identifiant unique de la facture (ex: FAC-2024-001).'},
-                    {bt:'BT-2', label:'Issue Date', desc:'Date d\'émission légale du document.'},
-                    {bt:'BT-27', label:'Seller Name', desc:'Raison sociale complète du vendeur.'},
-                    {bt:'BT-29', label:'Seller ID (SIRET)', desc:'Identifiant légal SIRET à 14 chiffres.'},
-                    {bt:'BT-31', label:'VAT ID', desc:'N° TVA intracommunautaire (FR + 11 chiffres).'},
-                    {bt:'BT-112', label:'Grand Total', desc:'Montant Total TTC final à payer.'},
-                    {bt:'BT-106', label:'Net HT', desc:'Total HT net de remises commerciales.'},
-                    {bt:'BT-131', label:'Ligne: Quantité', desc:'Quantité facturée sur une ligne BG-25.'},
-                    {bt:'BT-146', label:'Ligne: Prix Net', desc:'Prix unitaire net après remise ligne.'}
-                  ].map(item => (
-                    <div key={item.bt} className="p-5 border border-slate-100 rounded-2xl bg-slate-50 hover:bg-indigo-50 transition-colors">
-                       <div className="flex justify-between items-start mb-2">
-                         <span className="text-[8px] font-black text-indigo-600 bg-white px-2 py-0.5 rounded border border-indigo-100">{item.bt}</span>
-                       </div>
-                       <p className="text-xs font-black text-slate-900 uppercase">{item.label}</p>
-                       <p className="text-[10px] text-slate-500 font-medium mt-1 leading-relaxed">{item.desc}</p>
+                <div className="flex justify-between items-end">
+                  <h3 className="text-2xl font-black text-slate-900 uppercase">Glossaire RFE Factur-X (EN16931)</h3>
+                </div>
+                <div className="space-y-12">
+                  {GLOSSARY_DATA.map((group, gIdx) => (
+                    <div key={gIdx} className="space-y-5">
+                      <div className="flex items-center space-x-4">
+                        <div className="h-px flex-1 bg-slate-100"></div>
+                        <h4 className="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em]">{group.category}</h4>
+                        <div className="h-px flex-1 bg-slate-100"></div>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {group.items.map(item => (
+                          <div key={item.bt} className="p-5 border border-slate-100 rounded-2xl bg-slate-50 hover:bg-indigo-50 transition-colors group">
+                            <div className="flex justify-between items-start mb-2">
+                              <span className="text-[8px] font-black text-indigo-600 bg-white px-2 py-0.5 rounded border border-indigo-100 group-hover:border-indigo-300 shadow-sm">{item.bt}</span>
+                            </div>
+                            <p className="text-xs font-black text-slate-900 uppercase">{item.label}</p>
+                            <p className="text-[10px] text-slate-500 font-medium mt-1 leading-relaxed">{item.desc}</p>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -326,7 +400,7 @@ export const ConfigurationModal: React.FC<ConfigurationModalProps> = ({
         </div>
 
         <div className="px-10 py-6 bg-slate-50 border-t border-slate-100 flex justify-end items-center space-x-6 shrink-0">
-          <button onClick={onClose} className="text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-slate-600">Abandonner</button>
+          <button onClick={onClose} className="text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-slate-600 transition-colors">Abandonner</button>
           <button onClick={handleSaveAll} className="bg-slate-950 text-white px-12 py-5 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] shadow-2xl hover:bg-black transition-all flex items-center border-b-4 border-slate-800 active:scale-95"><Save className="w-5 h-5 mr-3" /> Appliquer au Core</button>
         </div>
       </div>

@@ -126,30 +126,28 @@ const App: React.FC = () => {
       downloadCSV(csv, `export_${new Date().getTime()}.csv`);
     } else if (type === 'XML') {
       const profile = xmlProfiles[0];
-      if (!profile) return alert("Veuillez configurer un profil XML.");
+      if (!profile) return alert("Veuillez configurer un profil XML (CII/Factur-X) dans le Hub.");
       const xml = generateTemplatedXML(selectedInvoices, profile, lookupTables);
       const blob = new Blob([xml], { type: 'text/xml' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `export_${new Date().getTime()}.xml`;
+      link.download = `export_norme_ CII_${new Date().getTime()}.xml`;
       link.click();
     }
-    addLog(`${selectedInvoices.length} factures exportées`, 'success');
+    addLog(`${selectedInvoices.length} factures exportées au format ${type}`, 'success');
   };
 
   const handleBulkDelete = async () => {
-    if (!confirm(`Supprimer ${selectedIds.size} facture(s) ?`)) return;
-    // Explicitly define ids as string[] to fix type inference issues with Array.from/Set
+    if (!confirm(`Supprimer définitivement ${selectedIds.size} facture(s) ?`)) return;
     const ids: string[] = [...selectedIds];
     await dbService.deleteInvoices(ids);
     setAllInvoices(prev => prev.filter(inv => !ids.includes(inv.id)));
     setSelectedIds(new Set());
-    addLog(`${ids.length} factures supprimées`, 'warning');
+    addLog(`${ids.length} factures supprimées de la base`, 'warning');
   };
 
   const handleBulkArchive = async (archived: boolean) => {
-    // Explicitly define ids as string[] to fix type inference issues with Array.from/Set
     const ids: string[] = [...selectedIds];
     await dbService.archiveInvoices(ids, archived);
     setAllInvoices(prev => prev.map(inv => ids.includes(inv.id) ? { ...inv, isArchived: archived } : inv));
@@ -213,10 +211,19 @@ const App: React.FC = () => {
         <div className="fixed bottom-10 left-1/2 -translate-x-1/2 bg-slate-900 text-white px-8 py-5 rounded-[2.5rem] shadow-[0_30px_60px_-15px_rgba(0,0,0,0.5)] flex items-center space-x-8 z-[60] border border-white/10 animate-in slide-in-from-bottom-10">
           <div className="flex flex-col border-r border-white/10 pr-8">
             <span className="text-[10px] font-black uppercase text-indigo-400 tracking-widest">{selectedIds.size} sélectionnées</span>
-            <span className="text-[8px] font-bold text-slate-500 uppercase">Actions de masse RFE</span>
+            <span className="text-[8px] font-bold text-slate-500 uppercase">Gouvernance RFE</span>
           </div>
           <div className="flex items-center space-x-3">
-             <button onClick={() => handleBulkExport('CSV')} className="flex items-center space-x-2 px-6 py-2.5 bg-white text-slate-900 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-indigo-50 transition-all"><FileDown className="w-4 h-4" /><span>Export CSV</span></button>
+             <div className="relative group">
+                <button className="flex items-center space-x-2 px-6 py-2.5 bg-white text-slate-900 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-indigo-50 transition-all"><FileDown className="w-4 h-4" /><span>Export CSV</span></button>
+                <div className="absolute bottom-full left-0 mb-2 hidden group-hover:block bg-white border border-slate-200 rounded-xl shadow-2xl p-2 min-w-[200px]">
+                    {templates.map(t => (
+                        <button key={t.id} onClick={() => handleBulkExport('CSV', t.id)} className="w-full text-left px-4 py-2 hover:bg-slate-50 text-[9px] font-black uppercase text-slate-600 rounded-lg">{t.name}</button>
+                    ))}
+                    {templates.length === 0 && <p className="p-2 text-[8px] text-slate-400 uppercase italic">Aucun template</p>}
+                </div>
+             </div>
+             <button onClick={() => handleBulkExport('XML')} className="flex items-center space-x-2 px-6 py-2.5 bg-white text-slate-900 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-indigo-50 transition-all"><FileCode className="w-4 h-4" /><span>Export XML CII</span></button>
              <button onClick={() => handleBulkArchive(viewMode === 'ACTIVE')} className="flex items-center space-x-2 px-6 py-2.5 bg-slate-800 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-700 border border-white/5 transition-all"><Archive className="w-4 h-4" /><span>{viewMode === 'ACTIVE' ? 'Archiver' : 'Restaurer'}</span></button>
              <button onClick={handleBulkDelete} className="flex items-center space-x-2 px-6 py-2.5 bg-rose-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-rose-700 transition-all shadow-lg shadow-rose-900/20"><Trash2 className="w-4 h-4" /><span>Supprimer</span></button>
           </div>
