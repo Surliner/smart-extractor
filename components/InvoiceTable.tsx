@@ -50,7 +50,7 @@ export const InvoiceTable: React.FC<InvoiceTableProps> = ({
   const [minAmount, setMinAmount] = useState('');
   const [maxAmount, setMaxAmount] = useState('');
 
-  // Sorting state - Changé pour trier par date d'extraction par défaut
+  // Sorting state - Tri par date d'extraction décroissante par défaut
   const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'extractedAt' as any, direction: 'desc' });
 
   const activeInvoice = useMemo(() => invoices.find(inv => inv.id === editingId), [invoices, editingId]);
@@ -212,7 +212,7 @@ export const InvoiceTable: React.FC<InvoiceTableProps> = ({
         <FacturXModal 
           isOpen={true}
           onClose={() => setEditingId(null)}
-          invoice={activeInvoice}
+          invoice = {activeInvoice}
           onSave={(u) => onUpdate(u.id, u)}
           lookupTables={lookupTables}
           masterData={masterData}
@@ -393,7 +393,7 @@ export const InvoiceTable: React.FC<InvoiceTableProps> = ({
                 </th>
                 <th className="w-32 px-4 py-6 cursor-pointer" onClick={() => requestSort('invoiceDate')}>
                   <div className="flex items-center">
-                    Date Doc. {getSortIcon('invoiceDate')}
+                    Date Facture {getSortIcon('invoiceDate')}
                   </div>
                 </th>
                 <th className="w-36 px-4 py-6 cursor-pointer" onClick={() => requestSort('extractedAt' as any)}>
@@ -428,21 +428,16 @@ export const InvoiceTable: React.FC<InvoiceTableProps> = ({
                       <input type="checkbox" checked={selectedIds.has(inv.id)} onChange={() => onToggleSelection(inv.id)} className="w-4 h-4 rounded border-slate-300" />
                     </td>
                     <td className="px-4 py-5">
-                      <div className="flex flex-col">
-                        <div className="flex items-center space-x-2">
-                           <span className="font-black text-slate-900 text-xs">{inv.invoiceNumber}</span>
-                           {inv.erpStatus === 'SUCCESS' && <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]"></div>}
-                           {inv.erpStatus === 'ERROR' && <div className="w-1.5 h-1.5 rounded-full bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.5)]"></div>}
-                        </div>
-                        <span className="text-[8px] font-black uppercase text-indigo-400 mt-1 tracking-tighter flex items-center">
-                          <Zap className="w-2 h-2 mr-1" /> {inv.extractionMode || 'ULTIMATE'}
-                        </span>
+                      <div className="flex items-center space-x-2">
+                         <span className="font-black text-slate-900 text-xs">{inv.invoiceNumber}</span>
+                         {inv.erpStatus === 'SUCCESS' && <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" title="Synchronisé"></div>}
+                         {inv.erpStatus === 'ERROR' && <div className="w-1.5 h-1.5 rounded-full bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.5)]" title="Erreur Sync"></div>}
                       </div>
                     </td>
-                    <td className="px-4 py-5 text-xs text-slate-500">{inv.invoiceDate}</td>
+                    <td className="px-4 py-5 text-xs text-slate-500 font-medium">{inv.invoiceDate}</td>
                     <td className="px-4 py-5">
                       <div className="flex items-center text-xs text-slate-500 font-mono">
-                         <Clock className="w-3 h-3 mr-2 opacity-50" />
+                         <Clock className="w-3 h-3 mr-2 opacity-50 text-indigo-500" />
                          {formatExtractedDate(inv.extractedAt)}
                       </div>
                     </td>
@@ -450,9 +445,10 @@ export const InvoiceTable: React.FC<InvoiceTableProps> = ({
                       <div className="flex flex-col">
                         <div className="flex items-center">
                           <span className="text-xs font-bold text-slate-800">{inv.supplier}</span>
-                          {inv.isMasterMatched && <ShieldCheck className="w-3 h-3 ml-2 text-emerald-500" />}
+                          {/* Fix: Lucide icons don't support 'title' prop directly in this environment, using wrapper span */}
+                          {inv.isMasterMatched && <span title="Identifié Master Data"><ShieldCheck className="w-3 h-3 ml-2 text-emerald-500" /></span>}
                         </div>
-                        <span className="text-[9px] font-medium text-slate-400 truncate max-w-[200px] mt-1 italic flex items-center">
+                        <span className="text-[9px] font-medium text-slate-400 truncate max-w-[200px] mt-0.5 flex items-center">
                           <FileText className="w-2 h-2 mr-1 opacity-50" /> {inv.originalFilename}
                         </span>
                       </div>
