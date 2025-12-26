@@ -129,20 +129,19 @@ const App: React.FC = () => {
       downloadCSV(csv, `export_${new Date().getTime()}.csv`);
     } else if (type === 'XML') {
       // EXPORT NORME FACTUR-X (EN16931)
-      // Si multiple, on les regroupe dans un container ou on télécharge le premier pour respect strict de la racine unique
-      // Ici, on génère un flux consolidé si possible ou on traite l'export standard Factur-X
-      let xmlContent = '<?xml version="1.0" encoding="UTF-8"?>\n';
+      let xmlContent = '';
       if (selectedInvoices.length > 1) {
+        xmlContent += '<?xml version="1.0" encoding="UTF-8"?>\n';
         xmlContent += '<BulkInvoiceExport>\n';
         selectedInvoices.forEach(inv => {
-          xmlContent += generateFacturXXML(inv) + '\n';
+          xmlContent += generateFacturXXML(inv, false) + '\n';
         });
         xmlContent += '</BulkInvoiceExport>';
       } else {
-        xmlContent += generateFacturXXML(selectedInvoices[0]);
+        xmlContent = generateFacturXXML(selectedInvoices[0], true);
       }
       
-      const blob = new Blob([xmlContent], { type: 'text/xml' });
+      const blob = new Blob([xmlContent], { type: 'text/xml;charset=utf-8' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
@@ -152,17 +151,19 @@ const App: React.FC = () => {
     addLog(`${selectedInvoices.length} factures exportées au format ${type}`, 'success');
   };
 
-  const handleBulkDelete = async () => {
-    if (!confirm(`Supprimer définitivement ${selectedIds.size} facture(s) ?`)) return;
-    const ids: string[] = [...selectedIds];
+  // Fixed handleBulkDelete to match InvoiceTable signature requirements
+  const handleBulkDelete = async (ids: string[]) => {
+    if (ids.length === 0) return;
+    if (!confirm(`Supprimer définitivement ${ids.length} facture(s) ?`)) return;
     await dbService.deleteInvoices(ids);
     setAllInvoices(prev => prev.filter(inv => !ids.includes(inv.id)));
     setSelectedIds(new Set());
     addLog(`${ids.length} factures supprimées de la base`, 'warning');
   };
 
-  const handleBulkArchive = async (archived: boolean) => {
-    const ids: string[] = [...selectedIds];
+  // Fixed handleBulkArchive to match InvoiceTable signature requirements
+  const handleBulkArchive = async (ids: string[], archived: boolean) => {
+    if (ids.length === 0) return;
     await dbService.archiveInvoices(ids, archived);
     setAllInvoices(prev => prev.map(inv => ids.includes(inv.id) ? { ...inv, isArchived: archived } : inv));
     setSelectedIds(new Set());
@@ -230,16 +231,19 @@ const App: React.FC = () => {
           <div className="flex items-center space-x-3">
              <div className="relative group">
                 <button className="flex items-center space-x-2 px-6 py-2.5 bg-white text-slate-900 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-indigo-50 transition-all"><FileDown className="w-4 h-4" /><span>Export CSV</span></button>
-                <div className="absolute bottom-full left-0 mb-2 hidden group-hover:block bg-white border border-slate-200 rounded-xl shadow-2xl p-2 min-w-[200px]">
-                    {templates.map(t => (
-                        <button key={t.id} onClick={() => handleBulkExport('CSV', t.id)} className="w-full text-left px-4 py-2 hover:bg-slate-50 text-[9px] font-black uppercase text-slate-600 rounded-lg">{t.name}</button>
-                    ))}
-                    {templates.length === 0 && <p className="p-2 text-[8px] text-slate-400 uppercase italic">Aucun template</p>}
+                {/* Bridge div to handle hover gap */}
+                <div className="absolute bottom-full left-0 pb-3 hidden group-hover:block min-w-[200px] z-[70]">
+                    <div className="bg-white border border-slate-200 rounded-xl shadow-2xl p-2">
+                        {templates.map(t => (
+                            <button key={t.id} onClick={() => handleBulkExport('CSV', t.id)} className="w-full text-left px-4 py-2 hover:bg-slate-50 text-[9px] font-black uppercase text-slate-600 rounded-lg">{t.name}</button>
+                        ))}
+                        {templates.length === 0 && <p className="p-2 text-[8px] text-slate-400 uppercase italic">Aucun template</p>}
+                    </div>
                 </div>
              </div>
              <button onClick={() => handleBulkExport('XML')} className="flex items-center space-x-2 px-6 py-2.5 bg-white text-slate-900 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-indigo-50 transition-all"><FileCode className="w-4 h-4" /><span>Export XML CII</span></button>
-             <button onClick={() => handleBulkArchive(viewMode === 'ACTIVE')} className="flex items-center space-x-2 px-6 py-2.5 bg-slate-800 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-700 border border-white/5 transition-all"><Archive className="w-4 h-4" /><span>{viewMode === 'ACTIVE' ? 'Archiver' : 'Restaurer'}</span></button>
-             <button onClick={handleBulkDelete} className="flex items-center space-x-2 px-6 py-2.5 bg-rose-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-rose-700 transition-all shadow-lg shadow-rose-900/20"><Trash2 className="w-4 h-4" /><span>Supprimer</span></button>
+             <button onClick={() => handleBulkArchive(Array.from(selectedIds), viewMode === 'ACTIVE')} className="flex items-center space-x-2 px-6 py-2.5 bg-slate-800 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-700 border border-white/5 transition-all"><Archive className="w-4 h-4" /><span>{viewMode === 'ACTIVE' ? 'Archiver' : 'Restaurer'}</span></button>
+             <button onClick={() => handleBulkDelete(Array.from(selectedIds))} className="flex items-center space-x-2 px-6 py-2.5 bg-rose-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-rose-700 transition-all shadow-lg shadow-rose-900/20"><Trash2 className="w-4 h-4" /><span>Supprimer</span></button>
           </div>
           <button onClick={() => setSelectedIds(new Set())} className="p-2 text-slate-500 hover:text-white transition-colors"><X className="w-5 h-5" /></button>
         </div>
