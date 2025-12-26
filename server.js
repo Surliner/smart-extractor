@@ -90,11 +90,21 @@ const initDb = async () => {
 
     await client.query('UPDATE users SET company_id = $1 WHERE company_id IS NULL', [defaultCompId]);
 
+    // Seed Admin
     const adminCheck = await client.query('SELECT * FROM users WHERE LOWER(username) = $1', ['admin']);
     if (adminCheck.rows.length === 0) {
       await client.query(
-        'INSERT INTO users (username, password, role, company_id, is_approved) VALUES ($1, $2, $3, $4, $5)',
-        ['admin', 'admin', 'SUPER_ADMIN', defaultCompId, true]
+        'INSERT INTO users (username, password, role, company_id, is_approved, security_question, security_answer) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+        ['admin', 'admin', 'SUPER_ADMIN', defaultCompId, true, 'Quel est votre mot de code secret préféré ?', 'Admin123']
+      );
+    }
+
+    // Seed Test Account Jean
+    const jeanCheck = await client.query('SELECT * FROM users WHERE LOWER(username) = $1', ['jean']);
+    if (jeanCheck.rows.length === 0) {
+      await client.query(
+        'INSERT INTO users (username, password, role, company_id, is_approved, security_question, security_answer) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+        ['Jean', 'jean123', 'USER', defaultCompId, true, 'Quel est votre mot de code secret préféré ?', 'Apple']
       );
     }
 
