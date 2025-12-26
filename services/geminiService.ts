@@ -5,9 +5,7 @@ import { InvoiceData, InvoiceItem, InvoiceType, ExtractionMode, ExtractionResult
 const parseInvoiceDate = (dateStr: string): string => {
   if (!dateStr) return "";
   const clean = dateStr.trim();
-  if (/^\d{8}$/.test(clean)) {
-    return `${clean.substring(6, 8)}/${clean.substring(4, 6)}/${clean.substring(0, 4)}`;
-  }
+  if (/^\d{8}$/.test(clean)) return `${clean.substring(6, 8)}/${clean.substring(4, 6)}/${clean.substring(0, 4)}`;
   if (/^\d{4}-\d{2}-\d{2}$/.test(clean)) {
     const [y, m, d] = clean.split('-');
     return `${d}/${m}/${y}`;
@@ -18,9 +16,7 @@ const parseInvoiceDate = (dateStr: string): string => {
 const parseQuantity = (val: any): number | null => {
   if (typeof val === 'number') return val;
   if (typeof val === 'string') {
-    let clean = val.trim();
-    if (clean.includes(',') && !clean.includes('.')) clean = clean.replace(',', '.');
-    clean = clean.replace(/[^0-9.-]/g, '');
+    let clean = val.trim().replace(',', '.').replace(/[^0-9.-]/g, '');
     const num = parseFloat(clean);
     return isNaN(num) ? null : num;
   }
@@ -97,23 +93,26 @@ export const extractInvoiceData = async (
     required: ["supplier_name", "invoice_number", "amount_incl_vat"],
   };
 
-  const systemInstruction = `EXPERT COMPTABLE IA HAUTE FIDÉLITÉ (Norme Factur-X / EN16931).
-  OBJECTIF : Extraire CHAQUE point de donnée avec une précision absolue.
-  RÈGLES CRITIQUES :
-  1. Zéro omission : transport, frais admin, palettes, acomptes (prepaid_amount) sont obligatoires.
-  2. Lignes de détail (BG-25) : Extraire TOUTES les lignes de TOUTES les pages.
-  3. SIRET/TVA : Extraire sans espaces, exactement comme écrit.
-  4. IBAN/BIC : Extraire les coordonnées bancaires du VENDEUR uniquement.
-  5. Formatage : Dates en YYYY-MM-DD. Nombres sans séparateurs de milliers.
-  6. Cohérence : Somme(line_items.amount) + global_charge - global_discount doit être égal à amount_excl_vat.`;
+  // PROMPT TECHNIQUE DENSE (RFE/EN16931 COMPLIANT)
+  const systemInstruction = `EXTRACTEUR RFE EN16931 STRICT. 
+OBJET: Extraction structurée Factur-X pour plateformes agréées (PDP).
+RÈGLES CRITIQUES:
+1. IDENTITÉ: Extraire SIRET (14 chiffres) et TVA (FR+11 chiffres). Priorité absolue.
+2. DATES: Format ISO YYYY-MM-DD.
+3. BANCAIRE: IBAN et BIC de l'émetteur obligatoires si présents.
+4. BG-25 (LIGNES): Extraire TOUTES les lignes. Calcul: (GrossPrice - Discount) * Quantity = Amount.
+5. ARITHMÉTIQUE: Total HT = Somme(Lignes) + Frais - Remises. Doit être cohérent.
+6. ACOMPTES: Isoler 'prepaid_amount' (BT-113).
+7. TAXES: Isoler les taux par ligne (BT-152).
+RÉPONSE: JSON STRICT UNIQUEMENT.`;
 
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview", 
+      model: "gemini-3-flash-preview",
       contents: {
         parts: [
           { inlineData: { mimeType, data: base64Data } },
-          { text: "Extraire les métadonnées de cette facture selon le schéma Ultimate Factur-X." }
+          { text: "Analyser ce document selon les règles EN16931." }
         ]
       },
       config: {
@@ -121,29 +120,24 @@ export const extractInvoiceData = async (
         responseMimeType: "application/json",
         responseSchema: ultimateSchema,
         temperature: 0,
-        // DÉSACTIVATION DU THINKING BUDGET (Optimisation Coûts & Vitesse)
-        // Les factures comme Arcanes consomment trop si le modèle "pense" inutilement.
         thinkingConfig: { thinkingBudget: 0 }
       },
     });
 
-    let textOutput = response.text || "{}";
-    const rawData = JSON.parse(textOutput);
+    const rawData = JSON.parse(response.text || "{}");
     const usage = response.usageMetadata || { totalTokenCount: 0 };
 
-    const items: InvoiceItem[] = Array.isArray(rawData.line_items) 
-      ? rawData.line_items.map((item: any) => ({
-          articleId: item.article_id || "",
-          description: item.description || "",
-          quantity: parseQuantity(item.quantity),
-          unitOfMeasure: item.unit_of_measure || "C62",
-          grossPrice: typeof item.gross_price === 'number' ? item.gross_price : null,
-          discount: typeof item.discount_amount === 'number' ? item.discount_amount : null,
-          unitPrice: typeof item.unit_price === 'number' ? item.unit_price : null,
-          taxRate: typeof item.tax_rate === 'number' ? item.tax_rate : 20.0,
-          amount: typeof item.amount === 'number' ? item.amount : null,
-        }))
-      : [];
+    const items: InvoiceItem[] = (rawData.line_items || []).map((item: any) => ({
+      articleId: item.article_id || "",
+      description: item.description || "",
+      quantity: parseQuantity(item.quantity),
+      unitOfMeasure: item.unit_of_measure || "C62",
+      grossPrice: item.gross_price || null,
+      discount: item.discount_amount || null,
+      unitPrice: item.unit_price || null,
+      taxRate: item.tax_rate || 20.0,
+      amount: item.amount || null,
+    }));
 
     const invoiceData: InvoiceData = {
       id: crypto.randomUUID(),
@@ -153,7 +147,7 @@ export const extractInvoiceData = async (
       invoiceType: rawData.invoice_type === 'CREDIT_NOTE' ? InvoiceType.CREDIT_NOTE : InvoiceType.INVOICE,
       operationCategory: (rawData.operation_category || 'GOODS') as OperationCategory,
       taxPointType: (rawData.tax_point_type || 'DEBIT') as TaxPointType,
-      businessProcessId: rawData.business_process_id || "",
+      businessProcessId: rawData.business_process_id || "urn:factur-x.eu:1p0:comfort",
       supplier: rawData.supplier_name || "",
       supplierAddress: rawData.supplier_address || "",
       supplierVat: rawData.supplier_vat || "",
@@ -165,41 +159,19 @@ export const extractInvoiceData = async (
       invoiceNumber: rawData.invoice_number || "",
       invoiceDate: parseInvoiceDate(rawData.invoice_date),
       dueDate: parseInvoiceDate(rawData.due_date),
-      taxPointDate: parseInvoiceDate(rawData.tax_point_date),
-      deliveryDate: parseInvoiceDate(rawData.delivery_date),
-      contractNumber: rawData.contract_number || "",
-      deliveryNoteNumber: rawData.delivery_note_number || "",
-      projectReference: rawData.project_reference || "",
-      paymentReference: rawData.payment_reference || "",
-      receivingAdviceNumber: rawData.receiving_advice_number || "",
-      poNumber: rawData.po_number || "",
-      buyerReference: rawData.buyer_reference || "",
-      amountExclVat: typeof rawData.amount_excl_vat === 'number' ? rawData.amount_excl_vat : null,
-      totalVat: typeof rawData.total_vat_amount === 'number' ? rawData.total_vat_amount : null,
-      amountInclVat: typeof rawData.amount_incl_vat === 'number' ? rawData.amount_incl_vat : null,
-      prepaidAmount: typeof rawData.prepaid_amount === 'number' ? rawData.prepaid_amount : 0,
+      amountExclVat: rawData.amount_excl_vat || null,
+      totalVat: rawData.total_vat_amount || null,
+      amountInclVat: rawData.amount_incl_vat || null,
+      prepaidAmount: rawData.prepaid_amount || 0,
       currency: rawData.currency || "EUR",
-      globalDiscount: typeof rawData.global_discount === 'number' ? rawData.global_discount : 0,
-      globalCharge: typeof rawData.global_charge === 'number' ? rawData.global_charge : 0,
       iban: rawData.iban?.replace(/\s/g, "") || "",
       bic: rawData.bic || "",
-      paymentMethod: rawData.payment_method || "",
-      paymentMeansCode: rawData.payment_means_code || "30",
-      paymentTerms: rawData.payment_terms || "",
-      notes: rawData.notes || "",
       originalFilename: filename,
       fileData: base64Data,
       items: withItems ? items : undefined,
     };
 
-    return { 
-      invoice: invoiceData, 
-      usage: { 
-        promptTokens: usage.promptTokenCount || 0, 
-        completionTokens: usage.candidatesTokenCount || 0, 
-        totalTokens: usage.totalTokenCount 
-      } 
-    };
+    return { invoice: invoiceData, usage: { promptTokens: usage.promptTokenCount || 0, completionTokens: usage.candidatesTokenCount || 0, totalTokens: usage.totalTokenCount } };
   } catch (error) {
     console.error("Gemini Extraction Error:", error);
     throw error;
