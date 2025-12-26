@@ -72,6 +72,7 @@ export interface InvoiceData {
   invoiceType: InvoiceType;
   invoiceNumber: string;
   invoiceDate: string;
+  extractedAt?: string; // Date technique d'extraction
   dueDate?: string;
   taxPointDate?: string;
   currency: string;

@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { InvoiceData, InvoiceItem, ErpStatus, InvoiceType, LookupTable, ExportTemplate, XmlMappingProfile, PartnerMasterData } from '../types';
-import { Trash2, ChevronDown, CheckCircle2, AlertCircle, Circle, Columns, X, FileCode, ArrowDownLeft, ArrowUpRight, Maximize2, LayoutList, FileSpreadsheet, FileDown, Zap, ListChecks, FileJson, ShieldCheck, FileCheck, Search, Filter, ArrowUpDown, ArrowUp, ArrowDown, Calendar, Banknote } from 'lucide-react';
+import { Trash2, ChevronDown, CheckCircle2, AlertCircle, Circle, Columns, X, FileCode, ArrowDownLeft, ArrowUpRight, Maximize2, LayoutList, FileSpreadsheet, FileDown, Zap, ListChecks, FileJson, ShieldCheck, FileCheck, Search, Filter, ArrowUpDown, ArrowUp, ArrowDown, Calendar, Banknote, Clock, HardDrive, FileText } from 'lucide-react';
 import { FacturXModal } from './FacturXModal';
 import { generateTemplatedCSV, generateTemplatedXML } from '../services/exportService';
 import { generateFacturXXML } from '../services/facturXService';
@@ -50,8 +50,8 @@ export const InvoiceTable: React.FC<InvoiceTableProps> = ({
   const [minAmount, setMinAmount] = useState('');
   const [maxAmount, setMaxAmount] = useState('');
 
-  // Sorting state
-  const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'invoiceDate', direction: 'desc' });
+  // Sorting state - Changé pour trier par date d'extraction par défaut
+  const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'extractedAt' as any, direction: 'desc' });
 
   const activeInvoice = useMemo(() => invoices.find(inv => inv.id === editingId), [invoices, editingId]);
 
@@ -110,10 +110,17 @@ export const InvoiceTable: React.FC<InvoiceTableProps> = ({
         let aVal = a[sortConfig.key];
         let bVal = b[sortConfig.key];
 
-        // Specific handling for dates
+        // Specific handling for invoice date
         if (sortConfig.key === 'invoiceDate') {
           const dA = parseDate(a.invoiceDate)?.getTime() || 0;
           const dB = parseDate(b.invoiceDate)?.getTime() || 0;
+          return sortConfig.direction === 'asc' ? dA - dB : dB - dA;
+        }
+        
+        // Specific handling for extracted date (ISO)
+        if (sortConfig.key === ('extractedAt' as any)) {
+          const dA = a.extractedAt ? new Date(a.extractedAt).getTime() : 0;
+          const dB = b.extractedAt ? new Date(b.extractedAt).getTime() : 0;
           return sortConfig.direction === 'asc' ? dA - dB : dB - dA;
         }
 
@@ -190,6 +197,13 @@ export const InvoiceTable: React.FC<InvoiceTableProps> = ({
     setDateEnd('');
     setMinAmount('');
     setMaxAmount('');
+  };
+
+  const formatExtractedDate = (isoDate?: string) => {
+    if (!isoDate) return 'N/A';
+    const d = new Date(isoDate);
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear().toString().substring(2)} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
   };
 
   return (
@@ -366,7 +380,7 @@ export const InvoiceTable: React.FC<InvoiceTableProps> = ({
 
       <div className="bg-white rounded-[2.5rem] shadow-2xl border border-slate-200 overflow-hidden">
         <div className="overflow-x-auto custom-scrollbar">
-          <table className="w-full text-left border-collapse table-fixed">
+          <table className="w-full text-left border-collapse table-fixed min-w-[1000px]">
             <thead className="bg-slate-50 text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200">
               <tr>
                 <th className="w-12 px-4 py-6 text-center">
@@ -379,7 +393,12 @@ export const InvoiceTable: React.FC<InvoiceTableProps> = ({
                 </th>
                 <th className="w-32 px-4 py-6 cursor-pointer" onClick={() => requestSort('invoiceDate')}>
                   <div className="flex items-center">
-                    Date {getSortIcon('invoiceDate')}
+                    Date Doc. {getSortIcon('invoiceDate')}
+                  </div>
+                </th>
+                <th className="w-36 px-4 py-6 cursor-pointer" onClick={() => requestSort('extractedAt' as any)}>
+                  <div className="flex items-center">
+                    Extraction {getSortIcon('extractedAt' as any)}
                   </div>
                 </th>
                 <th className="px-4 py-6 cursor-pointer" onClick={() => requestSort('supplier')}>
@@ -398,7 +417,7 @@ export const InvoiceTable: React.FC<InvoiceTableProps> = ({
             <tbody className="divide-y divide-slate-100">
               {filteredAndSortedInvoices.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-20 text-center text-slate-400 font-bold uppercase tracking-widest text-[10px]">
+                  <td colSpan={7} className="px-4 py-20 text-center text-slate-400 font-bold uppercase tracking-widest text-[10px]">
                     {invoices.length === 0 ? "Aucune facture" : "Aucun résultat"}
                   </td>
                 </tr>
@@ -408,18 +427,34 @@ export const InvoiceTable: React.FC<InvoiceTableProps> = ({
                     <td className="px-4 py-5 text-center">
                       <input type="checkbox" checked={selectedIds.has(inv.id)} onChange={() => onToggleSelection(inv.id)} className="w-4 h-4 rounded border-slate-300" />
                     </td>
-                    <td className="px-4 py-5 font-black text-slate-900 text-xs">
-                      <div className="flex items-center space-x-2">
-                        <span>{inv.invoiceNumber}</span>
-                        {inv.erpStatus === 'SUCCESS' && <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]"></div>}
-                        {inv.erpStatus === 'ERROR' && <div className="w-1.5 h-1.5 rounded-full bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.5)]"></div>}
+                    <td className="px-4 py-5">
+                      <div className="flex flex-col">
+                        <div className="flex items-center space-x-2">
+                           <span className="font-black text-slate-900 text-xs">{inv.invoiceNumber}</span>
+                           {inv.erpStatus === 'SUCCESS' && <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]"></div>}
+                           {inv.erpStatus === 'ERROR' && <div className="w-1.5 h-1.5 rounded-full bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.5)]"></div>}
+                        </div>
+                        <span className="text-[8px] font-black uppercase text-indigo-400 mt-1 tracking-tighter flex items-center">
+                          <Zap className="w-2 h-2 mr-1" /> {inv.extractionMode || 'ULTIMATE'}
+                        </span>
                       </div>
                     </td>
                     <td className="px-4 py-5 text-xs text-slate-500">{inv.invoiceDate}</td>
-                    <td className="px-4 py-5 text-xs font-bold text-slate-800">
-                      <div className="flex items-center">
-                        {inv.supplier}
-                        {inv.isMasterMatched && <ShieldCheck className="w-3 h-3 ml-2 text-emerald-500" />}
+                    <td className="px-4 py-5">
+                      <div className="flex items-center text-xs text-slate-500 font-mono">
+                         <Clock className="w-3 h-3 mr-2 opacity-50" />
+                         {formatExtractedDate(inv.extractedAt)}
+                      </div>
+                    </td>
+                    <td className="px-4 py-5">
+                      <div className="flex flex-col">
+                        <div className="flex items-center">
+                          <span className="text-xs font-bold text-slate-800">{inv.supplier}</span>
+                          {inv.isMasterMatched && <ShieldCheck className="w-3 h-3 ml-2 text-emerald-500" />}
+                        </div>
+                        <span className="text-[9px] font-medium text-slate-400 truncate max-w-[200px] mt-1 italic flex items-center">
+                          <FileText className="w-2 h-2 mr-1 opacity-50" /> {inv.originalFilename}
+                        </span>
                       </div>
                     </td>
                     <td className="px-4 py-5 text-right font-black text-indigo-600 text-xs">
