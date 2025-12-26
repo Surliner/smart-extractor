@@ -121,15 +121,20 @@ export const UserManagement: React.FC<UserManagementProps> = ({
                             </div>
                             <span className="text-[9px] font-black bg-emerald-100 text-emerald-700 px-4 py-2 rounded-full uppercase border border-emerald-200 shadow-sm">Actif</span>
                           </div>
+                          
+                          {/* Micro Dashboard de stats cumulées */}
                           <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
-                            <StatBadge icon={User} label="Users" value={comp.userCount || 0} color="blue" />
-                            <StatBadge icon={FileText} label="Docs" value={comp.invoiceCount || 0} color="emerald" />
-                            <StatBadge icon={Activity} label="Extr." value={comp.totalExtracts || 0} color="amber" />
-                            <StatBadge icon={Zap} label="Tokens" value={(comp.totalTokens || 0).toLocaleString()} color="purple" />
+                            <StatBadge icon={User} label="Membres" value={comp.userCount || 0} color="blue" />
+                            <StatBadge icon={FileText} label="Factures" value={comp.invoiceCount || 0} color="emerald" />
+                            <StatBadge icon={Activity} label="Sessions" value={comp.totalExtracts || 0} color="amber" />
+                            <StatBadge icon={Zap} label="Tokens AI" value={(comp.totalTokens || 0).toLocaleString()} color="purple" />
                           </div>
+
                           <div className="pt-4 border-t border-slate-200/50 flex items-center justify-between">
-                            <div className="flex -space-x-2">{[1,2,3].map(i => <div key={i} className="w-7 h-7 rounded-full bg-slate-200 border-2 border-slate-50 flex items-center justify-center"><User className="w-3 h-3 text-slate-400" /></div>)}</div>
-                            <button className="text-[9px] font-black uppercase text-indigo-600 hover:text-indigo-800 transition-colors tracking-widest">Voir Détails Audit</button>
+                            <div className="flex -space-x-2">
+                               {[1,2,3].map(i => <div key={i} className="w-7 h-7 rounded-full bg-slate-200 border-2 border-slate-50 flex items-center justify-center"><User className="w-3 h-3 text-slate-400" /></div>)}
+                            </div>
+                            <button className="text-[9px] font-black uppercase text-indigo-600 hover:text-indigo-800 transition-colors tracking-widest">Audit de consommation</button>
                           </div>
                         </div>
                       ))}
@@ -221,4 +226,3 @@ const NavBtn = ({ icon: Icon, label, active, onClick }: any) => (
       <Icon className={`w-5 h-5 ${active ? 'text-white' : 'text-slate-300'}`} /><span>{label}</span>
     </button>
 );
-    

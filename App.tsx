@@ -136,7 +136,9 @@ const App: React.FC = () => {
       } else {
         xmlContent = generateFacturXXML(selectedInvoices[0], true);
       }
-      const blob = new Blob([xmlContent], { type: 'text/xml;charset=utf-8' });
+      
+      // Téléchargement forcé en UTF-8 avec BOM (\ufeff) pour éviter les erreurs d'encodage type "mojibake"
+      const blob = new Blob(['\ufeff', xmlContent], { type: 'text/xml;charset=utf-8' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url; link.download = `export_norme_CII_${new Date().getTime()}.xml`; link.click();
@@ -238,4 +240,3 @@ const App: React.FC = () => {
 };
 
 export default App;
-    

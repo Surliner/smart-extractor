@@ -378,4 +378,3 @@ app.listen(port, async () => {
   console.log(`Server ready on port ${port}`);
   await initDb();
 });
-    

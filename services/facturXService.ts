@@ -1,3 +1,4 @@
+
 import { InvoiceData, InvoiceItem, InvoiceType, FacturXProfile } from '../types';
 
 const PROFILE_URIS = {
@@ -24,9 +25,18 @@ const formatToUDT = (dateStr: string | undefined): string => {
   return clean.replace(/[^0-9]/g, '').substring(0, 8);
 };
 
+/**
+ * Échappement rigoureux pour XML UTF-8.
+ * Empêche les caractères spéciaux de briser la structure et assure la compatibilité.
+ */
 const esc = (str: string | undefined | null): string => {
   if (!str) return '';
-  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
 };
 
 const cleanID = (str: string | undefined | null): string => str ? str.replace(/\s/g, '') : '';
