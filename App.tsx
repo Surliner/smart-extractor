@@ -21,6 +21,7 @@ const App: React.FC = () => {
   const [showUserMgmt, setShowUserMgmt] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [processProgress, setProcessProgress] = useState({ current: 0, total: 0 });
+  const [isInitializing, setIsInitializing] = useState(true);
   
   // Settings synchronisés
   const [erpConfig, setErpConfig] = useState<ErpConfig>({ apiUrl: '', apiKey: '', enabled: false });
@@ -29,11 +30,25 @@ const App: React.FC = () => {
   const [templates, setTemplates] = useState<ExportTemplate[]>([]);
   const [xmlProfiles, setXmlProfiles] = useState<XmlMappingProfile[]>([]);
 
-  const handleLogin = (profile: UserProfile) => {
+  // Initialize session on mount
+  useEffect(() => {
+    const initSession = async () => {
+      if (currentUser) {
+        try {
+          const profile = await dbService.getSessionProfile(currentUser);
+          await applyProfileData(profile);
+        } catch (e) {
+          console.error("Session re-hydration failed:", e);
+          handleLogout();
+        }
+      }
+      setIsInitializing(false);
+    };
+    initSession();
+  }, []);
+
+  const applyProfileData = async (profile: UserProfile) => {
     setUserProfile(profile);
-    setCurrentUser(profile.username);
-    localStorage.setItem('invoice-session-active-user', profile.username);
-    
     const cfg = profile.companyConfig || {};
     setErpConfig(cfg.erpConfig || { apiUrl: '', apiKey: '', enabled: false });
     setMasterData(cfg.masterData || []);
@@ -41,7 +56,18 @@ const App: React.FC = () => {
     setTemplates(cfg.templates || []);
     setXmlProfiles(cfg.xmlProfiles || []);
 
-    dbService.getInvoices(profile.username).then(setAllInvoices).catch(console.error);
+    try {
+      const invoices = await dbService.getInvoices(profile.username);
+      setAllInvoices(invoices);
+    } catch (e) {
+      console.error("Failed to fetch invoices:", e);
+    }
+  };
+
+  const handleLogin = async (profile: UserProfile) => {
+    setCurrentUser(profile.username);
+    localStorage.setItem('invoice-session-active-user', profile.username);
+    await applyProfileData(profile);
   };
 
   const handleRegister = async (username: string, pass: string, question?: string, answer?: string) => {
@@ -67,7 +93,6 @@ const App: React.FC = () => {
     if (!userProfile) return;
     const config = { erpConfig, masterData, lookupTables, templates, xmlProfiles };
     await dbService.saveCompanyConfig(userProfile.companyId, config);
-    // Refresh userProfile after sync to maintain coherence
     setUserProfile(prev => prev ? { ...prev, companyConfig: config } : null);
   }, [userProfile, erpConfig, masterData, lookupTables, templates, xmlProfiles]);
 
@@ -110,7 +135,15 @@ const App: React.FC = () => {
     setLogs(prev => [...prev, { id: crypto.randomUUID(), timestamp: new Date(), message, type }]);
   };
 
-  if (!currentUser) return (
+  if (isInitializing) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+        <Loader2 className="w-12 h-12 text-indigo-500 animate-spin" />
+      </div>
+    );
+  }
+
+  if (!currentUser || !userProfile) return (
     <LoginScreen 
       onLogin={handleLogin} 
       users={allUsers} 

@@ -19,6 +19,15 @@ export const dbService = {
     return data;
   },
 
+  async getSessionProfile(username: string): Promise<UserProfile> {
+    const response = await fetch(`${API_URL}/auth/session/${username}`);
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error || "Impossible de récupérer la session.");
+    }
+    return data;
+  },
+
   async register(username: string, password: string, securityQuestion: string, securityAnswer: string): Promise<{pending: boolean}> {
     const response = await fetch(`${API_URL}/auth/register`, {
       method: 'POST',

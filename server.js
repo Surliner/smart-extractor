@@ -144,6 +144,31 @@ app.post('/api/auth/login', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// New endpoint for session re-hydration
+app.get('/api/auth/session/:username', async (req, res) => {
+  const { username } = req.params;
+  try {
+    const result = await pool.query(
+      `SELECT u.*, c.name as company_name, c.config as company_config
+       FROM users u 
+       LEFT JOIN companies c ON u.company_id = c.id 
+       WHERE LOWER(u.username) = LOWER($1)`,
+      [username.trim()]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: "Session non trouvée." });
+    const user = result.rows[0];
+    res.json({
+      username: user.username,
+      companyId: user.company_id,
+      companyName: user.company_name || 'N/A',
+      role: user.role,
+      isApproved: user.is_approved,
+      companyConfig: user.company_config,
+      createdAt: user.created_at
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 app.post('/api/auth/register', async (req, res) => {
   const { username, password, securityQuestion, securityAnswer } = req.body;
   try {
@@ -161,12 +186,19 @@ app.post('/api/auth/register', async (req, res) => {
 app.get('/api/admin/users', async (req, res) => {
   try {
     const result = await pool.query(`
-      SELECT u.username, u.role, u.created_at, u.company_id, u.is_approved, c.name as company_name
+      SELECT u.username, u.role, u.created_at, u.company_id, u.is_approved, u.stats, c.name as company_name
       FROM users u 
       LEFT JOIN companies c ON u.company_id = c.id
       ORDER BY u.created_at DESC
     `);
-    res.json(result.rows.map(u => ({ ...u, isApproved: u.is_approved, companyName: u.company_name, companyId: u.company_id, createdAt: u.created_at })));
+    res.json(result.rows.map(u => ({ 
+      ...u, 
+      isApproved: u.is_approved, 
+      companyName: u.company_name, 
+      companyId: u.company_id, 
+      createdAt: u.created_at,
+      stats: u.stats 
+    })));
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
