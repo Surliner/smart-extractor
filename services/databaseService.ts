@@ -41,6 +41,14 @@ export const dbService = {
     return data;
   },
 
+  async updateUserStats(username: string, tokens: number): Promise<void> {
+    await fetch(`${API_URL}/users/stats`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, tokens })
+    });
+  },
+
   async approveUser(username: string): Promise<void> {
     const response = await fetch(`${API_URL}/admin/users/approve`, {
       method: 'POST',

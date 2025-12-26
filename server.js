@@ -36,7 +36,7 @@ const initDb = async () => {
       );
     `);
 
-    // Migrations pour la table USERS
+    // Migrations USERS
     const userMigrations = [
       { table: 'users', col: 'company_id', type: 'UUID REFERENCES companies(id)' },
       { table: 'users', col: 'role', type: "TEXT DEFAULT 'USER'" },
@@ -51,6 +51,7 @@ const initDb = async () => {
       await client.query(`ALTER TABLE ${m.table} ADD COLUMN IF NOT EXISTS ${m.col} ${m.type};`);
     }
 
+    // Création initiale INVOICES
     await client.query(`
       CREATE TABLE IF NOT EXISTS invoices (
           id UUID PRIMARY KEY,
@@ -60,10 +61,9 @@ const initDb = async () => {
       );
     `);
 
-    // Migration CRUCIALE pour la table INVOICES (évite l'erreur 500 column not found)
+    // Migration CRUCIALE INVOICES
     const invoiceMigrations = [
-      { table: 'invoices', col: 'company_id', type: 'UUID REFERENCES companies(id)' },
-      { table: 'invoices', col: 'owner', type: 'TEXT REFERENCES users(username) ON DELETE CASCADE' }
+      { table: 'invoices', col: 'company_id', type: 'UUID REFERENCES companies(id)' }
     ];
 
     for (const m of invoiceMigrations) {
@@ -91,7 +91,7 @@ const initDb = async () => {
     }
 
     await client.query('COMMIT');
-    console.log("Database initialized and migrated successfully.");
+    console.log("Database synced and migrated.");
   } catch (err) {
     await client.query('ROLLBACK');
     console.error("DB Init Error:", err);
@@ -103,7 +103,29 @@ const initDb = async () => {
 app.use(cors());
 app.use(express.json({ limit: '100mb' }));
 
-// --- API ROUTES ---
+// --- ROUTES ---
+
+// Mise à jour des stats utilisateur (Extractions + Tokens)
+app.post('/api/users/stats', async (req, res) => {
+  const { username, tokens } = req.body;
+  try {
+    await pool.query(
+      `UPDATE users 
+       SET stats = stats || jsonb_build_object(
+         'extractRequests', (COALESCE((stats->>'extractRequests')::int, 0) + 1),
+         'totalTokens', (COALESCE((stats->>'totalTokens')::int, 0) + $1),
+         'lastActive', CURRENT_TIMESTAMP
+       )
+       WHERE LOWER(username) = LOWER($2)`,
+      [tokens || 0, username]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    console.error("Stats update error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('/api/admin/companies', async (req, res) => {
   try {
     const result = await pool.query('SELECT * FROM companies ORDER BY name ASC');
@@ -149,7 +171,8 @@ app.post('/api/auth/login', async (req, res) => {
       role: user.role,
       isApproved: user.is_approved,
       companyConfig: user.company_config,
-      createdAt: user.created_at
+      createdAt: user.created_at,
+      stats: user.stats
     });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -173,7 +196,8 @@ app.get('/api/auth/session/:username', async (req, res) => {
       role: user.role,
       isApproved: user.is_approved,
       companyConfig: user.company_config,
-      createdAt: user.created_at
+      createdAt: user.created_at,
+      stats: user.stats
     });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });

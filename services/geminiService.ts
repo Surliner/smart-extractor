@@ -112,14 +112,13 @@ export const extractInvoiceData = async (
   try {
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview", 
-      contents: [
-        {
-          parts: [
-            { inlineData: { mimeType, data: base64Data } },
-            { text: "Extraire les métadonnées de cette facture selon le schéma Ultimate Factur-X." }
-          ]
-        }
-      ],
+      // Corrected structure for multiple parts in contents
+      contents: {
+        parts: [
+          { inlineData: { mimeType, data: base64Data } },
+          { text: "Extraire les métadonnées de cette facture selon le schéma Ultimate Factur-X." }
+        ]
+      },
       config: {
         systemInstruction,
         responseMimeType: "application/json",
@@ -128,6 +127,7 @@ export const extractInvoiceData = async (
       },
     });
 
+    // Accessing response.text as a property as per current SDK rules
     let textOutput = response.text || "{}";
     const rawData = JSON.parse(textOutput);
     const usage = response.usageMetadata || { totalTokenCount: 0 };

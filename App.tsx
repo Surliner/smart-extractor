@@ -57,7 +57,6 @@ const App: React.FC = () => {
     setXmlProfiles(cfg.xmlProfiles || []);
 
     try {
-      // Re-chargement de l'historique de l'utilisateur
       const invoices = await dbService.getInvoices(profile.username);
       setAllInvoices(invoices);
     } catch (e) {
@@ -112,11 +111,10 @@ const App: React.FC = () => {
       const updatedInvoice = newInvoices.find(i => i.id === id);
       
       if (updatedInvoice) {
-        // On s'assure que le owner est correct avant l'envoi
         const payload = { ...updatedInvoice, owner: userProfile.username, companyId: userProfile.companyId };
         dbService.saveInvoice(payload).catch(e => {
-            console.error("Persistence error during audit save:", e);
-            alert("Erreur lors de l'enregistrement en base de données : " + e.message);
+            console.error("Persistence error:", e);
+            alert("Erreur lors de l'enregistrement : " + e.message);
         });
       }
       return newInvoices;
@@ -139,10 +137,15 @@ const App: React.FC = () => {
         const result = await extractInvoiceData(base64Data, file.type, file.name, 'ULTIMATE', 'INBOUND', userProfile.companyId, true);
         const inv = { ...result.invoice, owner: userProfile.username, companyId: userProfile.companyId };
         
-        // On attend la sauvegarde avant d'ajouter à l'état local pour garantir la persistance
+        // 1. Sauvegarde de la facture
         await dbService.saveInvoice(inv);
+        
+        // 2. Mise à jour des compteurs (Extractions + Tokens)
+        await dbService.updateUserStats(userProfile.username, result.usage.totalTokens);
+        
+        // 3. Mise à jour UI
         setAllInvoices(prev => [inv, ...prev]);
-        addLog(`Facture extraite et sauvegardée : ${inv.invoiceNumber}`, 'success');
+        addLog(`Facture ${inv.invoiceNumber} extraite (${result.usage.totalTokens} tokens utilisés)`, 'success');
       } catch (err: any) {
         addLog(`Erreur : ${file.name} - ${err.message}`, 'error');
         console.error("File processing error:", err);
@@ -193,6 +196,7 @@ const App: React.FC = () => {
               className="flex items-center space-x-3 px-5 py-2.5 bg-indigo-600/10 text-indigo-400 hover:bg-indigo-600 hover:text-white rounded-2xl border border-indigo-600/20 transition-all font-black uppercase text-[10px] tracking-widest"
             >
               <Users className="w-5 h-5" />
+              {/* Fix: use userProfile?.role instead of the undefined userRole */}
               <span>{userProfile?.role === 'SUPER_ADMIN' ? 'SaaS Portal' : 'Gestion Tiers'}</span>
             </button>
           )}
