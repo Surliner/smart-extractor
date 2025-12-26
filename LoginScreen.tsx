@@ -6,7 +6,6 @@ import { dbService } from './services/databaseService';
 
 interface LoginScreenProps {
   onLogin: (user: UserProfile) => void;
-  users?: UserProfile[]; 
   onRegister: (username: string, pass: string, securityQuestion?: string, securityAnswer?: string) => void;
   onResetPassword: (username: string, newPass: string, answer?: string) => void;
 }
@@ -79,18 +78,20 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onRegister, o
   const handleRecoveryIdentify = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    if (!username.trim()) {
+    const cleanUsername = username.trim();
+    if (!cleanUsername) {
       setError("Veuillez saisir votre identifiant.");
       return;
     }
     
     setIsLoading(true);
     try {
-      const info = await dbService.getRecoveryInfo(username);
+      // FIX: Appel API direct pour vérifier l'existence de test2 ou tout autre compte
+      const info = await dbService.getRecoveryInfo(cleanUsername);
       setRecoveryInfo(info);
       setView('RECOVER_CHALLENGE');
     } catch (err: any) {
-      setError(err.message || "Identité introuvable.");
+      setError(err.message || "Identité introuvable dans notre système.");
     } finally {
       setIsLoading(false);
     }
@@ -211,7 +212,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onRegister, o
               <FormGroup label="Réponse" icon={ShieldCheck} value={securityAnswer} onChange={setSecurityAnswer} placeholder="Votre réponse" theme="dark" />
 
               <button disabled={isLoading} type="submit" className="w-full bg-indigo-600 hover:bg-indigo-50 text-white font-black uppercase text-[11px] tracking-[0.2em] py-5 rounded-[1.5rem] flex items-center justify-center transition-all disabled:opacity-50">
-                {isLoading ? <RefreshCw className="w-5 h-5 mr-3 animate-spin" /> : <UserPlus className="w-5 h-5 mr-3" />} Créer mon compte
+                {isLoading ? <RefreshCw className="w-5 h-5 animate-spin" /> : <UserPlus className="w-5 h-5 mr-3" />} Créer mon compte
               </button>
             </form>
           )}

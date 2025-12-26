@@ -90,8 +90,8 @@ const initDb = async () => {
 
     await client.query('UPDATE users SET company_id = $1 WHERE company_id IS NULL', [defaultCompId]);
 
-    // Seed Admin
-    const adminCheck = await client.query('SELECT * FROM users WHERE LOWER(username) = $1', ['admin']);
+    // Seed Admin (uniquement si absent)
+    const adminCheck = await client.query('SELECT * FROM users WHERE LOWER(username) = LOWER($1)', ['admin']);
     if (adminCheck.rows.length === 0) {
       await client.query(
         'INSERT INTO users (username, password, role, company_id, is_approved, security_question, security_answer) VALUES ($1, $2, $3, $4, $5, $6, $7)',
@@ -99,8 +99,8 @@ const initDb = async () => {
       );
     }
 
-    // Seed Test Account Jean
-    const jeanCheck = await client.query('SELECT * FROM users WHERE LOWER(username) = $1', ['jean']);
+    // Seed Test Account Jean (uniquement si absent)
+    const jeanCheck = await client.query('SELECT * FROM users WHERE LOWER(username) = LOWER($1)', ['jean']);
     if (jeanCheck.rows.length === 0) {
       await client.query(
         'INSERT INTO users (username, password, role, company_id, is_approved, security_question, security_answer) VALUES ($1, $2, $3, $4, $5, $6, $7)',
@@ -253,11 +253,12 @@ app.post('/api/auth/register', async (req, res) => {
 app.get('/api/auth/recovery/:username', async (req, res) => {
   const { username } = req.params;
   try {
+    // FIX: Recherche insensible à la casse pour test2, Test2, etc.
     const result = await pool.query(
       'SELECT username, security_question FROM users WHERE LOWER(username) = LOWER($1)',
       [username.trim()]
     );
-    if (result.rows.length === 0) return res.status(404).json({ error: "Utilisateur introuvable." });
+    if (result.rows.length === 0) return res.status(404).json({ error: "Identité introuvable." });
     res.json(result.rows[0]);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
