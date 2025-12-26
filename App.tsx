@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { UploadCloud, Loader2, Cpu, LogOut, Settings, Zap, Users, CloudLightning, ShieldCheck, Inbox, Archive } from 'lucide-react';
 import { extractInvoiceData } from './services/geminiService';
 import { dbService } from './services/databaseService';
@@ -9,6 +9,9 @@ import { InvoiceTable } from './components/InvoiceTable';
 import { LoginScreen } from './components/LoginScreen';
 import { ConfigurationModal } from './components/ConfigurationModal';
 import { UserManagement } from './components/UserManagement';
+
+// 10 minutes en millisecondes
+const INACTIVITY_TIMEOUT = 10 * 60 * 1000;
 
 const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<string | null>(localStorage.getItem('invoice-session-active-user'));
@@ -29,6 +32,44 @@ const App: React.FC = () => {
   const [templates, setTemplates] = useState<ExportTemplate[]>([]);
   const [xmlProfiles, setXmlProfiles] = useState<XmlMappingProfile[]>([]);
 
+  // Ref pour suivre la dernière interaction
+  const lastActivityRef = useRef<number>(Date.now());
+
+  const handleLogout = useCallback(() => {
+    localStorage.removeItem('invoice-session-active-user');
+    setCurrentUser(null);
+    setUserProfile(null);
+    setAllInvoices([]);
+    setLogs([]);
+  }, []);
+
+  // Gestion de l'inactivité
+  useEffect(() => {
+    if (!currentUser) return;
+
+    const resetTimer = () => {
+      lastActivityRef.current = Date.now();
+    };
+
+    // Événements à surveiller
+    const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart'];
+    events.forEach(name => window.addEventListener(name, resetTimer));
+
+    // Vérification périodique toutes les 30 secondes
+    const checkInterval = setInterval(() => {
+      const now = Date.now();
+      if (now - lastActivityRef.current > INACTIVITY_TIMEOUT) {
+        console.log("Session expirée pour inactivité.");
+        handleLogout();
+      }
+    }, 30000);
+
+    return () => {
+      events.forEach(name => window.removeEventListener(name, resetTimer));
+      clearInterval(checkInterval);
+    };
+  }, [currentUser, handleLogout]);
+
   useEffect(() => {
     const initSession = async () => {
       if (currentUser) {
@@ -43,7 +84,7 @@ const App: React.FC = () => {
       setIsInitializing(false);
     };
     initSession();
-  }, []);
+  }, [currentUser, handleLogout]);
 
   const applyProfileData = async (profile: UserProfile) => {
     setUserProfile(profile);
@@ -70,14 +111,7 @@ const App: React.FC = () => {
     setCurrentUser(profile.username);
     localStorage.setItem('invoice-session-active-user', profile.username);
     await applyProfileData(profile);
-  };
-
-  const handleLogout = () => {
-    localStorage.removeItem('invoice-session-active-user');
-    setCurrentUser(null);
-    setUserProfile(null);
-    setAllInvoices([]);
-    setLogs([]);
+    lastActivityRef.current = Date.now(); // Reset timer à la connexion
   };
 
   const syncConfigToCloud = useCallback(async () => {
@@ -182,7 +216,6 @@ const App: React.FC = () => {
         </div>
         <div className="flex items-center space-x-4">
           {(userProfile?.role === 'ADMIN' || userProfile?.role === 'SUPER_ADMIN') && (
-            // FIX: Use userProfile.role instead of non-existent userRole
             <button onClick={() => setShowUserMgmt(true)} className="flex items-center space-x-3 px-5 py-2.5 bg-indigo-600/10 text-indigo-400 hover:bg-indigo-600 hover:text-white rounded-2xl border border-indigo-600/20 transition-all font-black uppercase text-[10px] tracking-widest"><Users className="w-5 h-5" /><span>{userProfile.role === 'SUPER_ADMIN' ? 'SaaS Portal' : 'Gestion Tiers'}</span></button>
           )}
           <button onClick={() => setShowConfig(true)} className="p-3 bg-white/5 text-slate-400 hover:text-white rounded-2xl border border-white/10 hover:bg-white/10 transition-all"><Settings className="w-6 h-6" /></button>
