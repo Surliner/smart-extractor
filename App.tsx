@@ -57,6 +57,7 @@ const App: React.FC = () => {
     setXmlProfiles(cfg.xmlProfiles || []);
 
     try {
+      // Re-chargement de l'historique de l'utilisateur
       const invoices = await dbService.getInvoices(profile.username);
       setAllInvoices(invoices);
     } catch (e) {
@@ -104,11 +105,19 @@ const App: React.FC = () => {
   };
 
   const handleInvoiceUpdate = async (id: string, updates: Partial<InvoiceData>) => {
+    if (!userProfile) return;
+    
     setAllInvoices(prev => {
       const newInvoices = prev.map(inv => inv.id === id ? { ...inv, ...updates } : inv);
       const updatedInvoice = newInvoices.find(i => i.id === id);
+      
       if (updatedInvoice) {
-        dbService.saveInvoice(updatedInvoice).catch(e => console.error("Persistence error:", e));
+        // On s'assure que le owner est correct avant l'envoi
+        const payload = { ...updatedInvoice, owner: userProfile.username, companyId: userProfile.companyId };
+        dbService.saveInvoice(payload).catch(e => {
+            console.error("Persistence error during audit save:", e);
+            alert("Erreur lors de l'enregistrement en base de données : " + e.message);
+        });
       }
       return newInvoices;
     });
@@ -130,11 +139,13 @@ const App: React.FC = () => {
         const result = await extractInvoiceData(base64Data, file.type, file.name, 'ULTIMATE', 'INBOUND', userProfile.companyId, true);
         const inv = { ...result.invoice, owner: userProfile.username, companyId: userProfile.companyId };
         
-        setAllInvoices(prev => [inv, ...prev]);
+        // On attend la sauvegarde avant d'ajouter à l'état local pour garantir la persistance
         await dbService.saveInvoice(inv);
-        addLog(`Facture extraite : ${inv.invoiceNumber}`, 'success');
+        setAllInvoices(prev => [inv, ...prev]);
+        addLog(`Facture extraite et sauvegardée : ${inv.invoiceNumber}`, 'success');
       } catch (err: any) {
         addLog(`Erreur : ${file.name} - ${err.message}`, 'error');
+        console.error("File processing error:", err);
       } finally {
         setProcessProgress(prev => ({ ...prev, current: prev.current + 1 }));
       }

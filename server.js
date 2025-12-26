@@ -90,7 +90,7 @@ const initDb = async () => {
 };
 
 app.use(cors());
-app.use(express.json({ limit: '50mb' }));
+app.use(express.json({ limit: '100mb' })); // Augmentation de la limite pour les gros PDF
 
 // --- COMPANY API ---
 app.get('/api/admin/companies', async (req, res) => {
@@ -187,7 +187,7 @@ app.get('/api/invoices', async (req, res) => {
   const { user } = req.query;
   try {
     const result = await pool.query(
-      'SELECT data FROM invoices WHERE owner = $1 ORDER BY created_at DESC',
+      'SELECT data FROM invoices WHERE LOWER(owner) = LOWER($1) ORDER BY created_at DESC',
       [user]
     );
     res.json(result.rows.map(row => row.data));
@@ -196,16 +196,27 @@ app.get('/api/invoices', async (req, res) => {
 
 app.post('/api/invoices', async (req, res) => {
   const invoice = req.body;
+  if (!invoice.id || !invoice.owner) {
+      return res.status(400).json({ error: "Missing Invoice ID or Owner" });
+  }
   try {
-    const userRes = await pool.query('SELECT company_id FROM users WHERE username = $1', [invoice.owner]);
-    if (userRes.rows.length === 0) return res.status(404).json({ error: "Owner not found" });
-    const cid = userRes.rows[0].company_id;
+    // Crucial: Récupérer le nom d'utilisateur exact (casse) et le company_id
+    const userRes = await pool.query('SELECT username, company_id FROM users WHERE LOWER(username) = LOWER($1)', [invoice.owner]);
+    if (userRes.rows.length === 0) {
+        return res.status(404).json({ error: `User ${invoice.owner} not found in database.` });
+    }
+    const { username, company_id } = userRes.rows[0];
+    
+    // Upsert de la facture
     await pool.query(
       'INSERT INTO invoices (id, owner, company_id, data) VALUES ($1, $2, $3, $4) ON CONFLICT (id) DO UPDATE SET data = $4', 
-      [invoice.id, invoice.owner, cid, invoice]
+      [invoice.id, username, company_id, invoice]
     );
     res.json({ success: true });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { 
+    console.error("POST /api/invoices DATABASE ERROR:", err);
+    res.status(500).json({ error: err.message }); 
+  }
 });
 
 app.get('/api/admin/users', async (req, res) => {
