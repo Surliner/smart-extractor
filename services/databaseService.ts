@@ -49,18 +49,6 @@ export const dbService = {
     });
   },
 
-  async approveUser(username: string): Promise<void> {
-    const response = await fetch(`${API_URL}/admin/users/approve`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username })
-    });
-    if (!response.ok) {
-        const err = await response.json();
-        throw new Error(err.error || "Impossible d'approuver l'utilisateur.");
-    }
-  },
-
   async updateUser(username: string, updates: { role: UserRole, companyId: string, isApproved: boolean }): Promise<void> {
     const response = await fetch(`${API_URL}/admin/users/update`, {
       method: 'POST',
@@ -117,14 +105,6 @@ export const dbService = {
     return await response.json();
   },
 
-  async createAdminUser(userData: any): Promise<void> {
-    await fetch(`${API_URL}/admin/users`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(userData)
-    });
-  },
-
   async saveInvoice(invoice: InvoiceData): Promise<void> {
     await fetch(`${API_URL}/invoices`, {
       method: 'POST',
@@ -133,13 +113,14 @@ export const dbService = {
     });
   },
 
-  async getInvoices(username: string): Promise<InvoiceData[]> {
-    const response = await fetch(`${API_URL}/invoices?user=${username}`);
+  async getInvoices(companyId: string): Promise<InvoiceData[]> {
+    const response = await fetch(`${API_URL}/invoices?companyId=${companyId}`);
     return await response.json();
   },
 
-  async getAllUsers(): Promise<UserProfile[]> {
-    const response = await fetch(`${API_URL}/admin/users`);
+  async getAllUsers(companyId?: string): Promise<UserProfile[]> {
+    const url = companyId ? `${API_URL}/admin/users?companyId=${companyId}` : `${API_URL}/admin/users`;
+    const response = await fetch(url);
     return await response.json();
   }
 };

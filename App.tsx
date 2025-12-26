@@ -57,7 +57,8 @@ const App: React.FC = () => {
     setXmlProfiles(cfg.xmlProfiles || []);
 
     try {
-      const invoices = await dbService.getInvoices(profile.username);
+      // Les utilisateurs d'une même partition voient les factures de la partition
+      const invoices = await dbService.getInvoices(profile.companyId);
       setAllInvoices(invoices);
     } catch (e) {
       console.error("Failed to fetch invoices:", e);
@@ -139,16 +140,12 @@ const App: React.FC = () => {
           ...result.invoice, 
           owner: userProfile.username, 
           companyId: userProfile.companyId,
-          extractedAt: new Date().toISOString() // Horodatage précis au moment de l'extraction
+          extractedAt: new Date().toISOString()
         };
         
-        // 1. Sauvegarde de la facture
         await dbService.saveInvoice(inv);
-        
-        // 2. Mise à jour des compteurs (Extractions + Tokens)
         await dbService.updateUserStats(userProfile.username, result.usage.totalTokens);
         
-        // 3. Mise à jour UI
         setAllInvoices(prev => [inv, ...prev]);
         addLog(`Facture ${inv.invoiceNumber} extraite (${result.usage.totalTokens} tokens utilisés)`, 'success');
       } catch (err: any) {
@@ -258,6 +255,7 @@ const App: React.FC = () => {
           onClose={() => setShowUserMgmt(false)}
           users={allUsers}
           currentUser={userProfile.username}
+          currentUserCompanyId={userProfile.companyId}
           userRole={userProfile.role}
           onUpdateRole={() => {}}
           onDeleteUser={() => {}}

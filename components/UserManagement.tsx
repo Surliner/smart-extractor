@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { UserProfile, UserRole, Company } from '../types';
-import { User, X, ShieldCheck, Building2, Plus, CheckCircle, Clock, Trash2, ShieldAlert, Save, RefreshCw, Cpu, Activity, BarChart3, UserCheck, UserX } from 'lucide-react';
+import { User, X, ShieldCheck, Building2, Plus, CheckCircle, Clock, Trash2, ShieldAlert, Save, RefreshCw, Activity, BarChart3, UserCheck, UserX } from 'lucide-react';
 import { dbService } from '../services/databaseService';
 
 interface UserManagementProps {
@@ -9,6 +9,7 @@ interface UserManagementProps {
   onClose: () => void;
   users: UserProfile[];
   currentUser: string;
+  currentUserCompanyId?: string;
   userRole: UserRole;
   onUpdateRole: (username: string, newRole: UserRole) => void;
   onDeleteUser: (username: string) => void;
@@ -18,7 +19,8 @@ interface UserManagementProps {
 export const UserManagement: React.FC<UserManagementProps> = ({ 
   isOpen, 
   onClose, 
-  userRole 
+  userRole,
+  currentUserCompanyId
 }) => {
   const [activeSubTab, setActiveSubTab] = useState<'users' | 'companies'>('users');
   const [companies, setCompanies] = useState<Company[]>([]);
@@ -33,9 +35,10 @@ export const UserManagement: React.FC<UserManagementProps> = ({
   const fetchAll = async () => {
     setIsLoading(true);
     try {
+        // Un Admin client ne récupère que les utilisateurs de son entreprise
         const [u, c] = await Promise.all([
-            dbService.getAllUsers(),
-            dbService.getAllCompanies()
+            dbService.getAllUsers(isSuperAdmin ? undefined : currentUserCompanyId),
+            isSuperAdmin ? dbService.getAllCompanies() : Promise.resolve([])
         ]);
         setUsers(u);
         setCompanies(c);
@@ -60,7 +63,9 @@ export const UserManagement: React.FC<UserManagementProps> = ({
 
   const handleUpdateUser = async (username: string, role: UserRole, companyId: string, isApproved: boolean) => {
     try {
-        await dbService.updateUser(username, { role, companyId, isApproved });
+        // Un admin client ne peut pas changer l'entreprise
+        const targetCompanyId = isSuperAdmin ? companyId : (currentUserCompanyId || companyId);
+        await dbService.updateUser(username, { role, companyId: targetCompanyId, isApproved });
         fetchAll();
     } catch (e: any) { alert(e.message); }
   };
@@ -114,7 +119,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({
             </div>
 
             <div className="flex-1 overflow-hidden flex flex-col bg-white">
-                {activeSubTab === 'companies' ? (
+                {activeSubTab === 'companies' && isSuperAdmin ? (
                   <div className="p-10 space-y-10 overflow-y-auto custom-scrollbar flex-1 animate-in fade-in">
                     <div className="flex justify-between items-end border-b border-slate-100 pb-10">
                       <div>
@@ -184,18 +189,22 @@ export const UserManagement: React.FC<UserManagementProps> = ({
                                             </div>
                                         </td>
                                         <td className="px-6 py-5">
-                                            <select 
-                                              disabled={!isSuperAdmin && userRole !== 'ADMIN' || u.username.toLowerCase() === 'admin'}
-                                              value={u.companyId}
-                                              onChange={(e) => handleUpdateUser(u.username, u.role, e.target.value, u.isApproved)}
-                                              className="bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl text-[9px] font-black uppercase w-48 outline-none focus:border-indigo-500 disabled:opacity-30 transition-all cursor-pointer"
-                                            >
-                                              {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                                            </select>
+                                            {isSuperAdmin ? (
+                                              <select 
+                                                disabled={u.username.toLowerCase() === 'admin'}
+                                                value={u.companyId}
+                                                onChange={(e) => handleUpdateUser(u.username, u.role, e.target.value, u.isApproved)}
+                                                className="bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl text-[9px] font-black uppercase w-48 outline-none focus:border-indigo-500 disabled:opacity-30 transition-all cursor-pointer"
+                                              >
+                                                {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                              </select>
+                                            ) : (
+                                              <span className="text-[10px] font-black uppercase text-slate-500">{u.companyName}</span>
+                                            )}
                                         </td>
                                         <td className="px-6 py-5">
                                             <select 
-                                              disabled={!isSuperAdmin || u.username.toLowerCase() === 'admin'}
+                                              disabled={!isSuperAdmin && userRole !== 'ADMIN' || u.username.toLowerCase() === 'admin'}
                                               value={u.role}
                                               onChange={(e) => handleUpdateUser(u.username, e.target.value as UserRole, u.companyId, u.isApproved)}
                                               className="bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl text-[9px] font-black uppercase w-28 outline-none focus:border-indigo-500 disabled:opacity-30 transition-all cursor-pointer"

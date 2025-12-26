@@ -105,7 +105,6 @@ app.use(express.json({ limit: '100mb' }));
 
 // --- ROUTES ---
 
-// Mise à jour des stats utilisateur (Extractions + Tokens)
 app.post('/api/users/stats', async (req, res) => {
   const { username, tokens } = req.body;
   try {
@@ -217,11 +216,12 @@ app.post('/api/auth/register', async (req, res) => {
 });
 
 app.get('/api/invoices', async (req, res) => {
-  const { user } = req.query;
+  const { companyId } = req.query;
   try {
+    // Changement de visibilité : filtrage par company_id au lieu de owner
     const result = await pool.query(
-      'SELECT data FROM invoices WHERE LOWER(owner) = LOWER($1) ORDER BY created_at DESC',
-      [user]
+      'SELECT data FROM invoices WHERE company_id = $1 ORDER BY created_at DESC',
+      [companyId]
     );
     res.json(result.rows.map(row => row.data));
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -251,13 +251,21 @@ app.post('/api/invoices', async (req, res) => {
 });
 
 app.get('/api/admin/users', async (req, res) => {
+  const { companyId } = req.query;
   try {
-    const result = await pool.query(`
+    let query = `
       SELECT u.username, u.role, u.created_at, u.company_id, u.is_approved, u.stats, c.name as company_name
       FROM users u 
       LEFT JOIN companies c ON u.company_id = c.id
-      ORDER BY u.created_at DESC
-    `);
+    `;
+    let params = [];
+    if (companyId) {
+      query += ` WHERE u.company_id = $1 `;
+      params.push(companyId);
+    }
+    query += ` ORDER BY u.created_at DESC `;
+    
+    const result = await pool.query(query, params);
     res.json(result.rows.map(u => ({ 
       ...u, 
       isApproved: u.is_approved, 
