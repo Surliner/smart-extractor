@@ -7,32 +7,32 @@ const FIELD_GROUPS = [
   {
     name: 'Identité du Document',
     fields: [
-      { id: 'invoiceType', label: 'Type de Document', bt: 'BT-3', desc: 'Code du type de facture (380: Facture, 381: Avoir).' },
-      { id: 'invoiceNumber', label: 'Numéro Facture', bt: 'BT-1', desc: 'Identifiant unique de la facture.' },
-      { id: 'invoiceDate', label: 'Date d\'émission', bt: 'BT-2', desc: 'Date à laquelle la facture a été émise (JJ/MM/AAAA).' },
-      { id: 'dueDate', label: 'Date d\'échéance', bt: 'BT-9', desc: 'Date limite de paiement.' },
-      { id: 'currency', label: 'Devise', bt: 'BT-5', desc: 'Code ISO 4217 de la devise (ex: EUR, USD).' },
-      { id: 'businessProcessId', label: 'Profil Processus', bt: 'BT-23', desc: 'Identifiant du profil de gestion (ex: Factur-X).' },
+      { id: 'invoiceType', label: 'Type de Document', bt: '3', desc: 'Code du type de facture (380: Facture, 381: Avoir).' },
+      { id: 'invoiceNumber', label: 'Numéro Facture', bt: '1', desc: 'Identifiant unique de la facture.' },
+      { id: 'invoiceDate', label: 'Date d\'émission', bt: '2', desc: 'Date à laquelle la facture a été émise (JJ/MM/AAAA).' },
+      { id: 'dueDate', label: 'Date d\'échéance', bt: '9', desc: 'Date limite de paiement.' },
+      { id: 'currency', label: 'Devise', bt: '5', desc: 'Code ISO 4217 de la devise (ex: EUR, USD).' },
+      { id: 'businessProcessId', label: 'Profil Processus', bt: '23', desc: 'Identifiant du profil de gestion (ex: Factur-X).' },
     ]
   },
   {
     name: 'Références & Logistique',
     fields: [
-      { id: 'poNumber', label: 'N° Commande (PO)', bt: 'BT-13', desc: 'Référence du bon de commande associé.' },
-      { id: 'buyerReference', label: 'Réf. Acheteur', bt: 'BT-10', desc: 'Identifiant de référence fourni par l\'acheteur.' },
-      { id: 'contractNumber', label: 'N° Contrat', bt: 'BT-12', desc: 'Référence du contrat cadre.' },
-      { id: 'deliveryNoteNumber', label: 'N° Bon Livraison', bt: 'BT-16', desc: 'Référence du document de réception.' },
-      { id: 'projectReference', label: 'Réf. Projet', bt: 'BT-11', desc: 'Identifiant du projet associé.' },
-      { id: 'deliveryDate', label: 'Date de Livraison', bt: 'BT-72', desc: 'Date réelle de livraison des biens/services.' },
-      { id: 'receivingAdviceNumber', label: 'N° Avis Réception', bt: 'BT-15', desc: 'Référence du bordereau de réception.' },
+      { id: 'poNumber', label: 'N° Commande (PO)', bt: '13', desc: 'Référence du bon de commande associé.' },
+      { id: 'buyerReference', label: 'Réf. Acheteur', bt: '10', desc: 'Identifiant de référence fourni par l\'acheteur.' },
+      { id: 'contractNumber', label: 'N° Contrat', bt: '12', desc: 'Référence du contrat cadre.' },
+      { id: 'deliveryNoteNumber', label: 'N° Bon Livraison', bt: '16', desc: 'Référence du document de réception.' },
+      { id: 'projectReference', label: 'Réf. Projet', bt: '11', desc: 'Identifiant du projet associé.' },
+      { id: 'deliveryDate', label: 'Date de Livraison', bt: '72', desc: 'Date réelle de livraison des biens/services.' },
+      { id: 'receivingAdviceNumber', label: 'N° Avis Réception', bt: '15', desc: 'Référence du bordereau de réception.' },
     ]
   },
   {
     name: 'Vendeur (Fournisseur)',
     fields: [
-      { id: 'supplier', label: 'Nom Vendeur', bt: 'BT-27', desc: 'Raison sociale complète de l\'émetteur.' },
-      { id: 'supplierSiret', label: 'SIRET Vendeur', bt: 'BT-29', desc: 'Identifiant SIRET (14 chiffres) du siège ou établissement.' },
-      { id: 'supplierVat', label: 'TVA Vendeur', bt: 'BT-31', desc: 'Numéro de TVA intracommunautaire du vendeur.' },
+      { id: 'supplier', label: 'Nom Vendeur', bt: '27', desc: 'Raison sociale complète de l\'émetteur.' },
+      { id: 'supplierSiret', label: 'SIRET Vendeur', bt: '29', desc: 'Identifiant SIRET (14 chiffres) du siège ou établissement.' },
+      { id: 'supplierVat', label: 'TVA Vendeur', bt: '31', desc: 'Numéro de TVA intracommunautaire du vendeur.' },
       { id: 'supplierAddress', label: 'Adresse Vendeur', bt: 'BG-5', desc: 'Adresse complète (rue, ville, CP, pays).' },
       { id: 'supplierErpCode', label: 'Code ERP Vendeur', bt: 'N/A', desc: 'Identifiant pivot pour l\'intégration comptable.' },
     ]
@@ -40,9 +40,9 @@ const FIELD_GROUPS = [
   {
     name: 'Acheteur (Client)',
     fields: [
-      { id: 'buyerName', label: 'Nom Acheteur', bt: 'BT-44', desc: 'Raison sociale du client destinataire.' },
-      { id: 'buyerSiret', label: 'SIRET Acheteur', bt: 'BT-47', desc: 'Identifiant légal de l\'acheteur.' },
-      { id: 'buyerVat', label: 'TVA Acheteur', bt: 'BT-48', desc: 'Numéro de TVA intracommunautaire de l\'acheteur.' },
+      { id: 'buyerName', label: 'Nom Acheteur', bt: '44', desc: 'Raison sociale du client destinataire.' },
+      { id: 'buyerSiret', label: 'SIRET Acheteur', bt: '47', desc: 'Identifiant légal de l\'acheteur.' },
+      { id: 'buyerVat', label: 'TVA Acheteur', bt: '48', desc: 'Numéro de TVA intracommunautaire de l\'acheteur.' },
       { id: 'buyerAddress', label: 'Adresse Acheteur', bt: 'BG-8', desc: 'Adresse de facturation complète du client.' },
       { id: 'buyerErpCode', label: 'Code Client ERP', bt: 'N/A', desc: 'Code client dans votre système comptable.' },
     ]
@@ -50,23 +50,23 @@ const FIELD_GROUPS = [
   {
     name: 'Montants & Taxes',
     fields: [
-      { id: 'amountExclVat', label: 'Total HT', bt: 'BT-109', desc: 'Somme des montants HT des lignes.' },
-      { id: 'totalVat', label: 'Total TVA', bt: 'BT-110', desc: 'Montant total de la taxe sur la valeur ajoutée.' },
-      { id: 'amountInclVat', label: 'Total TTC', bt: 'BT-112', desc: 'Montant net à payer (Total HT + TVA).' },
-      { id: 'globalDiscount', label: 'Remise Globale', bt: 'BT-107', desc: 'Montant de la remise appliquée au total HT.' },
-      { id: 'globalCharge', label: 'Frais Globaux', bt: 'BT-108', desc: 'Montant des frais annexes (port, emballage).' },
-      { id: 'prepaidAmount', label: 'Montant Déjà Payé', bt: 'BT-113', desc: 'Somme déjà réglée (acomptes).' },
+      { id: 'amountExclVat', label: 'Total HT', bt: '109', desc: 'Somme des montants HT des lignes.' },
+      { id: 'totalVat', label: 'Total TVA', bt: '110', desc: 'Montant total de la taxe sur la valeur ajoutée.' },
+      { id: 'amountInclVat', label: 'Total TTC', bt: '112', desc: 'Montant net à payer (Total HT + TVA).' },
+      { id: 'globalDiscount', label: 'Remise Globale', bt: '107', desc: 'Montant de la remise appliquée au total HT.' },
+      { id: 'globalCharge', label: 'Frais Globaux', bt: '108', desc: 'Montant des frais annexes (port, emballage).' },
+      { id: 'prepaidAmount', label: 'Montant Déjà Payé', bt: '113', desc: 'Somme déjà réglée (acomptes).' },
     ]
   },
   {
     name: 'Paiement & Banque',
     fields: [
-      { id: 'iban', label: 'IBAN', bt: 'BT-84', desc: 'Numéro de compte bancaire international.' },
-      { id: 'bic', label: 'BIC', bt: 'BT-85', desc: 'Code SWIFT d\'identification de la banque.' },
-      { id: 'paymentMethod', label: 'Mode de Paiement', bt: 'BT-81', desc: 'Libellé du mode de règlement.' },
-      { id: 'paymentMeansCode', label: 'Code UNCL4461', bt: 'BT-81', desc: 'Code numérique du mode de paiement (ex: 30: Virement).' },
-      { id: 'paymentTerms', label: 'Conditions Paiement', bt: 'BT-20', desc: 'Description textuelle des délais de règlement.' },
-      { id: 'paymentReference', label: 'Référence Paiement', bt: 'BT-83', desc: 'Libellé à faire figurer sur le virement.' },
+      { id: 'iban', label: 'IBAN', bt: '84', desc: 'Numéro de compte bancaire international.' },
+      { id: 'bic', label: 'BIC', bt: '85', desc: 'Code SWIFT d\'identification de la banque.' },
+      { id: 'paymentMethod', label: 'Mode de Paiement', bt: '81', desc: 'Libellé du mode de règlement.' },
+      { id: 'paymentMeansCode', label: 'Code UNCL4461', bt: '81', desc: 'Code numérique du mode de paiement (ex: 30: Virement).' },
+      { id: 'paymentTerms', label: 'Conditions Paiement', bt: '20', desc: 'Description textuelle des délais de règlement.' },
+      { id: 'paymentReference', label: 'Référence Paiement', bt: '83', desc: 'Libellé à faire figurer sur le virement.' },
     ]
   }
 ];

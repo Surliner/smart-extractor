@@ -1,6 +1,5 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-// Added Database to imports from lucide-react
 import { X, Save, CheckCircle, AlertTriangle, Download, Plus, Trash2, LayoutList, Truck, Receipt, Package, ShieldCheck, Globe, Briefcase, Landmark, Percent, Hash, Calendar as CalendarIcon, Coins, ChevronDown, Calculator, Info, FileCode, Eye, EyeOff, FileSearch, ExternalLink, Settings2, CloudLightning, Shield, Clock, CreditCard, StickyNote, Box, FileDown, FileCheck, Banknote, ListChecks, ShieldAlert, BadgeCheck, Database } from 'lucide-react';
 import { InvoiceData, InvoiceItem, InvoiceType, LookupTable, OperationCategory, TaxPointType, FacturXProfile, PartnerMasterData } from '../types';
 import { generateFacturXXML } from '../services/facturXService';
@@ -8,21 +7,7 @@ import { generateFacturXXML } from '../services/facturXService';
 // --- Constants ---
 const STANDARD_VAT_RATE = 20.0;
 
-const COMMON_UNITS = [
-  { code: 'C62', label: 'PCE (Pièce)' },
-  { code: 'HUR', label: 'HUR (Heure)' },
-  { code: 'DAY', label: 'DAY (Jour)' },
-  { code: 'LTR', label: 'LTR (Litre)' },
-  { code: 'KGM', label: 'KGM (Kilogramme)' },
-  { code: 'MTQ', label: 'MTQ (Mètre Cube)' },
-  { code: 'MTR', label: 'MTR (Mètre)' },
-  { code: 'MTK', label: 'MTK (Mètre Carré)' },
-  { code: 'ANN', label: 'ANN (Année)' },
-  { code: 'MON', label: 'MON (Mois)' },
-  { code: 'E48', label: 'E48 (Forfait / Service)' },
-];
-
-const FormInput = ({ label, value, onChange, type = "text", placeholder, btId, required, multiline, className = "", themeColor = "indigo", badge }: any) => {
+const FormInput = ({ label, value, onChange, type = "text", placeholder, btId, required, multiline, className = "", themeColor = "indigo", badge, source }: any) => {
   const colorMap: Record<string, string> = {
     indigo: "focus-within:border-indigo-500 focus-within:ring-indigo-500/10 text-slate-900 bg-slate-50/50",
     orange: "focus-within:border-orange-500 focus-within:ring-orange-500/10 text-slate-900 bg-slate-50/50",
@@ -34,19 +19,20 @@ const FormInput = ({ label, value, onChange, type = "text", placeholder, btId, r
   return (
     <div className={`flex flex-col space-y-0.5 ${className}`}>
       <div className="flex justify-between items-center px-1">
-        <label className="text-[9px] font-black uppercase text-slate-500 tracking-[0.05em]">
-          {label} {required && <span className="text-rose-500 font-bold">*</span>}
+        <label className="text-[9px] font-black uppercase text-slate-500 tracking-[0.05em] flex items-center">
+          {label} {required && <span className="text-rose-500 font-bold ml-1">*</span>}
+          {source === 'MASTER_DATA' && <span className="ml-2 bg-emerald-100 text-emerald-600 px-1.5 py-0.5 rounded text-[7px] font-black border border-emerald-200">MASTER</span>}
         </label>
         <div className="flex space-x-1.5 items-center">
             {badge && badge}
             {btId && (
             <span className="text-[7px] font-mono font-black bg-slate-100 px-1 py-0.5 rounded border border-slate-200 text-slate-400">
-                {btId}
+                BT-{btId}
             </span>
             )}
         </div>
       </div>
-      <div className={`relative flex items-center border border-slate-200 rounded-lg overflow-hidden transition-all duration-150 group bg-white ${colorMap[themeColor] || colorMap.indigo}`}>
+      <div className={`relative flex items-center border rounded-lg overflow-hidden transition-all duration-150 group bg-white ${source === 'MASTER_DATA' ? 'border-emerald-500 shadow-sm shadow-emerald-50' : 'border-slate-200'} ${colorMap[themeColor] || colorMap.indigo}`}>
         {multiline ? (
           <textarea
             value={value || ''}
@@ -143,20 +129,17 @@ export const FacturXModal: React.FC<{
     }
   }, [data.fileData]);
 
-  // --- Master Data Match Logic ---
+  // --- Master Data Auto Match Logic ---
   const supplierMatch = useMemo(() => {
     if (!data.supplierSiret) return null;
-    return masterData.find(m => m.siret.replace(/\s/g, "") === data.supplierSiret?.replace(/\s/g, ""));
+    const siretClean = data.supplierSiret.replace(/\s/g, "");
+    return masterData.find(m => m.siret.replace(/\s/g, "") === siretClean);
   }, [data.supplierSiret, masterData]);
 
-  const buyerMatch = useMemo(() => {
-    if (!data.buyerSiret) return null;
-    return masterData.find(m => m.siret.replace(/\s/g, "") === data.buyerSiret?.replace(/\s/g, ""));
-  }, [data.buyerSiret, masterData]);
-
-  const handleApplyMasterSupplier = () => {
-    if (!supplierMatch) return;
-    setData(prev => ({
+  // Push master data values into state if match found and not already matched
+  useEffect(() => {
+    if (supplierMatch && !data.isMasterMatched) {
+      setData(prev => ({
         ...prev,
         supplier: supplierMatch.name,
         supplierErpCode: supplierMatch.erpCode,
@@ -164,18 +147,9 @@ export const FacturXModal: React.FC<{
         iban: supplierMatch.iban || prev.iban,
         bic: supplierMatch.bic || prev.bic,
         isMasterMatched: true
-    }));
-  };
-
-  const handleApplyMasterBuyer = () => {
-    if (!buyerMatch) return;
-    setData(prev => ({
-        ...prev,
-        buyerName: buyerMatch.name,
-        buyerErpCode: buyerMatch.erpCode,
-        buyerVat: buyerMatch.vatNumber || prev.buyerVat
-    }));
-  };
+      }));
+    }
+  }, [supplierMatch, data.isMasterMatched]);
 
   useEffect(() => {
     if (data.items) {
@@ -275,48 +249,48 @@ export const FacturXModal: React.FC<{
                 <div className="flex-1 p-5 space-y-5 overflow-y-auto custom-scrollbar">
                     
                     <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-                      <Group title="Master Data Hub" icon={CloudLightning} variant="purple" className="lg:col-span-4" actions={supplierMatch && <button onClick={handleApplyMasterSupplier} className="bg-indigo-600 text-white px-3 py-1 rounded-lg text-[8px] font-black uppercase shadow-lg">Synchroniser Tiers</button>}>
+                      <Group title="Master Data Hub" icon={CloudLightning} variant="purple" className="lg:col-span-4" actions={supplierMatch && <div className="flex items-center space-x-2"><BadgeCheck className="w-4 h-4 text-emerald-500" /><span className="text-[7px] font-black uppercase text-emerald-600">Synced</span></div>}>
                         <div className="space-y-3">
-                          <div className={`p-3 rounded-xl border flex items-center space-x-3 ${supplierMatch ? 'bg-emerald-50 border-emerald-100' : 'bg-slate-50 border-slate-100'}`}>
-                             <div className={`p-1 rounded-md ${supplierMatch ? 'bg-emerald-500 text-white' : 'bg-slate-300 text-slate-500'}`}><Database className="w-4 h-4" /></div>
+                          <div className={`p-3 rounded-xl border flex items-center space-x-3 transition-all ${supplierMatch ? 'bg-emerald-50 border-emerald-500 shadow-sm' : 'bg-slate-50 border-slate-100'}`}>
+                             <div className={`p-1 rounded-md transition-colors ${supplierMatch ? 'bg-emerald-500 text-white' : 'bg-slate-300 text-slate-500'}`}><Database className="w-4 h-4" /></div>
                              <div>
-                               <p className={`text-[9px] font-black uppercase ${supplierMatch ? 'text-emerald-700' : 'text-slate-500'}`}>{supplierMatch ? 'Match Master Data OK' : 'Aucun match Master Data'}</p>
-                               {supplierMatch && <p className="text-[8px] font-bold text-emerald-600/60 uppercase">Code ERP: {supplierMatch.erpCode}</p>}
+                               <p className={`text-[9px] font-black uppercase ${supplierMatch ? 'text-emerald-700' : 'text-slate-500'}`}>{supplierMatch ? 'Match Master Data OK' : 'Identification Tiers...'}</p>
+                               {supplierMatch && <p className="text-[8px] font-bold text-emerald-600/60 uppercase">Dénomination: {supplierMatch.name}</p>}
                              </div>
                           </div>
-                          <FormInput label="Code ERP Pivot" value={data.supplierErpCode} onChange={(v:any)=>setData({...data, supplierErpCode:v})} themeColor="purple" badge={supplierMatch && <span className="bg-emerald-500 text-white px-2 py-0.5 rounded-full text-[7px] font-black uppercase tracking-tighter">Verified</span>} />
+                          <FormInput label="Code ERP Pivot" value={data.supplierErpCode} onChange={(v:any)=>setData({...data, supplierErpCode:v, isMasterMatched: false})} themeColor="purple" source={supplierMatch ? 'MASTER_DATA' : 'AI'} />
                         </div>
                       </Group>
 
                       <Group title="Références & Identité Document" icon={LayoutList} variant="slate" className="lg:col-span-8">
                           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                            <FormInput label="N° Facture" value={data.invoiceNumber} onChange={(v:any)=>setData({...data, invoiceNumber:v})} btId="BT-1" required themeColor="slate" />
-                            <FormInput label="Date Facture" value={data.invoiceDate} onChange={(v:any)=>setData({...data, invoiceDate:v})} btId="BT-2" required themeColor="slate" />
-                            <FormInput label="Devise" value={data.currency} onChange={(v:any)=>setData({...data, currency:v.toUpperCase()})} btId="BT-5" themeColor="slate" />
+                            <FormInput label="N° Facture" value={data.invoiceNumber} onChange={(v:any)=>setData({...data, invoiceNumber:v})} btId="1" required themeColor="slate" />
+                            <FormInput label="Date Facture" value={data.invoiceDate} onChange={(v:any)=>setData({...data, invoiceDate:v})} btId="2" required themeColor="slate" />
+                            <FormInput label="Devise" value={data.currency} onChange={(v:any)=>setData({...data, currency:v.toUpperCase()})} btId="5" themeColor="slate" />
                             <FormInput label="Profil Factur-X" value={data.facturXProfile} onChange={(v:any)=>setData({...data, facturXProfile:v})} themeColor="slate" />
                           </div>
                           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-4">
-                            <FormInput label="N° Commande (PO)" value={data.poNumber} onChange={(v:any)=>setData({...data, poNumber:v})} btId="BT-13" themeColor="slate" />
-                            <FormInput label="Référence Client" value={data.buyerReference} onChange={(v:any)=>setData({...data, buyerReference:v})} btId="BT-10" themeColor="slate" />
-                            <FormInput label="Point Taxe" value={data.taxPointDate} onChange={(v:any)=>setData({...data, taxPointDate:v})} btId="BT-7" themeColor="slate" />
-                            <FormInput label="Code Moyen UN" value={data.paymentMeansCode} onChange={(v:any)=>setData({...data, paymentMeansCode:v})} btId="BT-81" themeColor="slate" />
+                            <FormInput label="N° Commande (PO)" value={data.poNumber} onChange={(v:any)=>setData({...data, poNumber:v})} btId="13" themeColor="slate" />
+                            <FormInput label="Référence Client" value={data.buyerReference} onChange={(v:any)=>setData({...data, buyerReference:v})} btId="10" themeColor="slate" />
+                            <FormInput label="Point Taxe" value={data.taxPointDate} onChange={(v:any)=>setData({...data, taxPointDate:v})} btId="7" themeColor="slate" />
+                            <FormInput label="Code Moyen UN" value={data.paymentMeansCode} onChange={(v:any)=>setData({...data, paymentMeansCode:v})} btId="81" themeColor="slate" />
                           </div>
                       </Group>
                     </div>
 
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-                      <Group title="Fournisseur (Supplier)" icon={Truck} variant="indigo" actions={supplierMatch && <BadgeCheck className="w-5 h-5 text-emerald-500" />}>
-                          <FormInput label="Raison Sociale" value={data.supplier} onChange={(v:any)=>setData({...data, supplier:v})} btId="BT-27" required className="mb-3" themeColor="indigo" />
+                      <Group title="Fournisseur (Supplier)" icon={Truck} variant="indigo">
+                          <FormInput label="Raison Sociale" value={data.supplier} onChange={(v:any)=>setData({...data, supplier:v, isMasterMatched: false})} btId="27" required className="mb-3" themeColor="indigo" source={supplierMatch ? 'MASTER_DATA' : 'AI'} />
                           <div className="grid grid-cols-2 gap-3 mb-3">
-                            <FormInput label="SIRET" value={data.supplierSiret} onChange={(v:any)=>setData({...data, supplierSiret:v})} btId="BT-29" required themeColor="indigo" />
-                            <FormInput label="TVA Intracom." value={data.supplierVat} onChange={(v:any)=>setData({...data, supplierVat:v})} btId="BT-31" themeColor="indigo" />
+                            <FormInput label="SIRET" value={data.supplierSiret} onChange={(v:any)=>setData({...data, supplierSiret:v, isMasterMatched: false})} btId="29" required themeColor="indigo" />
+                            <FormInput label="TVA Intracom." value={data.supplierVat} onChange={(v:any)=>setData({...data, supplierVat:v, isMasterMatched: false})} btId="31" themeColor="indigo" source={supplierMatch ? 'MASTER_DATA' : 'AI'} />
                           </div>
                           <FormInput label="Adresse Siège" value={data.supplierAddress} onChange={(v:any)=>setData({...data, supplierAddress:v})} btId="BG-5" multiline themeColor="indigo" />
                       </Group>
-                      <Group title="Acheteur (Buyer)" icon={Receipt} variant="orange" actions={buyerMatch && <button onClick={handleApplyMasterBuyer} className="bg-orange-600 text-white px-3 py-1 rounded-lg text-[8px] font-black uppercase shadow-lg">Auto-Fill Buyer</button>}>
-                          <FormInput label="Nom Client" value={data.buyerName} onChange={(v:any)=>setData({...data, buyerName:v})} btId="BT-44" required className="mb-3" themeColor="orange" />
+                      <Group title="Acheteur (Buyer)" icon={Receipt} variant="orange">
+                          <FormInput label="Nom Client" value={data.buyerName} onChange={(v:any)=>setData({...data, buyerName:v})} btId="44" required className="mb-3" themeColor="orange" />
                           <div className="grid grid-cols-2 gap-3 mb-3">
-                            <FormInput label="SIRET Client" value={data.buyerSiret} onChange={(v:any)=>setData({...data, buyerSiret:v})} btId="BT-47" required themeColor="orange" />
+                            <FormInput label="SIRET Client" value={data.buyerSiret} onChange={(v:any)=>setData({...data, buyerSiret:v})} btId="47" required themeColor="orange" />
                             <FormInput label="Code ERP Client" value={data.buyerErpCode} onChange={(v:any)=>setData({...data, buyerErpCode:v})} themeColor="orange" />
                           </div>
                           <FormInput label="Adresse Facturation" value={data.buyerAddress} onChange={(v:any)=>setData({...data, buyerAddress:v})} btId="BG-8" multiline themeColor="orange" />
@@ -359,10 +333,10 @@ export const FacturXModal: React.FC<{
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
                         <Group title="Bancaire (BG-16)" icon={Landmark} variant="slate">
                             <div className="space-y-3">
-                              <FormInput label="IBAN" value={data.iban} onChange={(v:any)=>setData({...data, iban:v.replace(/\s/g, "")})} btId="BT-84" themeColor="slate" badge={supplierMatch && <span className="text-emerald-500"><BadgeCheck className="w-3 h-3" /></span>} />
+                              <FormInput label="IBAN" value={data.iban} onChange={(v:any)=>setData({...data, iban:v.replace(/\s/g, ""), isMasterMatched: false})} btId="84" themeColor="slate" source={supplierMatch ? 'MASTER_DATA' : 'AI'} />
                               <div className="grid grid-cols-2 gap-3">
-                                <FormInput label="BIC" value={data.bic} onChange={(v:any)=>setData({...data, bic:v})} btId="BT-85" themeColor="slate" />
-                                <FormInput label="Date Échéance" value={data.dueDate} onChange={(v:any)=>setData({...data, dueDate:v})} btId="BT-9" themeColor="slate" />
+                                <FormInput label="BIC" value={data.bic} onChange={(v:any)=>setData({...data, bic:v, isMasterMatched: false})} btId="85" themeColor="slate" source={supplierMatch ? 'MASTER_DATA' : 'AI'} />
+                                <FormInput label="Date Échéance" value={data.dueDate} onChange={(v:any)=>setData({...data, dueDate:v})} btId="9" themeColor="slate" />
                               </div>
                             </div>
                         </Group>
