@@ -9,7 +9,8 @@ import { InvoiceTable } from './components/InvoiceTable';
 import { LoginScreen } from './components/LoginScreen';
 import { ConfigurationModal } from './components/ConfigurationModal';
 import { UserManagement } from './components/UserManagement';
-import { generateTemplatedCSV, generateTemplatedXML } from './services/exportService';
+import { generateTemplatedCSV } from './services/exportService';
+import { generateFacturXXML } from './services/facturXService';
 import { downloadCSV } from './utils/csvHelper';
 
 const App: React.FC = () => {
@@ -119,20 +120,33 @@ const App: React.FC = () => {
 
   const handleBulkExport = (type: 'CSV' | 'XML', templateId?: string) => {
     const selectedInvoices = allInvoices.filter(inv => selectedIds.has(inv.id));
+    if (selectedInvoices.length === 0) return;
+
     if (type === 'CSV') {
       const template = templates.find(t => t.id === templateId) || templates[0];
       if (!template) return alert("Veuillez créer un template CSV dans le Hub.");
       const csv = generateTemplatedCSV(selectedInvoices, template, lookupTables);
       downloadCSV(csv, `export_${new Date().getTime()}.csv`);
     } else if (type === 'XML') {
-      const profile = xmlProfiles[0];
-      if (!profile) return alert("Veuillez configurer un profil XML (CII/Factur-X) dans le Hub.");
-      const xml = generateTemplatedXML(selectedInvoices, profile, lookupTables);
-      const blob = new Blob([xml], { type: 'text/xml' });
+      // EXPORT NORME FACTUR-X (EN16931)
+      // Si multiple, on les regroupe dans un container ou on télécharge le premier pour respect strict de la racine unique
+      // Ici, on génère un flux consolidé si possible ou on traite l'export standard Factur-X
+      let xmlContent = '<?xml version="1.0" encoding="UTF-8"?>\n';
+      if (selectedInvoices.length > 1) {
+        xmlContent += '<BulkInvoiceExport>\n';
+        selectedInvoices.forEach(inv => {
+          xmlContent += generateFacturXXML(inv) + '\n';
+        });
+        xmlContent += '</BulkInvoiceExport>';
+      } else {
+        xmlContent += generateFacturXXML(selectedInvoices[0]);
+      }
+      
+      const blob = new Blob([xmlContent], { type: 'text/xml' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `export_norme_ CII_${new Date().getTime()}.xml`;
+      link.download = `export_norme_CII_${new Date().getTime()}.xml`;
       link.click();
     }
     addLog(`${selectedInvoices.length} factures exportées au format ${type}`, 'success');

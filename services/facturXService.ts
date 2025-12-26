@@ -9,8 +9,13 @@ const PROFILE_URIS = {
 
 const formatToUDT = (dateStr: string): string => {
   if (!dateStr) return '';
+  // Support DD/MM/YYYY
   const parts = dateStr.split('/');
   if (parts.length === 3) return `${parts[2]}${parts[1]}${parts[0]}`;
+  // Support YYYY-MM-DD
+  const partsISO = dateStr.split('-');
+  if (partsISO.length === 3) return `${partsISO[0]}${partsISO[1]}${partsISO[2]}`;
+  
   const date = new Date(dateStr);
   if (!isNaN(date.getTime())) {
     const y = date.getFullYear();
@@ -18,7 +23,7 @@ const formatToUDT = (dateStr: string): string => {
     const d = date.getDate().toString().padStart(2, '0');
     return `${y}${m}${d}`;
   }
-  return '';
+  return dateStr.replace(/[^0-9]/g, '');
 };
 
 const esc = (str: string | undefined | null): string => {
@@ -33,7 +38,7 @@ export const generateFacturXXML = (invoice: InvoiceData): string => {
   const guidelineID = PROFILE_URIS[profile];
 
   const lineTotalHT = (invoice.items || []).reduce((sum, item) => sum + (item.amount || 0), 0);
-  const taxBasisTotal = (invoice.amountExclVat || lineTotalHT);
+  const taxBasisTotal = (invoice.amountExclVat !== null && invoice.amountExclVat !== undefined) ? invoice.amountExclVat : lineTotalHT;
   const taxTotal = (invoice.totalVat || 0);
   const grandTotal = (invoice.amountInclVat || 0);
 
@@ -43,6 +48,7 @@ export const generateFacturXXML = (invoice: InvoiceData): string => {
     const rate = (item.taxRate || 20.0).toFixed(2);
     const current = taxRates.get(rate) || { basis: 0, tax: 0 };
     current.basis += (item.amount || 0);
+    // Note: In a real PDP, tax is calculated based on BasisAmount * Rate
     current.tax += ((item.amount || 0) * (item.taxRate || 0) / 100);
     taxRates.set(rate, current);
   });
@@ -56,8 +62,7 @@ export const generateFacturXXML = (invoice: InvoiceData): string => {
         <ram:RateApplicablePercent>${rate}</ram:RateApplicablePercent>
       </ram:ApplicableTradeTax>`).join('');
 
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<rsm:CrossIndustryInvoice 
+  return `<rsm:CrossIndustryInvoice 
   xmlns:udt="urn:un:unece:uncefact:data:standard:UnqualifiedDataType:100" 
   xmlns:ram="urn:un:unece:uncefact:data:standard:ReusableAggregateBusinessInformationEntity:100" 
   xmlns:rsm="urn:un:unece:uncefact:data:standard:CrossIndustryInvoice:100"
@@ -73,7 +78,6 @@ export const generateFacturXXML = (invoice: InvoiceData): string => {
     <ram:IssueDateTime>
       <udt:DateTimeString format="102">${issueDateUDT}</udt:DateTimeString>
     </ram:IssueDateTime>
-    ${invoice.notes ? `<ram:IncludedNote><ram:Content>${esc(invoice.notes)}</ram:Content></ram:IncludedNote>` : ''}
   </rsm:ExchangedDocument>
   <rsm:SupplyChainTradeTransaction>
     ${(invoice.items || []).map((item, index) => `
@@ -89,7 +93,7 @@ export const generateFacturXXML = (invoice: InvoiceData): string => {
         </ram:NetPriceProductTradePrice>
       </ram:SpecifiedLineTradeAgreement>
       <ram:SpecifiedLineTradeDelivery>
-        <ram:BilledQuantity unitCode="${item.unitOfMeasure || 'C62'}">${item.quantity || 0}</ram:BilledQuantity>
+        <ram:BilledQuantity unitCode="${item.unitOfMeasure || 'C62'}">${(item.quantity || 0).toFixed(2)}</ram:BilledQuantity>
       </ram:SpecifiedLineTradeDelivery>
       <ram:SpecifiedLineTradeSettlement>
         <ram:ApplicableTradeTax>
