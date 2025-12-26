@@ -6,6 +6,18 @@ import { generateFacturXXML } from '../services/facturXService';
 
 // --- Constants ---
 const STANDARD_VAT_RATE = 20.0;
+const UNIT_CODES = [
+  { code: 'C62', label: 'Pièce (unité)' },
+  { code: 'HUR', label: 'Heure' },
+  { code: 'DAY', label: 'Jour' },
+  { code: 'KGM', label: 'Kilogramme' },
+  { code: 'LTR', label: 'Litre' },
+  { code: 'MTK', label: 'Mètre carré' },
+  { code: 'MTQ', label: 'Mètre cube' },
+  { code: 'MTR', label: 'Mètre linéaire' },
+  { code: 'TNE', label: 'Tonne' },
+  { code: 'LS', label: 'Forfait (Lump sum)' },
+];
 
 const FormInput = ({ label, value, onChange, type = "text", placeholder, btId, required, multiline, className = "", themeColor = "indigo", badge, source }: any) => {
   const colorMap: Record<string, string> = {
@@ -101,7 +113,7 @@ export const FacturXModal: React.FC<{
 }> = ({ isOpen, onClose, invoice, onSave, lookupTables, masterData = [], isAdmin = true }) => {
   const [data, setData] = useState<InvoiceData>(() => ({ 
     ...invoice, 
-    items: invoice.items || [],
+    items: (invoice.items || []).map(it => ({ ...it, unitOfMeasure: it.unitOfMeasure || 'C62' })),
     operationCategory: invoice.operationCategory || 'GOODS',
     taxPointType: invoice.taxPointType || 'DEBIT',
     facturXProfile: invoice.facturXProfile || FacturXProfile.COMFORT
@@ -129,14 +141,12 @@ export const FacturXModal: React.FC<{
     }
   }, [data.fileData]);
 
-  // --- Master Data Auto Match Logic ---
   const supplierMatch = useMemo(() => {
     if (!data.supplierSiret) return null;
     const siretClean = data.supplierSiret.replace(/\s/g, "");
     return masterData.find(m => m.siret.replace(/\s/g, "") === siretClean);
   }, [data.supplierSiret, masterData]);
 
-  // Push master data values into state if match found and not already matched
   useEffect(() => {
     if (supplierMatch && !data.isMasterMatched) {
       setData(prev => ({
@@ -299,12 +309,13 @@ export const FacturXModal: React.FC<{
 
                     <Group title="Lignes Extraites (BG-25)" icon={Package} variant="slate" className="w-full">
                       <div className="w-full rounded-xl border border-slate-200 overflow-x-auto bg-white custom-scrollbar h-[250px]">
-                        <table className="w-full text-[10px] border-collapse min-w-[1000px]">
+                        <table className="w-full text-[10px] border-collapse min-w-[1100px]">
                           <thead className="bg-slate-50 text-[8px] font-black uppercase text-slate-500 border-b border-slate-200 sticky top-0 z-10">
                             <tr>
-                              <th className="px-3 py-2 text-left w-32">Référence</th>
+                              <th className="px-3 py-2 text-left w-24">Réf.</th>
                               <th className="px-3 py-2 text-left">Désignation</th>
                               <th className="px-3 py-2 text-right w-16">Qté</th>
+                              <th className="px-3 py-2 text-left w-24">Unité</th>
                               <th className="px-3 py-2 text-right w-24">P.U Brut</th>
                               <th className="px-3 py-2 text-right w-20">Remise</th>
                               <th className="px-3 py-2 text-right w-24 bg-indigo-50/30">P.U Net</th>
@@ -318,6 +329,15 @@ export const FacturXModal: React.FC<{
                                 <td className="p-1.5"><input value={item.articleId} onChange={e=>handleUpdateItem(idx, 'articleId', e.target.value)} className="w-full bg-transparent border border-transparent focus:border-indigo-200 rounded px-1.5 py-0.5 outline-none font-mono text-[9px]" /></td>
                                 <td className="p-1.5"><input value={item.description} onChange={e=>handleUpdateItem(idx, 'description', e.target.value)} className="w-full bg-transparent border border-transparent focus:border-indigo-200 rounded px-1.5 py-0.5 outline-none font-bold" /></td>
                                 <td className="p-1.5"><input type="number" value={item.quantity || ''} onChange={e=>handleUpdateItem(idx, 'quantity', parseFloat(e.target.value))} className="w-full text-right bg-transparent border border-transparent focus:border-indigo-200 rounded px-1.5 py-0.5 outline-none font-black" /></td>
+                                <td className="p-1.5">
+                                    <select 
+                                        value={item.unitOfMeasure || 'C62'} 
+                                        onChange={e=>handleUpdateItem(idx, 'unitOfMeasure', e.target.value)}
+                                        className="w-full bg-transparent border border-transparent focus:border-indigo-200 rounded px-1.5 py-0.5 outline-none font-bold text-[9px] appearance-none"
+                                    >
+                                        {UNIT_CODES.map(u => <option key={u.code} value={u.code}>{u.label}</option>)}
+                                    </select>
+                                </td>
                                 <td className="p-1.5"><input type="number" value={item.grossPrice || ''} onChange={e=>handleUpdateItem(idx, 'grossPrice', parseFloat(e.target.value))} className="w-full text-right bg-transparent border border-transparent focus:border-indigo-200 rounded px-1.5 py-0.5 outline-none font-black" /></td>
                                 <td className="p-1.5"><input type="number" value={item.discount || ''} onChange={e=>handleUpdateItem(idx, 'discount', parseFloat(e.target.value))} className="w-full text-right bg-transparent border border-transparent focus:border-indigo-200 rounded px-1.5 py-0.5 outline-none font-black text-rose-500" /></td>
                                 <td className="p-1.5 bg-indigo-50/10 text-right font-black text-indigo-600">{(item.unitPrice || 0).toFixed(4)}</td>

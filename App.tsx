@@ -103,6 +103,17 @@ const App: React.FC = () => {
     setAllInvoices([]);
   };
 
+  const handleInvoiceUpdate = async (id: string, updates: Partial<InvoiceData>) => {
+    setAllInvoices(prev => {
+      const newInvoices = prev.map(inv => inv.id === id ? { ...inv, ...updates } : inv);
+      const updatedInvoice = newInvoices.find(i => i.id === id);
+      if (updatedInvoice) {
+        dbService.saveInvoice(updatedInvoice).catch(e => console.error("Persistence error:", e));
+      }
+      return newInvoices;
+    });
+  };
+
   const processFiles = async (files: FileList | null) => {
     if (!files || !userProfile) return;
     setIsProcessing(true);
@@ -198,7 +209,7 @@ const App: React.FC = () => {
               selectedIds={selectedIds}
               onToggleSelection={(id) => setSelectedIds(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; })}
               onToggleAll={() => setSelectedIds(selectedIds.size === allInvoices.length ? new Set() : new Set(allInvoices.map(i => i.id)))}
-              onUpdate={(id, data) => setAllInvoices(prev => prev.map(inv => inv.id === id ? { ...inv, ...data } : inv))}
+              onUpdate={handleInvoiceUpdate}
               onDeleteInvoices={() => {}}
               onSyncInvoices={() => {}}
               lookupTables={lookupTables}
