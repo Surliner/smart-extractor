@@ -36,6 +36,17 @@ const initDb = async () => {
       );
     `);
 
+    // Table pour les logs personnels
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS processing_logs (
+          id UUID PRIMARY KEY,
+          username TEXT REFERENCES users(username) ON DELETE CASCADE,
+          message TEXT NOT NULL,
+          type TEXT NOT NULL,
+          timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
     // Migrations USERS
     const userMigrations = [
       { table: 'users', col: 'company_id', type: 'UUID REFERENCES companies(id)' },
@@ -51,7 +62,6 @@ const initDb = async () => {
       await client.query(`ALTER TABLE ${m.table} ADD COLUMN IF NOT EXISTS ${m.col} ${m.type};`);
     }
 
-    // Création initiale INVOICES
     await client.query(`
       CREATE TABLE IF NOT EXISTS invoices (
           id UUID PRIMARY KEY,
@@ -61,7 +71,6 @@ const initDb = async () => {
       );
     `);
 
-    // Migration CRUCIALE INVOICES
     const invoiceMigrations = [
       { table: 'invoices', col: 'company_id', type: 'UUID REFERENCES companies(id)' }
     ];
@@ -103,8 +112,30 @@ const initDb = async () => {
 app.use(cors());
 app.use(express.json({ limit: '100mb' }));
 
-// --- ROUTES ---
+// --- ROUTES LOGS ---
+app.get('/api/logs/:username', async (req, res) => {
+  try {
+    const result = await pool.query(
+      'SELECT * FROM processing_logs WHERE LOWER(username) = LOWER($1) ORDER BY timestamp DESC LIMIT 100',
+      [req.params.username]
+    );
+    res.json(result.rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
 
+app.post('/api/logs', async (req, res) => {
+  const { username, message, type } = req.body;
+  try {
+    const id = uuidv4();
+    await pool.query(
+      'INSERT INTO processing_logs (id, username, message, type) VALUES ($1, $2, $3, $4)',
+      [id, username, message, type]
+    );
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// --- AUTRES ROUTES ---
 app.post('/api/users/stats', async (req, res) => {
   const { username, tokens } = req.body;
   try {
@@ -218,7 +249,6 @@ app.post('/api/auth/register', async (req, res) => {
 app.get('/api/invoices', async (req, res) => {
   const { companyId } = req.query;
   try {
-    // Changement de visibilité : filtrage par company_id au lieu de owner
     const result = await pool.query(
       'SELECT data FROM invoices WHERE company_id = $1 ORDER BY created_at DESC',
       [companyId]

@@ -1,5 +1,5 @@
 
-import { InvoiceData, UserProfile, UserActivity, UserRole, Company } from '../types';
+import { InvoiceData, UserProfile, UserActivity, UserRole, Company, ProcessingLog } from '../types';
 
 const API_URL = window.location.hostname === 'localhost' 
   ? 'http://localhost:3000/api' 
@@ -46,6 +46,23 @@ export const dbService = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, tokens })
+    });
+  },
+
+  async getLogs(username: string): Promise<ProcessingLog[]> {
+    const response = await fetch(`${API_URL}/logs/${username}`);
+    const data = await response.json();
+    return data.map((l: any) => ({
+      ...l,
+      timestamp: new Date(l.timestamp)
+    }));
+  },
+
+  async saveLog(username: string, message: string, type: string): Promise<void> {
+    await fetch(`${API_URL}/logs`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, message, type })
     });
   },
 

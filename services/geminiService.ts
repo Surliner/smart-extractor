@@ -5,11 +5,9 @@ import { InvoiceData, InvoiceItem, InvoiceType, ExtractionMode, ExtractionResult
 const parseInvoiceDate = (dateStr: string): string => {
   if (!dateStr) return "";
   const clean = dateStr.trim();
-  // Gestion format YYYYMMDD (format technique fréquent dans les PDF)
   if (/^\d{8}$/.test(clean)) {
     return `${clean.substring(6, 8)}/${clean.substring(4, 6)}/${clean.substring(0, 4)}`;
   }
-  // Gestion format ISO YYYY-MM-DD
   if (/^\d{4}-\d{2}-\d{2}$/.test(clean)) {
     const [y, m, d] = clean.split('-');
     return `${d}/${m}/${y}`;
@@ -112,7 +110,6 @@ export const extractInvoiceData = async (
   try {
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview", 
-      // Corrected structure for multiple parts in contents
       contents: {
         parts: [
           { inlineData: { mimeType, data: base64Data } },
@@ -124,10 +121,12 @@ export const extractInvoiceData = async (
         responseMimeType: "application/json",
         responseSchema: ultimateSchema,
         temperature: 0,
+        // DÉSACTIVATION DU THINKING BUDGET (Optimisation Coûts & Vitesse)
+        // Les factures comme Arcanes consomment trop si le modèle "pense" inutilement.
+        thinkingConfig: { thinkingBudget: 0 }
       },
     });
 
-    // Accessing response.text as a property as per current SDK rules
     let textOutput = response.text || "{}";
     const rawData = JSON.parse(textOutput);
     const usage = response.usageMetadata || { totalTokenCount: 0 };

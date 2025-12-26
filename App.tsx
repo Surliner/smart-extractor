@@ -23,14 +23,12 @@ const App: React.FC = () => {
   const [processProgress, setProcessProgress] = useState({ current: 0, total: 0 });
   const [isInitializing, setIsInitializing] = useState(true);
   
-  // Settings synchronisés
   const [erpConfig, setErpConfig] = useState<ErpConfig>({ apiUrl: '', apiKey: '', enabled: false });
   const [masterData, setMasterData] = useState<PartnerMasterData[]>([]);
   const [lookupTables, setLookupTables] = useState<LookupTable[]>([]);
   const [templates, setTemplates] = useState<ExportTemplate[]>([]);
   const [xmlProfiles, setXmlProfiles] = useState<XmlMappingProfile[]>([]);
 
-  // Initialize session on mount
   useEffect(() => {
     const initSession = async () => {
       if (currentUser) {
@@ -57,11 +55,14 @@ const App: React.FC = () => {
     setXmlProfiles(cfg.xmlProfiles || []);
 
     try {
-      // Les utilisateurs d'une même partition voient les factures de la partition
-      const invoices = await dbService.getInvoices(profile.companyId);
+      const [invoices, userLogs] = await Promise.all([
+        dbService.getInvoices(profile.companyId),
+        dbService.getLogs(profile.username)
+      ]);
       setAllInvoices(invoices);
+      setLogs(userLogs);
     } catch (e) {
-      console.error("Failed to fetch invoices:", e);
+      console.error("Failed to fetch session data:", e);
     }
   };
 
@@ -102,6 +103,7 @@ const App: React.FC = () => {
     setCurrentUser(null);
     setUserProfile(null);
     setAllInvoices([]);
+    setLogs([]);
   };
 
   const handleInvoiceUpdate = async (id: string, updates: Partial<InvoiceData>) => {
@@ -147,9 +149,9 @@ const App: React.FC = () => {
         await dbService.updateUserStats(userProfile.username, result.usage.totalTokens);
         
         setAllInvoices(prev => [inv, ...prev]);
-        addLog(`Facture ${inv.invoiceNumber} extraite (${result.usage.totalTokens} tokens utilisés)`, 'success');
+        await addLog(`Facture ${inv.invoiceNumber} extraite (${result.usage.totalTokens} tokens utilisés)`, 'success');
       } catch (err: any) {
-        addLog(`Erreur : ${file.name} - ${err.message}`, 'error');
+        await addLog(`Erreur : ${file.name} - ${err.message}`, 'error');
         console.error("File processing error:", err);
       } finally {
         setProcessProgress(prev => ({ ...prev, current: prev.current + 1 }));
@@ -158,8 +160,11 @@ const App: React.FC = () => {
     setIsProcessing(false);
   };
 
-  const addLog = (message: string, type: ProcessingLog['type'] = 'info') => {
-    setLogs(prev => [...prev, { id: crypto.randomUUID(), timestamp: new Date(), message, type }]);
+  const addLog = async (message: string, type: ProcessingLog['type'] = 'info') => {
+    if (!userProfile) return;
+    await dbService.saveLog(userProfile.username, message, type);
+    const newLogs = await dbService.getLogs(userProfile.username);
+    setLogs(newLogs);
   };
 
   if (isInitializing) {
