@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { UploadCloud, Loader2, Cpu, LogOut, Settings, Zap, Users, CloudLightning, ShieldCheck, Inbox, Archive } from 'lucide-center-react';
+import { UploadCloud, Loader2, Cpu, LogOut, Settings, Zap, Users, CloudLightning, ShieldCheck, Inbox, Archive } from 'lucide-react';
 import { extractInvoiceData } from './services/geminiService';
 import { dbService } from './services/databaseService';
 import { InvoiceData, ErpStatus, ProcessingLog, ErpConfig, UserProfile, UserRole, PartnerMasterData, LookupTable, ExportTemplate, XmlMappingProfile } from './types';
@@ -182,7 +182,8 @@ const App: React.FC = () => {
         </div>
         <div className="flex items-center space-x-4">
           {(userProfile?.role === 'ADMIN' || userProfile?.role === 'SUPER_ADMIN') && (
-            <button onClick={() => setShowUserMgmt(true)} className="flex items-center space-x-3 px-5 py-2.5 bg-indigo-600/10 text-indigo-400 hover:bg-indigo-600 hover:text-white rounded-2xl border border-indigo-600/20 transition-all font-black uppercase text-[10px] tracking-widest"><Users className="w-5 h-5" /><span>{userProfile?.role === 'SUPER_ADMIN' ? 'SaaS Portal' : 'Gestion Tiers'}</span></button>
+            // FIX: Use userProfile.role instead of non-existent userRole
+            <button onClick={() => setShowUserMgmt(true)} className="flex items-center space-x-3 px-5 py-2.5 bg-indigo-600/10 text-indigo-400 hover:bg-indigo-600 hover:text-white rounded-2xl border border-indigo-600/20 transition-all font-black uppercase text-[10px] tracking-widest"><Users className="w-5 h-5" /><span>{userProfile.role === 'SUPER_ADMIN' ? 'SaaS Portal' : 'Gestion Tiers'}</span></button>
           )}
           <button onClick={() => setShowConfig(true)} className="p-3 bg-white/5 text-slate-400 hover:text-white rounded-2xl border border-white/10 hover:bg-white/10 transition-all"><Settings className="w-6 h-6" /></button>
           <button onClick={handleLogout} className="p-3 bg-white/5 text-slate-400 hover:text-rose-500 rounded-2xl border border-white/10 hover:bg-rose-500/10 transition-all"><LogOut className="w-6 h-6" /></button>
