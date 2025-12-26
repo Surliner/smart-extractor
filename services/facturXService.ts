@@ -1,4 +1,3 @@
-
 import { InvoiceData, InvoiceItem, InvoiceType, FacturXProfile } from '../types';
 
 const PROFILE_URIS = {
@@ -7,24 +6,14 @@ const PROFILE_URIS = {
   [FacturXProfile.COMFORT]: 'urn:cen.eu:en16931:2017#compliant#urn:factur-x.eu:1p0:comfort'
 };
 
-/**
- * Formate une date en YYYYMMDD (Format 102 UN/CEFACT)
- */
 const formatToUDT = (dateStr: string | undefined): string => {
   if (!dateStr) return '';
   const clean = dateStr.trim();
-  
-  // Cas DD/MM/YYYY
   if (/^\d{2}\/\d{2}\/\d{4}$/.test(clean)) {
     const [d, m, y] = clean.split('/');
     return `${y}${m}${d}`;
   }
-  
-  // Cas YYYY-MM-DD
-  if (/^\d{4}-\d{2}-\d{2}$/.test(clean)) {
-    return clean.replace(/-/g, '');
-  }
-  
+  if (/^\d{4}-\d{2}-\d{2}$/.test(clean)) return clean.replace(/-/g, '');
   const date = new Date(dateStr);
   if (!isNaN(date.getTime())) {
     const y = date.getFullYear();
@@ -32,50 +21,26 @@ const formatToUDT = (dateStr: string | undefined): string => {
     const d = date.getDate().toString().padStart(2, '0');
     return `${y}${m}${d}`;
   }
-  
   return clean.replace(/[^0-9]/g, '').substring(0, 8);
 };
 
-/**
- * Échappement des caractères spéciaux XML tout en préservant les accents UTF-8
- */
 const esc = (str: string | undefined | null): string => {
   if (!str) return '';
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&apos;');
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');
 };
 
-/**
- * Nettoyage des identifiants légaux (SIRET, TVA, IBAN)
- */
-const cleanID = (str: string | undefined | null): string => {
-  if (!str) return '';
-  return str.replace(/\s/g, '');
-};
+const cleanID = (str: string | undefined | null): string => str ? str.replace(/\s/g, '') : '';
 
-/**
- * Parseur d'adresse pour extraire Ligne 1, Code Postal et Ville (Norme RFE)
- */
 const parseAddress = (addressStr: string | undefined) => {
   if (!addressStr) return { line: '', postcode: '', city: '' };
-  
   const postcodeMatch = addressStr.match(/(\d{5})/);
   if (postcodeMatch) {
     const postcode = postcodeMatch[1];
     const index = postcodeMatch.index!;
     const line = addressStr.substring(0, index).trim().replace(/,$/, '');
     const city = addressStr.substring(index + 5).trim().replace(/^,/, '').trim();
-    return { 
-      line: line || addressStr, 
-      postcode: postcode, 
-      city: city.toUpperCase() || 'INCONNU' 
-    };
+    return { line: line || addressStr, postcode: postcode, city: city.toUpperCase() || 'INCONNU' };
   }
-  
   return { line: addressStr, postcode: '', city: '' };
 };
 
@@ -90,13 +55,10 @@ export const generateFacturXXML = (invoice: InvoiceData, includeHeader: boolean 
   const buyerAddr = parseAddress(invoice.buyerAddress);
 
   const lineTotalHT = (invoice.items || []).reduce((sum, item) => sum + (item.amount || 0), 0);
-  const charge = invoice.globalCharge || 0;
-  const discount = invoice.globalDiscount || 0;
-  const taxBasisTotal = lineTotalHT + charge - discount;
+  const taxBasisTotal = lineTotalHT + (invoice.globalCharge || 0) - (invoice.globalDiscount || 0);
   const taxTotal = (invoice.totalVat || 0);
   const grandTotal = (invoice.amountInclVat || 0);
 
-  // Groupement par taux de taxe (BG-23)
   const taxRates = new Map<string, { basis: number, tax: number }>();
   (invoice.items || []).forEach(item => {
     const rate = (item.taxRate || 20.0).toFixed(2);
@@ -115,8 +77,7 @@ export const generateFacturXXML = (invoice: InvoiceData, includeHeader: boolean 
         <ram:RateApplicablePercent>${rate}</ram:RateApplicablePercent>
       </ram:ApplicableTradeTax>`).join('');
 
-  const xmlBody = `
-<rsm:CrossIndustryInvoice 
+  const xmlBody = `<rsm:CrossIndustryInvoice 
   xmlns:udt="urn:un:unece:uncefact:data:standard:UnqualifiedDataType:100" 
   xmlns:ram="urn:un:unece:uncefact:data:standard:ReusableAggregateBusinessInformationEntity:100" 
   xmlns:rsm="urn:un:unece:uncefact:data:standard:CrossIndustryInvoice:100"
@@ -210,13 +171,11 @@ export const generateFacturXXML = (invoice: InvoiceData, includeHeader: boolean 
       </ram:SpecifiedTradeSettlementHeaderMonetarySummation>
       ${dueDateUDT ? `
       <ram:SpecifiedTradePaymentTerms>
-        <ram:DueDateTime>
-          <udt:DateTimeString format="102">${dueDateUDT}</udt:DateTimeString>
-        </ram:DueDateTime>
+        <ram:DueDateTime><udt:DateTimeString format="102">${dueDateUDT}</udt:DateTimeString></ram:DueDateTime>
       </ram:SpecifiedTradePaymentTerms>` : ''}
     </ram:ApplicableHeaderTradeSettlement>
   </rsm:SupplyChainTradeTransaction>
 </rsm:CrossIndustryInvoice>`;
 
-  return includeHeader ? `<?xml version="1.0" encoding="UTF-8"?>${xmlBody}` : xmlBody;
+  return includeHeader ? `<?xml version="1.0" encoding="UTF-8"?>\n${xmlBody}` : xmlBody;
 };

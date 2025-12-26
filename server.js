@@ -90,21 +90,11 @@ const initDb = async () => {
 
     await client.query('UPDATE users SET company_id = $1 WHERE company_id IS NULL', [defaultCompId]);
 
-    // Seed Admin (uniquement si absent)
     const adminCheck = await client.query('SELECT * FROM users WHERE LOWER(username) = LOWER($1)', ['admin']);
     if (adminCheck.rows.length === 0) {
       await client.query(
         'INSERT INTO users (username, password, role, company_id, is_approved, security_question, security_answer) VALUES ($1, $2, $3, $4, $5, $6, $7)',
         ['admin', 'admin', 'SUPER_ADMIN', defaultCompId, true, 'Quel est votre mot de code secret préféré ?', 'Admin123']
-      );
-    }
-
-    // Seed Test Account Jean (uniquement si absent)
-    const jeanCheck = await client.query('SELECT * FROM users WHERE LOWER(username) = LOWER($1)', ['jean']);
-    if (jeanCheck.rows.length === 0) {
-      await client.query(
-        'INSERT INTO users (username, password, role, company_id, is_approved, security_question, security_answer) VALUES ($1, $2, $3, $4, $5, $6, $7)',
-        ['Jean', 'jean123', 'USER', defaultCompId, true, 'Quel est votre mot de code secret préféré ?', 'Apple']
       );
     }
 
@@ -121,48 +111,8 @@ const initDb = async () => {
 app.use(cors());
 app.use(express.json({ limit: '100mb' }));
 
-app.get('/api/logs/:username', async (req, res) => {
-  try {
-    const result = await pool.query(
-      'SELECT * FROM processing_logs WHERE LOWER(username) = LOWER($1) ORDER BY timestamp DESC LIMIT 100',
-      [req.params.username]
-    );
-    res.json(result.rows);
-  } catch (err) { res.status(500).json({ error: err.message }); }
-});
-
-app.post('/api/logs', async (req, res) => {
-  const { username, message, type } = req.body;
-  try {
-    const id = uuidv4();
-    await pool.query(
-      'INSERT INTO processing_logs (id, username, message, type) VALUES ($1, $2, $3, $4)',
-      [id, username, message, type]
-    );
-    res.json({ success: true });
-  } catch (err) { res.status(500).json({ error: err.message }); }
-});
-
-app.post('/api/users/stats', async (req, res) => {
-  const { username, tokens } = req.body;
-  try {
-    await pool.query(
-      `UPDATE users 
-       SET stats = stats || jsonb_build_object(
-         'extractRequests', (COALESCE((stats->>'extractRequests')::int, 0) + 1),
-         'totalTokens', (COALESCE((stats->>'totalTokens')::int, 0) + $1),
-         'lastActive', CURRENT_TIMESTAMP
-       )
-       WHERE LOWER(username) = LOWER($2)`,
-      [tokens || 0, username]
-    );
-    res.json({ success: true });
-  } catch (err) { res.status(500).json({ error: err.message }); }
-});
-
 app.get('/api/admin/companies', async (req, res) => {
   try {
-    // Calcul des statistiques cumulées par entreprise via sous-requêtes
     const result = await pool.query(`
       SELECT 
         c.*,
@@ -174,7 +124,6 @@ app.get('/api/admin/companies', async (req, res) => {
       ORDER BY c.name ASC
     `);
     
-    // Transformation des types (Postgres retourne parfois des chaînes pour les agrégats volumineux)
     const companies = result.rows.map(row => ({
       ...row,
       userCount: parseInt(row.user_count) || 0,
@@ -273,7 +222,6 @@ app.post('/api/auth/register', async (req, res) => {
 app.get('/api/auth/recovery/:username', async (req, res) => {
   const { username } = req.params;
   try {
-    // FIX: Recherche insensible à la casse pour test2, Test2, etc.
     const result = await pool.query(
       'SELECT username, security_question FROM users WHERE LOWER(username) = LOWER($1)',
       [username.trim()]
@@ -291,11 +239,9 @@ app.post('/api/auth/reset-password', async (req, res) => {
       [username.trim()]
     );
     if (userRes.rows.length === 0) return res.status(404).json({ error: "Utilisateur introuvable." });
-    
     if (userRes.rows[0].security_answer.toLowerCase().trim() !== answer.toLowerCase().trim()) {
       return res.status(401).json({ error: "Réponse de sécurité incorrecte." });
     }
-
     await pool.query(
       'UPDATE users SET password = $1 WHERE LOWER(username) = LOWER($2)',
       [newPassword, username.trim()]
@@ -322,19 +268,53 @@ app.post('/api/invoices', async (req, res) => {
   }
   try {
     const userRes = await pool.query('SELECT username, company_id FROM users WHERE LOWER(username) = LOWER($1)', [invoice.owner]);
-    if (userRes.rows.length === 0) {
-        return res.status(404).json({ error: `User ${invoice.owner} not found.` });
-    }
+    if (userRes.rows.length === 0) return res.status(404).json({ error: `User ${invoice.owner} not found.` });
     const { username, company_id } = userRes.rows[0];
-    
     await pool.query(
       'INSERT INTO invoices (id, owner, company_id, data, is_archived) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (id) DO UPDATE SET data = $4, is_archived = $5', 
       [invoice.id, username, company_id, invoice, invoice.isArchived || false]
     );
     res.json({ success: true });
-  } catch (err) { 
-    res.status(500).json({ error: err.message }); 
-  }
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/users/stats', async (req, res) => {
+  const { username, tokens } = req.body;
+  try {
+    await pool.query(
+      `UPDATE users 
+       SET stats = stats || jsonb_build_object(
+         'extractRequests', (COALESCE((stats->>'extractRequests')::int, 0) + 1),
+         'totalTokens', (COALESCE((stats->>'totalTokens')::bigint, 0) + $1),
+         'lastActive', CURRENT_TIMESTAMP
+       )
+       WHERE LOWER(username) = LOWER($2)`,
+      [tokens || 0, username]
+    );
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/logs/:username', async (req, res) => {
+  try {
+    const result = await pool.query(
+      'SELECT * FROM processing_logs WHERE LOWER(username) = LOWER($1) ORDER BY timestamp DESC LIMIT 100',
+      [req.params.username]
+    );
+    res.json(result.rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/logs', async (req, res) => {
+  const { username, message, type } = req.body;
+  try {
+    const id = uuidv4();
+    await pool.query(
+      'INSERT INTO processing_logs (id, username, message, type) VALUES ($1, $2, $3, $4)',
+      [id, username, message, type]
+    );
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 app.post('/api/invoices/bulk-delete', async (req, res) => {
@@ -362,20 +342,12 @@ app.get('/api/admin/users', async (req, res) => {
       LEFT JOIN companies c ON u.company_id = c.id
     `;
     let params = [];
-    if (companyId) {
-      query += ` WHERE u.company_id = $1 `;
-      params.push(companyId);
-    }
+    if (companyId) { query += ` WHERE u.company_id = $1 `; params.push(companyId); }
     query += ` ORDER BY u.created_at DESC `;
-    
     const result = await pool.query(query, params);
     res.json(result.rows.map(u => ({ 
-      ...u, 
-      isApproved: u.is_approved, 
-      companyName: u.company_name, 
-      companyId: u.company_id, 
-      createdAt: u.created_at,
-      stats: u.stats 
+      ...u, isApproved: u.is_approved, companyName: u.company_name, 
+      companyId: u.company_id, createdAt: u.created_at, stats: u.stats 
     })));
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -406,3 +378,4 @@ app.listen(port, async () => {
   console.log(`Server ready on port ${port}`);
   await initDb();
 });
+    

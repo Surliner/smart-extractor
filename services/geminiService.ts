@@ -1,4 +1,3 @@
-
 import { GoogleGenAI, Type } from "@google/genai";
 import { InvoiceData, InvoiceItem, InvoiceType, ExtractionMode, ExtractionResult, OperationCategory, TaxPointType } from "../types";
 
@@ -32,7 +31,7 @@ export const extractInvoiceData = async (
   companyId: string,
   withItems: boolean = false
 ): Promise<ExtractionResult> => {
-  // Instanciation immédiate selon les règles de qualité pour garantir la clé à jour
+  // Instanciation à l'appel pour garantir l'utilisation de la clé la plus récente
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
   const ultimateSchema = {
@@ -96,36 +95,32 @@ export const extractInvoiceData = async (
 
   const systemInstruction = `EXTRACTEUR RFE EN16931 STRICT. 
 OBJET: Extraction structurée Factur-X pour plateformes agréées (PDP).
-RÈGLES CRITIQUES:
-1. IDENTITÉ: Extraire SIRET (14 chiffres) et TVA (FR+11 chiffres). Priorité absolue.
+RÈGLES:
+1. IDENTITÉ: Extraire SIRET (14 chiffres) et TVA (FR+11 chiffres).
 2. DATES: Format ISO YYYY-MM-DD.
-3. BANCAIRE: IBAN et BIC de l'émetteur obligatoires si présents.
-4. BG-25 (LIGNES): Extraire TOUTES les lignes. Calcul: (GrossPrice - Discount) * Quantity = Amount.
-5. ARITHMÉTIQUE: Total HT = Somme(Lignes) + Frais - Remises. Doit être cohérent.
-6. ACOMPTES: Isoler 'prepaid_amount' (BT-113).
-7. TAXES: Isoler les taux par ligne (BT-152).
+3. BANCAIRE: IBAN et BIC de l'émetteur.
+4. LIGNES: (GrossPrice - Discount) * Quantity = Amount.
+5. ARITHMÉTIQUE: Total HT = Somme(Lignes) + Frais - Remises.
 RÉPONSE: JSON STRICT UNIQUEMENT.`;
 
   try {
-    // Appel direct via ai.models.generateContent selon les nouvelles directives
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
       contents: [{
         parts: [
           { inlineData: { mimeType, data: base64Data } },
-          { text: "Analyser ce document selon les règles EN16931." }
+          { text: "Extraire les données structurées EN16931." }
         ]
       }],
       config: {
         systemInstruction,
         responseMimeType: "application/json",
         responseSchema: ultimateSchema,
-        temperature: 0,
-        thinkingConfig: { thinkingBudget: 0 }
+        temperature: 0
       },
     });
 
-    // Accès à la propriété .text (et non méthode)
+    // Utilisation de .text (propriété getter)
     const rawData = JSON.parse(response.text || "{}");
     const usage = response.usageMetadata || { totalTokenCount: 0 };
 
@@ -182,7 +177,7 @@ RÉPONSE: JSON STRICT UNIQUEMENT.`;
       } 
     };
   } catch (error) {
-    console.error("Gemini Extraction Error:", error);
+    console.error("Gemini Error:", error);
     throw error;
   }
 };

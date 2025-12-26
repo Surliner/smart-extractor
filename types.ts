@@ -1,4 +1,3 @@
-
 export interface InvoiceItem {
   articleId: string;
   description: string;
