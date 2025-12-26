@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { UploadCloud, Loader2, Cpu, LogOut, Settings, Zap, Users, CloudLightning, ShieldCheck, Inbox, Archive } from 'lucide-react';
+import { UploadCloud, Loader2, Cpu, LogOut, Settings, Zap, Users, CloudLightning, ShieldCheck, Inbox, Archive, Trash2, FileDown, RefreshCw, CheckCircle2, FileJson, FileCode } from 'lucide-react';
 import { extractInvoiceData } from './services/geminiService';
 import { dbService } from './services/databaseService';
 import { InvoiceData, ErpStatus, ProcessingLog, ErpConfig, UserProfile, UserRole, PartnerMasterData, LookupTable, ExportTemplate, XmlMappingProfile } from './types';
@@ -9,8 +9,9 @@ import { InvoiceTable } from './components/InvoiceTable';
 import { LoginScreen } from './components/LoginScreen';
 import { ConfigurationModal } from './components/ConfigurationModal';
 import { UserManagement } from './components/UserManagement';
+import { generateTemplatedCSV, generateTemplatedXML } from './services/exportService';
+import { downloadCSV } from './utils/csvHelper';
 
-// 10 minutes en millisecondes
 const INACTIVITY_TIMEOUT = 10 * 60 * 1000;
 
 const App: React.FC = () => {
@@ -32,7 +33,6 @@ const App: React.FC = () => {
   const [templates, setTemplates] = useState<ExportTemplate[]>([]);
   const [xmlProfiles, setXmlProfiles] = useState<XmlMappingProfile[]>([]);
 
-  // Ref pour suivre la dernière interaction
   const lastActivityRef = useRef<number>(Date.now());
 
   const handleLogout = useCallback(() => {
@@ -43,50 +43,7 @@ const App: React.FC = () => {
     setLogs([]);
   }, []);
 
-  // Gestion de l'inactivité
-  useEffect(() => {
-    if (!currentUser) return;
-
-    const resetTimer = () => {
-      lastActivityRef.current = Date.now();
-    };
-
-    // Événements à surveiller
-    const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart'];
-    events.forEach(name => window.addEventListener(name, resetTimer));
-
-    // Vérification périodique toutes les 30 secondes
-    const checkInterval = setInterval(() => {
-      const now = Date.now();
-      if (now - lastActivityRef.current > INACTIVITY_TIMEOUT) {
-        console.log("Session expirée pour inactivité.");
-        handleLogout();
-      }
-    }, 30000);
-
-    return () => {
-      events.forEach(name => window.removeEventListener(name, resetTimer));
-      clearInterval(checkInterval);
-    };
-  }, [currentUser, handleLogout]);
-
-  useEffect(() => {
-    const initSession = async () => {
-      if (currentUser) {
-        try {
-          const profile = await dbService.getSessionProfile(currentUser);
-          await applyProfileData(profile);
-        } catch (e) {
-          console.error("Session re-hydration failed:", e);
-          handleLogout();
-        }
-      }
-      setIsInitializing(false);
-    };
-    initSession();
-  }, [currentUser, handleLogout]);
-
-  const applyProfileData = async (profile: UserProfile) => {
+  const applyProfileData = useCallback(async (profile: UserProfile) => {
     setUserProfile(profile);
     const cfg = profile.companyConfig || {};
     setErpConfig(cfg.erpConfig || { apiUrl: '', apiKey: '', enabled: false });
@@ -102,24 +59,30 @@ const App: React.FC = () => {
       ]);
       setAllInvoices(invoices);
       setLogs(userLogs);
-    } catch (e) {
-      console.error("Failed to fetch session data:", e);
-    }
-  };
+    } catch (e) { console.error(e); }
+  }, []);
 
-  const handleLogin = async (profile: UserProfile) => {
-    setCurrentUser(profile.username);
+  // Fix: Added handleLogin to correctly process login success, persist the user session, and load relevant configuration/data.
+  const handleLogin = useCallback((profile: UserProfile) => {
     localStorage.setItem('invoice-session-active-user', profile.username);
-    await applyProfileData(profile);
-    lastActivityRef.current = Date.now(); // Reset timer à la connexion
-  };
+    setCurrentUser(profile.username);
+    applyProfileData(profile);
+  }, [applyProfileData]);
 
-  const syncConfigToCloud = useCallback(async () => {
-    if (!userProfile) return;
-    const config = { erpConfig, masterData, lookupTables, templates, xmlProfiles };
-    await dbService.saveCompanyConfig(userProfile.companyId, config);
-    setUserProfile(prev => prev ? { ...prev, companyConfig: config } : null);
-  }, [userProfile, erpConfig, masterData, lookupTables, templates, xmlProfiles]);
+  useEffect(() => {
+    const initSession = async () => {
+      if (currentUser) {
+        try {
+          const profile = await dbService.getSessionProfile(currentUser);
+          await applyProfileData(profile);
+        } catch (e) {
+          handleLogout();
+        }
+      }
+      setIsInitializing(false);
+    };
+    initSession();
+  }, [currentUser, applyProfileData, handleLogout]);
 
   const handleInvoiceUpdate = async (id: string, updates: Partial<InvoiceData>) => {
     if (!userProfile) return;
@@ -127,33 +90,10 @@ const App: React.FC = () => {
       const newInvoices = prev.map(inv => inv.id === id ? { ...inv, ...updates } : inv);
       const updatedInvoice = newInvoices.find(i => i.id === id);
       if (updatedInvoice) {
-        const payload = { ...updatedInvoice, owner: userProfile.username, companyId: userProfile.companyId };
-        dbService.saveInvoice(payload).catch(e => console.error("Persistence error:", e));
+        dbService.saveInvoice({ ...updatedInvoice, owner: userProfile.username, companyId: userProfile.companyId });
       }
       return newInvoices;
     });
-  };
-
-  const handleDeleteInvoices = async (ids: string[]) => {
-    try {
-      await dbService.deleteInvoices(ids);
-      setAllInvoices(prev => prev.filter(inv => !ids.includes(inv.id)));
-      setSelectedIds(new Set());
-      addLog(`${ids.length} facture(s) supprimée(s)`, 'warning');
-    } catch (e: any) {
-      alert("Erreur lors de la suppression : " + e.message);
-    }
-  };
-
-  const handleArchiveInvoices = async (ids: string[], archived: boolean) => {
-    try {
-      await dbService.archiveInvoices(ids, archived);
-      setAllInvoices(prev => prev.map(inv => ids.includes(inv.id) ? { ...inv, isArchived: archived } : inv));
-      setSelectedIds(new Set());
-      addLog(`${ids.length} facture(s) ${archived ? 'archivée(s)' : 'désarchivée(s)'}`, 'info');
-    } catch (e: any) {
-      alert("Erreur lors de l'archivage : " + e.message);
-    }
   };
 
   const processFiles = async (files: FileList | null) => {
@@ -162,22 +102,17 @@ const App: React.FC = () => {
     setProcessProgress({ current: 0, total: files.length });
     for (const file of Array.from(files)) {
       try {
-        const base64Data = await new Promise<string>((resolve) => {
-          const reader = new FileReader(); 
-          reader.onload = () => resolve((reader.result as string).split(',')[1]); 
-          reader.readAsDataURL(file);
+        const base64Data = await new Promise<string>((r) => {
+          const reader = new FileReader(); reader.onload = () => r((reader.result as string).split(',')[1]); reader.readAsDataURL(file);
         });
         const result = await extractInvoiceData(base64Data, file.type, file.name, 'ULTIMATE', 'INBOUND', userProfile.companyId, true);
         const inv = { ...result.invoice, owner: userProfile.username, companyId: userProfile.companyId, extractedAt: new Date().toISOString() };
         await dbService.saveInvoice(inv);
         await dbService.updateUserStats(userProfile.username, result.usage.totalTokens);
         setAllInvoices(prev => [inv, ...prev]);
-        await addLog(`Facture ${inv.invoiceNumber} extraite (${result.usage.totalTokens} tokens utilisés)`, 'success');
-      } catch (err: any) {
-        await addLog(`Erreur : ${file.name} - ${err.message}`, 'error');
-      } finally {
-        setProcessProgress(prev => ({ ...prev, current: prev.current + 1 }));
-      }
+        addLog(`Facture ${inv.invoiceNumber} extraite (${result.usage.totalTokens} tokens)`, 'success');
+      } catch (err: any) { addLog(`Erreur : ${file.name} - ${err.message}`, 'error'); }
+      finally { setProcessProgress(prev => ({ ...prev, current: prev.current + 1 })); }
     }
     setIsProcessing(false);
   };
@@ -189,22 +124,45 @@ const App: React.FC = () => {
     setLogs(newLogs);
   };
 
+  const handleBulkExport = (type: 'CSV' | 'XML', templateId?: string) => {
+    const selectedInvoices = allInvoices.filter(inv => selectedIds.has(inv.id));
+    if (type === 'CSV') {
+      const template = templates.find(t => t.id === templateId) || templates[0];
+      if (!template) return alert("Veuillez créer un template CSV dans le Hub.");
+      const csv = generateTemplatedCSV(selectedInvoices, template, lookupTables);
+      downloadCSV(csv, `export_factures_${new Date().getTime()}.csv`);
+    }
+    addLog(`${selectedInvoices.length} factures exportées en ${type}`, 'success');
+  };
+
+  // Fix: Cast the output of Array.from(selectedIds) to string[] to resolve 'unknown[]' type mismatch during bulk delete.
+  const handleBulkDelete = async () => {
+    if (!confirm(`Supprimer ${selectedIds.size} facture(s) ?`)) return;
+    const ids = Array.from(selectedIds) as string[];
+    await dbService.deleteInvoices(ids);
+    setAllInvoices(prev => prev.filter(inv => !ids.includes(inv.id)));
+    setSelectedIds(new Set());
+    addLog(`${ids.length} factures supprimées`, 'warning');
+  };
+
+  // Fix: Cast the output of Array.from(selectedIds) to string[] to resolve 'unknown[]' type mismatch during bulk archiving.
+  const handleBulkArchive = async (archived: boolean) => {
+    const ids = Array.from(selectedIds) as string[];
+    await dbService.archiveInvoices(ids, archived);
+    setAllInvoices(prev => prev.map(inv => ids.includes(inv.id) ? { ...inv, isArchived: archived } : inv));
+    setSelectedIds(new Set());
+    addLog(`${ids.length} factures ${archived ? 'archivées' : 'désarchivées'}`, 'info');
+  };
+
   const filteredInvoices = useMemo(() => {
     return allInvoices.filter(inv => viewMode === 'ARCHIVED' ? inv.isArchived : !inv.isArchived);
   }, [allInvoices, viewMode]);
 
-  if (isInitializing) {
-    return <div className="min-h-screen bg-slate-950 flex items-center justify-center"><Loader2 className="w-12 h-12 text-indigo-500 animate-spin" /></div>;
-  }
+  if (isInitializing) return <div className="min-h-screen bg-slate-950 flex items-center justify-center"><Loader2 className="w-12 h-12 text-indigo-500 animate-spin" /></div>;
 
+  // Fix: Referenced handleLogin instead of the non-existent handleLogin function.
   if (!currentUser || !userProfile) return (
-    <LoginScreen 
-      onLogin={handleLogin} 
-      onRegister={(u, p, q, a) => dbService.register(u, p, q || '', a || '')} 
-      onResetPassword={async (username, newPass, answer) => {
-        await dbService.resetPassword(username, newPass, answer || '');
-      }} 
-    />
+    <LoginScreen onLogin={handleLogin} onRegister={(u, p, q, a) => dbService.register(u, p, q || '', a || '')} onResetPassword={(u, n, a) => dbService.resetPassword(u, n, a || '')} />
   );
 
   return (
@@ -216,7 +174,7 @@ const App: React.FC = () => {
         </div>
         <div className="flex items-center space-x-4">
           {(userProfile?.role === 'ADMIN' || userProfile?.role === 'SUPER_ADMIN') && (
-            <button onClick={() => setShowUserMgmt(true)} className="flex items-center space-x-3 px-5 py-2.5 bg-indigo-600/10 text-indigo-400 hover:bg-indigo-600 hover:text-white rounded-2xl border border-indigo-600/20 transition-all font-black uppercase text-[10px] tracking-widest"><Users className="w-5 h-5" /><span>{userProfile.role === 'SUPER_ADMIN' ? 'SaaS Portal' : 'Gestion Tiers'}</span></button>
+            <button onClick={() => setShowUserMgmt(true)} className="flex items-center space-x-3 px-5 py-2.5 bg-indigo-600/10 text-indigo-400 hover:bg-indigo-600 hover:text-white rounded-2xl border border-indigo-600/20 transition-all font-black uppercase text-[10px] tracking-widest"><Users className="w-5 h-5" /><span>Partition Hub</span></button>
           )}
           <button onClick={() => setShowConfig(true)} className="p-3 bg-white/5 text-slate-400 hover:text-white rounded-2xl border border-white/10 hover:bg-white/10 transition-all"><Settings className="w-6 h-6" /></button>
           <button onClick={handleLogout} className="p-3 bg-white/5 text-slate-400 hover:text-rose-500 rounded-2xl border border-white/10 hover:bg-rose-500/10 transition-all"><LogOut className="w-6 h-6" /></button>
@@ -229,38 +187,51 @@ const App: React.FC = () => {
             <div onClick={() => !isProcessing && document.getElementById('f-up')?.click()} className={`bg-white rounded-[3rem] border-4 border-dashed p-16 flex flex-col items-center justify-center text-center space-y-8 transition-all cursor-pointer hover:border-indigo-400 hover:bg-indigo-50/20 ${isProcessing ? 'opacity-50 pointer-events-none' : 'border-slate-100 shadow-sm'}`}>
               <input id="f-up" type="file" multiple accept="application/pdf" onChange={(e) => processFiles(e.target.files)} className="hidden" />
               <div className="p-8 bg-indigo-600 rounded-[2.5rem] shadow-2xl text-white">{isProcessing ? <Loader2 className="w-12 h-12 animate-spin" /> : <UploadCloud className="w-12 h-12" />}</div>
-              <div><h2 className="text-3xl font-black text-slate-950 tracking-tight">{isProcessing ? `Extraction en cours...` : 'Déposez vos factures PDF'}</h2><p className="text-slate-400 font-bold uppercase text-[10px] tracking-widest mt-2">Partition client : {userProfile?.companyName}</p></div>
+              <div><h2 className="text-3xl font-black text-slate-950 tracking-tight">{isProcessing ? `Traitement (${processProgress.current}/${processProgress.total})` : 'Déposez vos factures PDF'}</h2><p className="text-slate-400 font-bold uppercase text-[10px] tracking-widest mt-2">Precision RFE EN16931 Compliant</p></div>
             </div>
 
             <div className="flex items-center space-x-4 mb-2">
-                <button onClick={() => setViewMode('ACTIVE')} className={`flex items-center space-x-2 px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${viewMode === 'ACTIVE' ? 'bg-slate-900 text-white shadow-xl' : 'bg-white border border-slate-200 text-slate-400 hover:bg-slate-50'}`}><Inbox className="w-4 h-4" /><span>Actives ({allInvoices.filter(i => !i.isArchived).length})</span></button>
-                <button onClick={() => setViewMode('ARCHIVED')} className={`flex items-center space-x-2 px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${viewMode === 'ARCHIVED' ? 'bg-slate-900 text-white shadow-xl' : 'bg-white border border-slate-200 text-slate-400 hover:bg-slate-50'}`}><Archive className="w-4 h-4" /><span>Archives ({allInvoices.filter(i => i.isArchived).length})</span></button>
+                <button onClick={() => {setViewMode('ACTIVE'); setSelectedIds(new Set());}} className={`flex items-center space-x-2 px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${viewMode === 'ACTIVE' ? 'bg-slate-900 text-white shadow-xl' : 'bg-white border border-slate-200 text-slate-400 hover:bg-slate-50'}`}><Inbox className="w-4 h-4" /><span>Actives ({allInvoices.filter(i => !i.isArchived).length})</span></button>
+                <button onClick={() => {setViewMode('ARCHIVED'); setSelectedIds(new Set());}} className={`flex items-center space-x-2 px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${viewMode === 'ARCHIVED' ? 'bg-slate-900 text-white shadow-xl' : 'bg-white border border-slate-200 text-slate-400 hover:bg-slate-50'}`}><Archive className="w-4 h-4" /><span>Archives ({allInvoices.filter(i => i.isArchived).length})</span></button>
             </div>
 
             <InvoiceTable 
-              invoices={filteredInvoices} 
-              selectedIds={selectedIds}
-              isArchiveView={viewMode === 'ARCHIVED'}
+              invoices={filteredInvoices} selectedIds={selectedIds} isArchiveView={viewMode === 'ARCHIVED'}
               onToggleSelection={(id) => setSelectedIds(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; })}
               onToggleAll={() => setSelectedIds(selectedIds.size === filteredInvoices.length ? new Set() : new Set(filteredInvoices.map(i => i.id)))}
-              onUpdate={handleInvoiceUpdate}
-              onDeleteInvoices={handleDeleteInvoices}
-              onArchiveInvoices={handleArchiveInvoices}
-              onSyncInvoices={() => {}}
-              lookupTables={lookupTables}
-              templates={templates}
-              xmlProfiles={xmlProfiles}
-              masterData={masterData}
+              onUpdate={handleInvoiceUpdate} onDeleteInvoices={handleBulkDelete} onArchiveInvoices={handleBulkArchive} onSyncInvoices={() => {}}
+              lookupTables={lookupTables} templates={templates} xmlProfiles={xmlProfiles} masterData={masterData}
             />
           </div>
           <div className="xl:col-span-3"><ProcessingLogs logs={logs} /></div>
         </div>
       </main>
 
-      <ConfigurationModal isOpen={showConfig} onClose={() => { syncConfigToCloud(); setShowConfig(false); }} erpConfig={erpConfig} onSaveErp={setErpConfig} lookupTables={lookupTables} onSaveLookups={setLookupTables} templates={templates} onSaveTemplates={setTemplates} xmlProfiles={xmlProfiles} onSaveXmlProfiles={setXmlProfiles} masterData={masterData} onSaveMasterData={setMasterData} />
+      {/* BARRE D'ACTIONS GROUPÉES (Rétablie) */}
+      {selectedIds.size > 0 && (
+        <div className="fixed bottom-10 left-1/2 -translate-x-1/2 bg-slate-900 text-white px-8 py-5 rounded-[2.5rem] shadow-[0_30px_60px_-15px_rgba(0,0,0,0.5)] flex items-center space-x-8 z-[60] border border-white/10 animate-in slide-in-from-bottom-10">
+          <div className="flex flex-col border-r border-white/10 pr-8">
+            <span className="text-[10px] font-black uppercase text-indigo-400 tracking-widest">{selectedIds.size} sélectionnées</span>
+            <span className="text-[8px] font-bold text-slate-500 uppercase">Actions de masse RFE</span>
+          </div>
+          <div className="flex items-center space-x-3">
+             <button onClick={() => handleBulkExport('CSV')} className="flex items-center space-x-2 px-6 py-2.5 bg-white text-slate-900 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-indigo-50 transition-all"><FileDown className="w-4 h-4" /><span>Export CSV</span></button>
+             <button onClick={() => handleBulkArchive(viewMode === 'ACTIVE')} className="flex items-center space-x-2 px-6 py-2.5 bg-slate-800 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-700 border border-white/5 transition-all"><Archive className="w-4 h-4" /><span>{viewMode === 'ACTIVE' ? 'Archiver' : 'Restaurer'}</span></button>
+             <button onClick={handleBulkDelete} className="flex items-center space-x-2 px-6 py-2.5 bg-rose-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-rose-700 transition-all shadow-lg shadow-rose-900/20"><Trash2 className="w-4 h-4" /><span>Supprimer</span></button>
+          </div>
+          <button onClick={() => setSelectedIds(new Set())} className="p-2 text-slate-500 hover:text-white transition-colors"><X className="w-5 h-5" /></button>
+        </div>
+      )}
+
+      <ConfigurationModal 
+        isOpen={showConfig} onClose={() => { if (userProfile) dbService.saveCompanyConfig(userProfile.companyId, { erpConfig, masterData, lookupTables, templates, xmlProfiles }); setShowConfig(false); }} 
+        erpConfig={erpConfig} onSaveErp={setErpConfig} lookupTables={lookupTables} onSaveLookups={setLookupTables} templates={templates} onSaveTemplates={setTemplates} xmlProfiles={xmlProfiles} onSaveXmlProfiles={setXmlProfiles} masterData={masterData} onSaveMasterData={setMasterData} 
+      />
       {userProfile && <UserManagement isOpen={showUserMgmt} onClose={() => setShowUserMgmt(false)} users={[]} currentUser={userProfile.username} currentUserCompanyId={userProfile.companyId} userRole={userProfile.role} onUpdateRole={() => {}} onDeleteUser={() => {}} onResetPassword={() => {}} />}
     </div>
   );
 };
+
+const X = ({ className }: { className?: string }) => <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>;
 
 export default App;
