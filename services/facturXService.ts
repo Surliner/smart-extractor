@@ -37,6 +37,25 @@ export const generateFacturXXML = (invoice: InvoiceData): string => {
   const taxTotal = (invoice.totalVat || 0);
   const grandTotal = (invoice.amountInclVat || 0);
 
+  // Group by tax rate for RFE Compliance (BG-23)
+  const taxRates = new Map<string, { basis: number, tax: number }>();
+  (invoice.items || []).forEach(item => {
+    const rate = (item.taxRate || 20.0).toFixed(2);
+    const current = taxRates.get(rate) || { basis: 0, tax: 0 };
+    current.basis += (item.amount || 0);
+    current.tax += ((item.amount || 0) * (item.taxRate || 0) / 100);
+    taxRates.set(rate, current);
+  });
+
+  const taxSegments = Array.from(taxRates.entries()).map(([rate, vals]) => `
+      <ram:ApplicableTradeTax>
+        <ram:CalculatedAmount>${vals.tax.toFixed(2)}</ram:CalculatedAmount>
+        <ram:TypeCode>VAT</ram:TypeCode>
+        <ram:BasisAmount>${vals.basis.toFixed(2)}</ram:BasisAmount>
+        <ram:CategoryCode>S</ram:CategoryCode>
+        <ram:RateApplicablePercent>${rate}</ram:RateApplicablePercent>
+      </ram:ApplicableTradeTax>`).join('');
+
   return `<?xml version="1.0" encoding="UTF-8"?>
 <rsm:CrossIndustryInvoice 
   xmlns:udt="urn:un:unece:uncefact:data:standard:UnqualifiedDataType:100" 
@@ -70,7 +89,7 @@ export const generateFacturXXML = (invoice: InvoiceData): string => {
         </ram:NetPriceProductTradePrice>
       </ram:SpecifiedLineTradeAgreement>
       <ram:SpecifiedLineTradeDelivery>
-        <ram:BilledQuantity unitCode="C62">${item.quantity || 0}</ram:BilledQuantity>
+        <ram:BilledQuantity unitCode="${item.unitOfMeasure || 'C62'}">${item.quantity || 0}</ram:BilledQuantity>
       </ram:SpecifiedLineTradeDelivery>
       <ram:SpecifiedLineTradeSettlement>
         <ram:ApplicableTradeTax>
@@ -106,6 +125,10 @@ export const generateFacturXXML = (invoice: InvoiceData): string => {
           <ram:LineOne>${esc(invoice.buyerAddress)}</ram:LineOne>
           <ram:CountryID>FR</ram:CountryID>
         </ram:PostalTradeAddress>
+        ${invoice.buyerVat ? `
+        <ram:SpecifiedTaxRegistration>
+          <ram:ID schemeID="VA">${esc(invoice.buyerVat)}</ram:ID>
+        </ram:SpecifiedTaxRegistration>` : ''}
       </ram:BuyerTradeParty>
     </ram:ApplicableHeaderTradeAgreement>
     <ram:ApplicableHeaderTradeDelivery />
@@ -115,17 +138,11 @@ export const generateFacturXXML = (invoice: InvoiceData): string => {
         <ram:IBANID>${esc(invoice.iban)}</ram:IBANID>
         <ram:AccountName>${esc(invoice.supplier)}</ram:AccountName>
       </ram:PayeePartyCreditorFinancialAccount>
-      <ram:ApplicableTradeTax>
-        <ram:CalculatedAmount>${taxTotal.toFixed(2)}</ram:CalculatedAmount>
-        <ram:TypeCode>VAT</ram:TypeCode>
-        <ram:BasisAmount>${taxBasisTotal.toFixed(2)}</ram:BasisAmount>
-        <ram:CategoryCode>S</ram:CategoryCode>
-        <ram:RateApplicablePercent>20.00</ram:RateApplicablePercent>
-      </ram:ApplicableTradeTax>
+      ${taxSegments}
       <ram:SpecifiedTradeSettlementHeaderMonetarySummation>
         <ram:LineTotalAmount>${lineTotalHT.toFixed(2)}</ram:LineTotalAmount>
         <ram:TaxBasisTotalAmount>${taxBasisTotal.toFixed(2)}</ram:TaxBasisTotalAmount>
-        <ram:TaxTotalAmount currencyID="EUR">${taxTotal.toFixed(2)}</ram:TaxTotalAmount>
+        <ram:TaxTotalAmount currencyID="${esc(invoice.currency) || 'EUR'}">${taxTotal.toFixed(2)}</ram:TaxTotalAmount>
         <ram:GrandTotalAmount>${grandTotal.toFixed(2)}</ram:GrandTotalAmount>
         <ram:DuePayableAmount>${grandTotal.toFixed(2)}</ram:DuePayableAmount>
       </ram:SpecifiedTradeSettlementHeaderMonetarySummation>

@@ -114,6 +114,7 @@ export interface InvoiceData {
   erpStatus?: ErpStatus;
   erpReference?: string;
   isMasterMatched?: boolean;
+  isBuyerMasterMatched?: boolean;
   isArchived?: boolean;
 }
 

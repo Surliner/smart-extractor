@@ -141,25 +141,46 @@ export const FacturXModal: React.FC<{
     }
   }, [data.fileData]);
 
+  // Vendeur matching
   const supplierMatch = useMemo(() => {
     if (!data.supplierSiret) return null;
     const siretClean = data.supplierSiret.replace(/\s/g, "");
     return masterData.find(m => m.siret.replace(/\s/g, "") === siretClean);
   }, [data.supplierSiret, masterData]);
 
+  // Acheteur matching
+  const buyerMatch = useMemo(() => {
+    if (!data.buyerSiret) return null;
+    const siretClean = data.buyerSiret.replace(/\s/g, "");
+    return masterData.find(m => m.siret.replace(/\s/g, "") === siretClean);
+  }, [data.buyerSiret, masterData]);
+
   useEffect(() => {
+    let hasChanges = false;
+    const updates: Partial<InvoiceData> = {};
+
     if (supplierMatch && !data.isMasterMatched) {
-      setData(prev => ({
-        ...prev,
-        supplier: supplierMatch.name,
-        supplierErpCode: supplierMatch.erpCode,
-        supplierVat: supplierMatch.vatNumber || prev.supplierVat,
-        iban: supplierMatch.iban || prev.iban,
-        bic: supplierMatch.bic || prev.bic,
-        isMasterMatched: true
-      }));
+      updates.supplier = supplierMatch.name;
+      updates.supplierErpCode = supplierMatch.erpCode;
+      updates.supplierVat = supplierMatch.vatNumber || data.supplierVat;
+      updates.iban = supplierMatch.iban || data.iban;
+      updates.bic = supplierMatch.bic || data.bic;
+      updates.isMasterMatched = true;
+      hasChanges = true;
     }
-  }, [supplierMatch, data.isMasterMatched]);
+
+    if (buyerMatch && !data.isBuyerMasterMatched) {
+      updates.buyerName = buyerMatch.name;
+      updates.buyerErpCode = buyerMatch.erpCode;
+      updates.buyerVat = buyerMatch.vatNumber || data.buyerVat;
+      updates.isBuyerMasterMatched = true;
+      hasChanges = true;
+    }
+
+    if (hasChanges) {
+      setData(prev => ({ ...prev, ...updates }));
+    }
+  }, [supplierMatch, buyerMatch, data.isMasterMatched, data.isBuyerMasterMatched]);
 
   useEffect(() => {
     if (data.items) {
@@ -194,6 +215,7 @@ export const FacturXModal: React.FC<{
       { id: 'BT-29', label: 'SIRET Fournisseur', status: !!data.supplierSiret && data.supplierSiret.length >= 9, mandatory: true },
       { id: 'BT-44', label: 'Nom Acheteur', status: !!data.buyerName, mandatory: true },
       { id: 'BT-47', label: 'SIRET Acheteur', status: !!data.buyerSiret && data.buyerSiret.length >= 9, mandatory: true },
+      { id: 'BT-48', label: 'TVA Acheteur', status: !!data.buyerVat, mandatory: true },
       { id: 'BG-25', label: 'Lignes extraites', status: (data.items?.length || 0) > 0, mandatory: true },
       { id: 'ARITH', label: 'Cohérence Totaux', status: Math.abs((data.amountInclVat || 0) - ((data.amountExclVat || 0) + (data.totalVat || 0))) < 0.05, mandatory: true },
     ], [data]);
@@ -259,16 +281,25 @@ export const FacturXModal: React.FC<{
                 <div className="flex-1 p-5 space-y-5 overflow-y-auto custom-scrollbar">
                     
                     <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-                      <Group title="Master Data Hub" icon={CloudLightning} variant="purple" className="lg:col-span-4" actions={supplierMatch && <div className="flex items-center space-x-2"><BadgeCheck className="w-4 h-4 text-emerald-500" /><span className="text-[7px] font-black uppercase text-emerald-600">Synced</span></div>}>
+                      <Group title="Master Data Hub" icon={CloudLightning} variant="purple" className="lg:col-span-4" actions={(supplierMatch || buyerMatch) && <div className="flex items-center space-x-2"><BadgeCheck className="w-4 h-4 text-emerald-500" /><span className="text-[7px] font-black uppercase text-emerald-600">Synced</span></div>}>
                         <div className="space-y-3">
-                          <div className={`p-3 rounded-xl border flex items-center space-x-3 transition-all ${supplierMatch ? 'bg-emerald-50 border-emerald-500 shadow-sm' : 'bg-slate-50 border-slate-100'}`}>
-                             <div className={`p-1 rounded-md transition-colors ${supplierMatch ? 'bg-emerald-500 text-white' : 'bg-slate-300 text-slate-500'}`}><Database className="w-4 h-4" /></div>
+                          <div className={`p-3 rounded-xl border flex items-center space-x-3 transition-all ${(supplierMatch || buyerMatch) ? 'bg-emerald-50 border-emerald-500 shadow-sm' : 'bg-slate-50 border-slate-100'}`}>
+                             <div className={`p-1 rounded-md transition-colors ${(supplierMatch || buyerMatch) ? 'bg-emerald-500 text-white' : 'bg-slate-300 text-slate-500'}`}><Database className="w-4 h-4" /></div>
                              <div>
-                               <p className={`text-[9px] font-black uppercase ${supplierMatch ? 'text-emerald-700' : 'text-slate-500'}`}>{supplierMatch ? 'Match Master Data OK' : 'Identification Tiers...'}</p>
-                               {supplierMatch && <p className="text-[8px] font-bold text-emerald-600/60 uppercase">Dénomination: {supplierMatch.name}</p>}
+                               <p className={`text-[9px] font-black uppercase ${(supplierMatch || buyerMatch) ? 'text-emerald-700' : 'text-slate-500'}`}>
+                                 {(supplierMatch && buyerMatch) ? 'Match Vendeur & Acheteur OK' : supplierMatch ? 'Match Vendeur OK' : buyerMatch ? 'Match Acheteur OK' : 'Identification Tiers...'}
+                               </p>
+                               {(supplierMatch || buyerMatch) && (
+                                 <p className="text-[8px] font-bold text-emerald-600/60 uppercase">
+                                   {supplierMatch && `VND: ${supplierMatch.name}`} {buyerMatch && `| ACH: ${buyerMatch.name}`}
+                                 </p>
+                               )}
                              </div>
                           </div>
-                          <FormInput label="Code ERP Pivot" value={data.supplierErpCode} onChange={(v:any)=>setData({...data, supplierErpCode:v, isMasterMatched: false})} themeColor="purple" source={supplierMatch ? 'MASTER_DATA' : 'AI'} />
+                          <div className="grid grid-cols-2 gap-3">
+                            <FormInput label="Code ERP Vendeur" value={data.supplierErpCode} onChange={(v:any)=>setData({...data, supplierErpCode:v, isMasterMatched: false})} themeColor="purple" source={supplierMatch ? 'MASTER_DATA' : 'AI'} />
+                            <FormInput label="Code ERP Acheteur" value={data.buyerErpCode} onChange={(v:any)=>setData({...data, buyerErpCode:v, isBuyerMasterMatched: false})} themeColor="purple" source={buyerMatch ? 'MASTER_DATA' : 'AI'} />
+                          </div>
                         </div>
                       </Group>
 
@@ -298,10 +329,10 @@ export const FacturXModal: React.FC<{
                           <FormInput label="Adresse Siège" value={data.supplierAddress} onChange={(v:any)=>setData({...data, supplierAddress:v})} btId="BG-5" multiline themeColor="indigo" />
                       </Group>
                       <Group title="Acheteur (Buyer)" icon={Receipt} variant="orange">
-                          <FormInput label="Nom Client" value={data.buyerName} onChange={(v:any)=>setData({...data, buyerName:v})} btId="44" required className="mb-3" themeColor="orange" />
+                          <FormInput label="Nom Client" value={data.buyerName} onChange={(v:any)=>setData({...data, buyerName:v, isBuyerMasterMatched: false})} btId="44" required className="mb-3" themeColor="orange" source={buyerMatch ? 'MASTER_DATA' : 'AI'} />
                           <div className="grid grid-cols-2 gap-3 mb-3">
-                            <FormInput label="SIRET Client" value={data.buyerSiret} onChange={(v:any)=>setData({...data, buyerSiret:v})} btId="47" required themeColor="orange" />
-                            <FormInput label="Code ERP Client" value={data.buyerErpCode} onChange={(v:any)=>setData({...data, buyerErpCode:v})} themeColor="orange" />
+                            <FormInput label="SIRET Client" value={data.buyerSiret} onChange={(v:any)=>setData({...data, buyerSiret:v, isBuyerMasterMatched: false})} btId="47" required themeColor="orange" />
+                            <FormInput label="TVA Client" value={data.buyerVat} onChange={(v:any)=>setData({...data, buyerVat:v, isBuyerMasterMatched: false})} btId="48" themeColor="orange" source={buyerMatch ? 'MASTER_DATA' : 'AI'} />
                           </div>
                           <FormInput label="Adresse Facturation" value={data.buyerAddress} onChange={(v:any)=>setData({...data, buyerAddress:v})} btId="BG-8" multiline themeColor="orange" />
                       </Group>
