@@ -6,9 +6,59 @@ import { ErpConfig, LookupTable, ExportTemplate, PartnerMasterData, XmlMappingPr
 const MD_PAGE_SIZE = 15;
 
 const FIELD_GROUPS = [
-  { name: 'Identité', fields: [{ id: 'invoiceNumber', label: 'N° Facture' }, { id: 'invoiceDate', label: 'Date Facture' }, { id: 'invoiceType', label: 'Type Doc' }] },
-  { name: 'Vendeur', fields: [{ id: 'supplier', label: 'Nom' }, { id: 'supplierSiret', label: 'SIRET' }, { id: 'supplierVat', label: 'TVA' }, { id: 'supplierErpCode', label: 'Code ERP' }] },
-  { name: 'Finances', fields: [{ id: 'amountExclVat', label: 'Total HT' }, { id: 'totalVat', label: 'Total TVA' }, { id: 'amountInclVat', label: 'Total TTC' }, { id: 'currency', label: 'Devise' }] }
+  { name: 'Identité Document', fields: [
+    { id: 'invoiceType', label: 'Type Doc (Facture/Avoir)' },
+    { id: 'invoiceNumber', label: 'N° Facture' },
+    { id: 'invoiceDate', label: 'Date Facture' },
+    { id: 'dueDate', label: 'Date Échéance' },
+    { id: 'taxPointDate', label: 'Point de Taxe' },
+    { id: 'currency', label: 'Devise (ISO)' },
+    { id: 'businessProcessId', label: 'Profil (urn:factur-x...)' },
+    { id: 'extractionMode', label: 'Mode IA' },
+    { id: 'direction', label: 'Sens (Inbound/Outbound)' }
+  ]},
+  { name: 'Vendeur (Seller)', fields: [
+    { id: 'supplier', label: 'Nom Vendeur' },
+    { id: 'supplierSiret', label: 'SIRET Vendeur' },
+    { id: 'supplierVat', label: 'TVA Vendeur' },
+    { id: 'supplierErpCode', label: 'Code ERP Vendeur' },
+    { id: 'supplierAddress', label: 'Adresse Vendeur' },
+    { id: 'iban', label: 'IBAN Vendeur' },
+    { id: 'bic', label: 'BIC Vendeur' }
+  ]},
+  { name: 'Acheteur (Buyer)', fields: [
+    { id: 'buyerName', label: 'Nom Acheteur' },
+    { id: 'buyerSiret', label: 'SIRET Acheteur' },
+    { id: 'buyerVat', label: 'TVA Acheteur' },
+    { id: 'buyerErpCode', label: 'Code ERP Acheteur' },
+    { id: 'buyerAddress', label: 'Adresse Acheteur' }
+  ]},
+  { name: 'Références & Logistique', fields: [
+    { id: 'poNumber', label: 'N° Commande (PO)' },
+    { id: 'buyerReference', label: 'Réf. Acheteur' },
+    { id: 'contractNumber', label: 'N° Contrat' },
+    { id: 'deliveryNoteNumber', label: 'N° Bon Livraison' },
+    { id: 'projectReference', label: 'Réf. Projet' },
+    { id: 'deliveryDate', label: 'Date Livraison' }
+  ]},
+  { name: 'Totaux Financiers', fields: [
+    { id: 'amountExclVat', label: 'Total HT' },
+    { id: 'totalVat', label: 'Total TVA' },
+    { id: 'amountInclVat', label: 'Total TTC' },
+    { id: 'prepaidAmount', label: 'Acomptes Payés' },
+    { id: 'globalDiscount', label: 'Remise Globale' },
+    { id: 'globalCharge', label: 'Frais Globaux' },
+    { id: 'paymentMethod', label: 'Méthode Paiement' }
+  ]},
+  { name: 'Détail des Lignes', fields: [
+    { id: 'articleId', label: 'Ligne: Réf. Article' },
+    { id: 'description', label: 'Ligne: Désignation' },
+    { id: 'quantity', label: 'Ligne: Quantité' },
+    { id: 'unitOfMeasure', label: 'Ligne: Unité' },
+    { id: 'unitPrice', label: 'Ligne: P.U. Net' },
+    { id: 'taxRate', label: 'Ligne: Taux TVA %' },
+    { id: 'amount', label: 'Ligne: Montant Ligne HT' }
+  ]}
 ];
 
 interface ConfigurationModalProps {
@@ -47,10 +97,7 @@ export const ConfigurationModal: React.FC<ConfigurationModalProps> = ({
   const filteredMD = useMemo(() => {
     const s = mdSearch.toLowerCase();
     return localMasterData.filter(m => 
-      m.name.toLowerCase().includes(s) || 
-      m.siret.includes(s) || 
-      (m.erpCode && m.erpCode.toLowerCase().includes(s)) ||
-      (m.iban && m.iban.toLowerCase().includes(s))
+      m.name.toLowerCase().includes(s) || m.siret.includes(s) || (m.erpCode && m.erpCode.toLowerCase().includes(s))
     );
   }, [localMasterData, mdSearch]);
 
@@ -66,19 +113,14 @@ export const ConfigurationModal: React.FC<ConfigurationModalProps> = ({
       const imported = rows.map(row => {
         const c = row.split(';');
         if (c.length < 3) return null;
-        // Ordre CSV attendu : Nom;CodeERP;SIRET;TVA;IBAN;BIC
         return { 
-          id: crypto.randomUUID(), 
-          name: c[0]?.trim(), 
-          erpCode: c[1]?.trim(), 
-          siret: c[2]?.replace(/\s/g, ''), 
-          vatNumber: c[3]?.trim(), 
-          iban: c[4]?.replace(/\s/g, ''), 
-          bic: c[5]?.trim() 
+          id: crypto.randomUUID(), name: c[0]?.trim(), erpCode: c[1]?.trim(), 
+          siret: c[2]?.replace(/\s/g, ''), vatNumber: c[3]?.trim(), 
+          iban: c[4]?.replace(/\s/g, ''), bic: c[5]?.trim() 
         } as PartnerMasterData;
       }).filter(Boolean) as PartnerMasterData[];
       setLocalMasterData(prev => [...imported, ...prev]);
-      alert(`${imported.length} tiers importés avec succès.`);
+      alert(`${imported.length} tiers importés.`);
     };
     reader.readAsText(file);
   };
@@ -124,9 +166,9 @@ export const ConfigurationModal: React.FC<ConfigurationModalProps> = ({
                   <StatCard icon={ShieldCheck} label="Conformité RFE" value="100%" color="emerald" />
                   <StatCard icon={Zap} label="Mode" value="Flash-Opt" color="purple" />
                 </div>
-                <div className="bg-slate-900 rounded-[2.5rem] p-10 text-white">
+                <div className="bg-slate-900 rounded-[2.5rem] p-10 text-white shadow-inner">
                   <h4 className="text-lg font-black uppercase mb-4 tracking-tighter">Performance & Cost-Efficiency</h4>
-                  <p className="text-xs text-slate-400 leading-relaxed font-medium">Pipeline optimisé pour <b>Render</b>. Prompt Gemini 3 Flash compressé pour une facturation minimale. Support complet de la norme EN16931.</p>
+                  <p className="text-xs text-slate-400 leading-relaxed font-medium">Pipeline optimisé pour <b>Render</b>. Prompt Gemini 3 Flash compressé pour une facturation minimale. Support complet de la norme EN16931 pour l'archivage légal et l'extraction PDP.</p>
                 </div>
               </div>
             )}
@@ -134,111 +176,40 @@ export const ConfigurationModal: React.FC<ConfigurationModalProps> = ({
             {activeTab === 'masterdata' && (
               <div className="space-y-8 animate-in fade-in">
                 <div className="flex justify-between items-end">
-                  <div className="relative flex-1 max-w-md">
-                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300" />
-                    <input 
-                      type="text" 
-                      placeholder="Rechercher nom, siret, erp ou iban..." 
-                      value={mdSearch} 
-                      onChange={e => {setMdSearch(e.target.value); setMdPage(1);}} 
-                      className="w-full pl-12 pr-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-[10px] font-black uppercase outline-none focus:bg-white" 
-                    />
-                  </div>
+                  <div className="relative flex-1 max-w-md"><Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300" /><input type="text" placeholder="Rechercher tiers..." value={mdSearch} onChange={e => {setMdSearch(e.target.value); setMdPage(1);}} className="w-full pl-12 pr-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-[10px] font-black uppercase outline-none focus:bg-white focus:border-indigo-200" /></div>
                   <div className="flex space-x-3">
-                    <label className="px-6 py-3 bg-white border border-slate-200 rounded-xl text-[10px] font-black uppercase cursor-pointer hover:bg-slate-50 transition-all flex items-center shadow-sm">
-                      <UploadCloud className="w-4 h-4 mr-2 text-indigo-600" /> Import CSV
-                      <input type="file" accept=".csv" onChange={handleImportCSV} className="hidden" />
-                    </label>
-                    <button 
-                      onClick={() => setLocalMasterData([{id: crypto.randomUUID(), name: 'Nouveau Tiers', erpCode: '', siret: '', vatNumber: '', iban: '', bic: ''}, ...localMasterData])} 
-                      className="px-6 py-3 bg-indigo-600 text-white rounded-xl text-[10px] font-black uppercase flex items-center shadow-lg hover:bg-indigo-700"
-                    >
-                      <Plus className="w-4 h-4 mr-2" /> Ajouter
-                    </button>
+                    <label className="px-6 py-3 bg-white border border-slate-200 rounded-xl text-[10px] font-black uppercase cursor-pointer hover:bg-slate-50 transition-all flex items-center shadow-sm"><UploadCloud className="w-4 h-4 mr-2" /> Import CSV<input type="file" accept=".csv" onChange={handleImportCSV} className="hidden" /></label>
+                    <button onClick={() => setLocalMasterData([{id: crypto.randomUUID(), name: 'Nouveau Tiers', erpCode: '', siret: '', vatNumber: '', iban: '', bic: ''}, ...localMasterData])} className="px-6 py-3 bg-indigo-600 text-white rounded-xl text-[10px] font-black uppercase flex items-center shadow-lg hover:bg-indigo-700"><Plus className="w-4 h-4 mr-2" /> Ajouter</button>
                   </div>
                 </div>
-
                 <div className="bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-x-auto custom-scrollbar">
                   <table className="w-full text-left border-collapse min-w-[1200px]">
                     <thead className="bg-slate-50 text-[8px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">
                       <tr>
-                        <th className="px-6 py-4 w-64">Nom Tiers</th>
-                        <th className="px-6 py-4 w-32">Code ERP</th>
-                        <th className="px-6 py-4 w-40">SIRET</th>
-                        <th className="px-6 py-4 w-40">N° TVA</th>
-                        <th className="px-6 py-4 w-64">IBAN</th>
-                        <th className="px-6 py-4 w-32">BIC/SWIFT</th>
-                        <th className="px-6 py-4 text-right w-24">Action</th>
+                        <th className="px-6 py-4">Nom Tiers</th><th className="px-6 py-4">Code ERP</th><th className="px-6 py-4">SIRET</th><th className="px-6 py-4">TVA</th><th className="px-6 py-4">IBAN</th><th className="px-6 py-4">BIC</th><th className="px-6 py-4 text-right">Action</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {paginatedMD.map(m => (
-                        <tr key={m.id} className="hover:bg-slate-50/50 transition-colors">
-                          <td className="px-6 py-4">
-                            <input 
-                              value={m.name} 
-                              onChange={e => setLocalMasterData(prev => prev.map(x => x.id === m.id ? {...x, name: e.target.value} : x))} 
-                              className="bg-transparent outline-none font-bold text-xs w-full focus:text-indigo-600" 
-                            />
-                          </td>
-                          <td className="px-6 py-4">
-                            <input 
-                              value={m.erpCode} 
-                              onChange={e => setLocalMasterData(prev => prev.map(x => x.id === m.id ? {...x, erpCode: e.target.value} : x))} 
-                              className="bg-transparent outline-none font-black text-indigo-600 text-[10px] w-full uppercase" 
-                            />
-                          </td>
-                          <td className="px-6 py-4">
-                            <input 
-                              value={m.siret} 
-                              onChange={e => setLocalMasterData(prev => prev.map(x => x.id === m.id ? {...x, siret: e.target.value.replace(/\s/g, '')} : x))} 
-                              className="bg-transparent outline-none font-mono text-[10px] w-full" 
-                            />
-                          </td>
-                          <td className="px-6 py-4">
-                            <input 
-                              value={m.vatNumber || ''} 
-                              onChange={e => setLocalMasterData(prev => prev.map(x => x.id === m.id ? {...x, vatNumber: e.target.value} : x))} 
-                              className="bg-transparent outline-none font-mono text-[10px] w-full" 
-                              placeholder="FR..."
-                            />
-                          </td>
-                          <td className="px-6 py-4">
-                            <input 
-                              value={m.iban || ''} 
-                              onChange={e => setLocalMasterData(prev => prev.map(x => x.id === m.id ? {...x, iban: e.target.value.replace(/\s/g, '')} : x))} 
-                              className="bg-transparent outline-none font-mono text-[10px] w-full" 
-                              placeholder="FR76..."
-                            />
-                          </td>
-                          <td className="px-6 py-4">
-                            <input 
-                              value={m.bic || ''} 
-                              onChange={e => setLocalMasterData(prev => prev.map(x => x.id === m.id ? {...x, bic: e.target.value} : x))} 
-                              className="bg-transparent outline-none font-mono text-[10px] w-full" 
-                              placeholder="BIC..."
-                            />
-                          </td>
-                          <td className="px-6 py-4 text-right">
-                            <button onClick={() => setLocalMasterData(prev => prev.filter(x => x.id !== m.id))} className="text-slate-300 hover:text-rose-500 transition-colors">
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </td>
+                        <tr key={m.id} className="hover:bg-slate-50/50">
+                          <td className="px-6 py-4"><input value={m.name} onChange={e => setLocalMasterData(prev => prev.map(x => x.id === m.id ? {...x, name: e.target.value} : x))} className="bg-transparent outline-none font-bold text-xs w-full focus:text-indigo-600" /></td>
+                          <td className="px-6 py-4"><input value={m.erpCode} onChange={e => setLocalMasterData(prev => prev.map(x => x.id === m.id ? {...x, erpCode: e.target.value} : x))} className="bg-transparent outline-none font-black text-indigo-600 text-xs w-full uppercase" /></td>
+                          <td className="px-6 py-4"><input value={m.siret} onChange={e => setLocalMasterData(prev => prev.map(x => x.id === m.id ? {...x, siret: e.target.value} : x))} className="bg-transparent outline-none font-mono text-[10px] w-full" /></td>
+                          <td className="px-6 py-4"><input value={m.vatNumber} onChange={e => setLocalMasterData(prev => prev.map(x => x.id === m.id ? {...x, vatNumber: e.target.value} : x))} className="bg-transparent outline-none font-mono text-[10px] w-full" /></td>
+                          <td className="px-6 py-4"><input value={m.iban} onChange={e => setLocalMasterData(prev => prev.map(x => x.id === m.id ? {...x, iban: e.target.value} : x))} className="bg-transparent outline-none font-mono text-[10px] w-full" /></td>
+                          <td className="px-6 py-4"><input value={m.bic} onChange={e => setLocalMasterData(prev => prev.map(x => x.id === m.id ? {...x, bic: e.target.value} : x))} className="bg-transparent outline-none font-mono text-[10px] w-full" /></td>
+                          <td className="px-6 py-4 text-right"><button onClick={() => setLocalMasterData(prev => prev.filter(x => x.id !== m.id))} className="text-slate-300 hover:text-rose-500"><Trash2 className="w-4 h-4" /></button></td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
                 </div>
-
                 <div className="flex items-center justify-between py-4 border-t border-slate-50">
-                  <div className="flex flex-col">
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{filteredMD.length} Tiers au total</p>
-                    <p className="text-[8px] font-bold text-slate-300 uppercase mt-1">Format Import : Nom;CodeERP;SIRET;TVA;IBAN;BIC</p>
-                  </div>
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{filteredMD.length} Tiers</p>
                   <div className="flex items-center space-x-2">
-                    <button onClick={() => setMdPage(p => Math.max(1, p-1))} disabled={mdPage === 1} className="p-2 border border-slate-200 rounded-lg disabled:opacity-30 hover:bg-slate-50"><ChevronLeft className="w-4 h-4" /></button>
-                    <span className="text-[10px] font-black text-indigo-600 px-3">Page {mdPage} / {mdTotalPages || 1}</span>
-                    <button onClick={() => setMdPage(p => Math.min(mdTotalPages, p+1))} disabled={mdPage === mdTotalPages} className="p-2 border border-slate-200 rounded-lg disabled:opacity-30 hover:bg-slate-50"><ChevronRight className="w-4 h-4" /></button>
+                    <button onClick={() => setMdPage(p => Math.max(1, p-1))} disabled={mdPage === 1} className="p-2 border border-slate-200 rounded-lg disabled:opacity-30"><ChevronLeft className="w-4 h-4" /></button>
+                    <span className="text-[10px] font-black text-indigo-600">Page {mdPage} / {mdTotalPages || 1}</span>
+                    <button onClick={() => setMdPage(p => Math.min(mdTotalPages, p+1))} disabled={mdPage === mdTotalPages} className="p-2 border border-slate-200 rounded-lg disabled:opacity-30"><ChevronRight className="w-4 h-4" /></button>
                   </div>
                 </div>
               </div>
@@ -248,21 +219,21 @@ export const ConfigurationModal: React.FC<ConfigurationModalProps> = ({
               <div className="space-y-10 animate-in fade-in">
                 <div className="flex justify-between items-end">
                   <h3 className="text-2xl font-black text-slate-900 uppercase">Blueprints CSV</h3>
-                  <button onClick={() => setLocalTemplates([{id: crypto.randomUUID(), name: 'Nouveau Blueprint', separator: 'semicolon', columns: []}, ...localTemplates])} className="bg-indigo-600 text-white px-6 py-3 rounded-xl text-[10px] font-black uppercase flex items-center shadow-lg"><Plus className="w-4 h-4 mr-2" /> Nouveau Template</button>
+                  <button onClick={() => setLocalTemplates([{id: crypto.randomUUID(), name: 'Nouveau Blueprint', separator: 'semicolon', columns: []}, ...localTemplates])} className="bg-indigo-600 text-white px-6 py-3 rounded-xl text-[10px] font-black uppercase flex items-center shadow-lg hover:bg-indigo-700"><Plus className="w-4 h-4 mr-2" /> Nouveau Template</button>
                 </div>
                 {localTemplates.map(tpl => (
                   <div key={tpl.id} className="p-8 border border-slate-200 rounded-[2rem] bg-slate-50 relative group">
                     <button onClick={() => setLocalTemplates(prev => prev.filter(t => t.id !== tpl.id))} className="absolute top-6 right-6 text-slate-300 hover:text-rose-500"><Trash2 className="w-5 h-5" /></button>
                     <div className="grid grid-cols-2 gap-6 mb-6">
-                      <div className="space-y-2"><label className="text-[9px] font-black uppercase text-slate-400 ml-1">Nom du template</label><input value={tpl.name} onChange={e=>setLocalTemplates(prev=>prev.map(t=>t.id===tpl.id?{...t, name:e.target.value}:t))} className="w-full px-6 py-3 rounded-xl border border-slate-200 outline-none font-bold text-xs" /></div>
-                      <div className="space-y-2"><label className="text-[9px] font-black uppercase text-slate-400 ml-1">Séparateur</label><select value={tpl.separator} onChange={e=>setLocalTemplates(prev=>prev.map(t=>t.id===tpl.id?{...t, separator:e.target.value as any}:t))} className="w-full px-6 py-3 rounded-xl border border-slate-200 outline-none font-bold text-xs"><option value="semicolon">Point-virgule (;)</option><option value="comma">Virgule (,)</option></select></div>
+                      <div className="space-y-2"><label className="text-[9px] font-black uppercase text-slate-400 ml-1">Nom du template</label><input value={tpl.name} onChange={e=>setLocalTemplates(prev=>prev.map(t=>t.id===tpl.id?{...t, name:e.target.value}:t))} className="w-full px-6 py-3 rounded-xl border border-slate-200 outline-none font-bold text-xs focus:border-indigo-300" /></div>
+                      <div className="space-y-2"><label className="text-[9px] font-black uppercase text-slate-400 ml-1">Séparateur</label><select value={tpl.separator} onChange={e=>setLocalTemplates(prev=>prev.map(t=>t.id===tpl.id?{...t, separator:e.target.value as any}:t))} className="w-full px-6 py-3 rounded-xl border border-slate-200 outline-none font-bold text-xs"><option value="semicolon">Point-virgule (;)</option><option value="comma">Virgule (,)</option><option value="tab">Tabulation</option></select></div>
                     </div>
                     <div className="bg-white p-6 rounded-2xl space-y-3">
-                      <p className="text-[10px] font-black uppercase text-slate-400 mb-3">Mappage Colonnes</p>
+                      <p className="text-[10px] font-black uppercase text-slate-400 mb-3">Mappage Colonnes (BT-IDs RFE)</p>
                       {tpl.columns.map((col, idx) => (
                         <div key={idx} className="flex space-x-3">
-                           <input placeholder="Entête" value={col.header} onChange={e=>setLocalTemplates(prev=>prev.map(t=>t.id===tpl.id?{...t, columns: t.columns.map((c, i)=>i===idx?{...c, header:e.target.value}:c)}:t))} className="flex-1 px-4 py-2 bg-slate-50 border border-slate-100 rounded-lg text-xs font-bold" />
-                           <select value={col.value} onChange={e=>setLocalTemplates(prev=>prev.map(t=>t.id===tpl.id?{...t, columns: t.columns.map((c, i)=>i===idx?{...c, value:e.target.value}:c)}:t))} className="w-48 px-4 py-2 bg-slate-50 border border-slate-100 rounded-lg text-xs font-bold">
+                           <input placeholder="Entête CSV" value={col.header} onChange={e=>setLocalTemplates(prev=>prev.map(t=>t.id===tpl.id?{...t, columns: t.columns.map((c, i)=>i===idx?{...c, header:e.target.value}:c)}:t))} className="flex-1 px-4 py-2 bg-slate-50 border border-slate-100 rounded-lg text-xs font-bold" />
+                           <select value={col.value} onChange={e=>setLocalTemplates(prev=>prev.map(t=>t.id===tpl.id?{...t, columns: t.columns.map((c, i)=>i===idx?{...c, value:e.target.value}:c)}:t))} className="w-64 px-4 py-2 bg-slate-50 border border-slate-100 rounded-lg text-xs font-bold">
                              {FIELD_GROUPS.map(g => (
                                <optgroup key={g.name} label={g.name}>{g.fields.map(f => <option key={f.id} value={f.id}>{f.label}</option>)}</optgroup>
                              ))}
@@ -270,7 +241,7 @@ export const ConfigurationModal: React.FC<ConfigurationModalProps> = ({
                            <button onClick={()=>setLocalTemplates(prev=>prev.map(t=>t.id===tpl.id?{...t, columns: t.columns.filter((_, i)=>i!==idx)}:t))} className="p-2 text-slate-300 hover:text-rose-500"><Trash2 className="w-4 h-4" /></button>
                         </div>
                       ))}
-                      <button onClick={()=>setLocalTemplates(prev=>prev.map(t=>t.id===tpl.id?{...t, columns: [...t.columns, {header:'Champ', type:'field', value:'invoiceNumber'}]}:t))} className="text-[10px] font-black uppercase text-indigo-600 px-4 py-2 hover:bg-indigo-50 rounded-lg"><Plus className="w-3 h-3 mr-1 inline" /> Ajouter</button>
+                      <button onClick={()=>setLocalTemplates(prev=>prev.map(t=>t.id===tpl.id?{...t, columns: [...t.columns, {header:'Champ', type:'field', value:'invoiceNumber'}]}:t))} className="text-[10px] font-black uppercase text-indigo-600 px-4 py-2 hover:bg-indigo-50 rounded-lg"><Plus className="w-3 h-3 mr-1 inline" /> Ajouter une colonne</button>
                     </div>
                   </div>
                 ))}
@@ -279,29 +250,29 @@ export const ConfigurationModal: React.FC<ConfigurationModalProps> = ({
 
             {activeTab === 'xml' && (
               <div className="space-y-10 animate-in fade-in">
-                 <div className="flex justify-between items-end"><h3 className="text-2xl font-black text-slate-900 uppercase">Profils XML RFE</h3></div>
+                 <div className="flex justify-between items-end"><h3 className="text-2xl font-black text-slate-900 uppercase">Profils XML & Factur-X</h3></div>
                  <div className="p-10 border border-slate-200 rounded-[2.5rem] bg-indigo-50/30 flex flex-col items-center justify-center space-y-4">
-                    <Info className="w-10 h-10 text-indigo-500" />
-                    <p className="text-xs font-black uppercase text-slate-500 text-center">Les flux XML Factur-X sont gérés nativement<br/>selon le profil Comfort EN16931.</p>
+                    <div className="p-4 bg-white rounded-full shadow-lg"><FileJson className="w-10 h-10 text-indigo-500" /></div>
+                    <p className="text-xs font-black uppercase text-slate-500 text-center leading-relaxed">Les flux XML Factur-X sont générés nativement<br/>selon le profil <b>Comfort EN16931</b>.<br/>L'extraction IA remplit les identifiants BG/BT du standard CII.</p>
                  </div>
               </div>
             )}
 
             {activeTab === 'lookups' && (
               <div className="space-y-10 animate-in fade-in">
-                <div className="flex justify-between items-end"><h3 className="text-2xl font-black text-slate-900 uppercase">Transcodage ERP</h3><button onClick={()=>setLocalLookups([{id:crypto.randomUUID(), name:'Table Transcodage', entries:[]}, ...localLookups])} className="bg-indigo-600 text-white px-6 py-3 rounded-xl text-[10px] font-black uppercase flex items-center shadow-lg"><Plus className="w-4 h-4 mr-2" /> Nouvelle Table</button></div>
+                <div className="flex justify-between items-end"><h3 className="text-2xl font-black text-slate-900 uppercase">Transcodage & Mappage ERP</h3><button onClick={()=>setLocalLookups([{id:crypto.randomUUID(), name:'Nouvelle Table', entries:[]}, ...localLookups])} className="bg-indigo-600 text-white px-6 py-3 rounded-xl text-[10px] font-black uppercase flex items-center shadow-lg hover:bg-indigo-700"><Plus className="w-4 h-4 mr-2" /> Nouvelle Table</button></div>
                 {localLookups.map(tbl => (
                   <div key={tbl.id} className="p-8 border border-slate-200 rounded-[2rem] bg-slate-50">
                     <input value={tbl.name} onChange={e=>setLocalLookups(prev=>prev.map(t=>t.id===tbl.id?{...t, name:e.target.value}:t))} className="bg-transparent font-black text-slate-900 uppercase text-sm mb-6 outline-none border-b border-transparent focus:border-indigo-200" />
                     <div className="space-y-2">
                        {tbl.entries.map((ent, idx) => (
                          <div key={idx} className="flex space-x-3">
-                            <input placeholder="Source (IA)" value={ent.key} onChange={e=>setLocalLookups(prev=>prev.map(t=>t.id===tbl.id?{...t, entries: t.entries.map((en, i)=>i===idx?{...en, key:e.target.value}:en)}:t))} className="flex-1 px-4 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold" />
-                            <input placeholder="Code ERP" value={ent.value} onChange={e=>setLocalLookups(prev=>prev.map(t=>t.id===tbl.id?{...t, entries: t.entries.map((en, i)=>i===idx?{...en, value:e.target.value}:en)}:t))} className="flex-1 px-4 py-2 bg-white border border-slate-200 rounded-lg text-xs font-black text-indigo-600" />
+                            <input placeholder="Libellé Source (ex: Amazon)" value={ent.key} onChange={e=>setLocalLookups(prev=>prev.map(t=>t.id===tbl.id?{...t, entries: t.entries.map((en, i)=>i===idx?{...en, key:e.target.value}:en)}:t))} className="flex-1 px-4 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold" />
+                            <input placeholder="Code ERP (ex: 401AMZ)" value={ent.value} onChange={e=>setLocalLookups(prev=>prev.map(t=>t.id===tbl.id?{...t, entries: t.entries.map((en, i)=>i===idx?{...en, value:e.target.value}:en)}:t))} className="flex-1 px-4 py-2 bg-white border border-slate-200 rounded-lg text-xs font-black text-indigo-600" />
                             <button onClick={()=>setLocalLookups(prev=>prev.map(t=>t.id===tbl.id?{...t, entries: t.entries.filter((_, i)=>i!==idx)}:t))} className="p-2 text-slate-300 hover:text-rose-500"><Trash2 className="w-4 h-4" /></button>
                          </div>
                        ))}
-                       <button onClick={()=>setLocalLookups(prev=>prev.map(t=>t.id===tbl.id?{...t, entries:[...t.entries, {key:'', value:''}]}:t))} className="text-[10px] font-black uppercase text-indigo-600 mt-2"><Plus className="w-3 h-3 mr-1 inline" /> Ajouter une entrée</button>
+                       <button onClick={()=>setLocalLookups(prev=>prev.map(t=>t.id===tbl.id?{...t, entries:[...t.entries, {key:'', value:''}]}:t))} className="text-[10px] font-black uppercase text-indigo-600 mt-2 hover:underline"><Plus className="w-3 h-3 mr-1 inline" /> Ajouter une entrée</button>
                     </div>
                   </div>
                 ))}
@@ -311,15 +282,15 @@ export const ConfigurationModal: React.FC<ConfigurationModalProps> = ({
             {activeTab === 'erp' && (
               <div className="space-y-10 animate-in fade-in">
                 <div className="flex justify-between items-end"><h3 className="text-2xl font-black text-slate-900 uppercase">Passerelle ERP Gateway</h3></div>
-                <div className="p-10 border border-slate-200 rounded-[2.5rem] bg-slate-50 space-y-8">
-                  <div className="flex items-center space-x-4 p-4 bg-white rounded-2xl border border-slate-100">
+                <div className="p-10 border border-slate-200 rounded-[2.5rem] bg-slate-50 space-y-8 shadow-inner">
+                  <div className="flex items-center space-x-4 p-4 bg-white rounded-2xl border border-slate-100 shadow-sm">
                     <CloudLightning className={`w-6 h-6 ${localErp.enabled ? 'text-indigo-600' : 'text-slate-300'}`} />
-                    <div className="flex-1"><p className="text-sm font-black text-slate-900 uppercase">Activer la synchronisation</p><p className="text-[9px] font-bold text-slate-400 uppercase">Push automatique des données validées</p></div>
+                    <div className="flex-1"><p className="text-sm font-black text-slate-900 uppercase">Synchronisation Active</p><p className="text-[9px] font-bold text-slate-400 uppercase">Push automatique des données vers votre SI après audit</p></div>
                     <button onClick={()=>setLocalErp({...localErp, enabled: !localErp.enabled})} className={`w-14 h-8 rounded-full relative transition-colors ${localErp.enabled ? 'bg-indigo-600' : 'bg-slate-300'}`}><div className={`absolute top-1 w-6 h-6 bg-white rounded-full transition-all ${localErp.enabled ? 'left-7' : 'left-1'}`}></div></button>
                   </div>
                   <div className="grid grid-cols-1 gap-6">
-                    <div className="space-y-2"><label className="text-[10px] font-black uppercase text-slate-400 ml-1">Endpoint API</label><input placeholder="https://votre-erp.com/api/v1/invoices" value={localErp.apiUrl} onChange={e=>setLocalErp({...localErp, apiUrl:e.target.value})} className="w-full px-6 py-4 rounded-2xl border border-slate-200 outline-none font-bold text-xs" /></div>
-                    <div className="space-y-2"><label className="text-[10px] font-black uppercase text-slate-400 ml-1">Clé API / Token</label><input type="password" value={localErp.apiKey} onChange={e=>setLocalErp({...localErp, apiKey:e.target.value})} className="w-full px-6 py-4 rounded-2xl border border-slate-200 outline-none font-bold text-xs" /></div>
+                    <div className="space-y-2"><label className="text-[10px] font-black uppercase text-slate-400 ml-1">Endpoint REST API</label><input placeholder="https://api.votre-erp.com/v1/factures" value={localErp.apiUrl} onChange={e=>setLocalErp({...localErp, apiUrl:e.target.value})} className="w-full px-6 py-4 rounded-2xl border border-slate-200 outline-none font-bold text-xs focus:border-indigo-300 bg-white" /></div>
+                    <div className="space-y-2"><label className="text-[10px] font-black uppercase text-slate-400 ml-1">Clé API / Bearer Token</label><input type="password" value={localErp.apiKey} onChange={e=>setLocalErp({...localErp, apiKey:e.target.value})} className="w-full px-6 py-4 rounded-2xl border border-slate-200 outline-none font-bold text-xs focus:border-indigo-300 bg-white" /></div>
                   </div>
                 </div>
               </div>
@@ -327,20 +298,25 @@ export const ConfigurationModal: React.FC<ConfigurationModalProps> = ({
 
             {activeTab === 'glossary' && (
               <div className="space-y-10 animate-in fade-in">
-                <div className="flex justify-between items-end"><h3 className="text-2xl font-black text-slate-900 uppercase">Glossaire Factur-X / RFE</h3></div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="flex justify-between items-end"><h3 className="text-2xl font-black text-slate-900 uppercase">Glossaire RFE Factur-X</h3></div>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {[
-                    {bt:'BT-1', label:'Invoice Number', desc:'Identifiant unique de la facture.'},
-                    {bt:'BT-2', label:'Issue Date', desc:'Date d\'émission de la facture.'},
-                    {bt:'BT-27', label:'Seller Name', desc:'Raison sociale du vendeur.'},
-                    {bt:'BT-29', label:'Seller ID (SIRET)', desc:'Identifiant légal du vendeur (France).'},
-                    {bt:'BT-31', label:'VAT ID', desc:'N° TVA intracommunautaire.'},
-                    {bt:'BT-112', label:'Grand Total', desc:'Montant TTC à payer.'}
+                    {bt:'BT-1', label:'Invoice Number', desc:'Identifiant unique de la facture (ex: FAC-2024-001).'},
+                    {bt:'BT-2', label:'Issue Date', desc:'Date d\'émission légale du document.'},
+                    {bt:'BT-27', label:'Seller Name', desc:'Raison sociale complète du vendeur.'},
+                    {bt:'BT-29', label:'Seller ID (SIRET)', desc:'Identifiant légal SIRET à 14 chiffres.'},
+                    {bt:'BT-31', label:'VAT ID', desc:'N° TVA intracommunautaire (FR + 11 chiffres).'},
+                    {bt:'BT-112', label:'Grand Total', desc:'Montant Total TTC final à payer.'},
+                    {bt:'BT-106', label:'Net HT', desc:'Total HT net de remises commerciales.'},
+                    {bt:'BT-131', label:'Ligne: Quantité', desc:'Quantité facturée sur une ligne BG-25.'},
+                    {bt:'BT-146', label:'Ligne: Prix Net', desc:'Prix unitaire net après remise ligne.'}
                   ].map(item => (
-                    <div key={item.bt} className="p-5 border border-slate-100 rounded-2xl bg-slate-50">
-                       <p className="text-[10px] font-black text-indigo-600 mb-1">{item.bt}</p>
+                    <div key={item.bt} className="p-5 border border-slate-100 rounded-2xl bg-slate-50 hover:bg-indigo-50 transition-colors">
+                       <div className="flex justify-between items-start mb-2">
+                         <span className="text-[8px] font-black text-indigo-600 bg-white px-2 py-0.5 rounded border border-indigo-100">{item.bt}</span>
+                       </div>
                        <p className="text-xs font-black text-slate-900 uppercase">{item.label}</p>
-                       <p className="text-[10px] text-slate-500 font-medium mt-1">{item.desc}</p>
+                       <p className="text-[10px] text-slate-500 font-medium mt-1 leading-relaxed">{item.desc}</p>
                     </div>
                   ))}
                 </div>
@@ -350,8 +326,8 @@ export const ConfigurationModal: React.FC<ConfigurationModalProps> = ({
         </div>
 
         <div className="px-10 py-6 bg-slate-50 border-t border-slate-100 flex justify-end items-center space-x-6 shrink-0">
-          <button onClick={onClose} className="text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-slate-600">Fermer sans enregistrer</button>
-          <button onClick={handleSaveAll} className="bg-slate-950 text-white px-12 py-5 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] shadow-2xl hover:bg-black transition-all flex items-center border-b-4 border-slate-800 active:scale-95"><Save className="w-5 h-5 mr-3" /> Appliquer les Réglages</button>
+          <button onClick={onClose} className="text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-slate-600">Abandonner</button>
+          <button onClick={handleSaveAll} className="bg-slate-950 text-white px-12 py-5 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] shadow-2xl hover:bg-black transition-all flex items-center border-b-4 border-slate-800 active:scale-95"><Save className="w-5 h-5 mr-3" /> Appliquer au Core</button>
         </div>
       </div>
     </div>
@@ -368,7 +344,7 @@ const NavBtn = ({ icon: Icon, label, active, onClick }: any) => (
 const StatCard = ({ icon: Icon, label, value, color }: any) => {
     const colors: any = { indigo: "bg-indigo-50 border-indigo-100 text-indigo-600", purple: "bg-purple-50 border-purple-100 text-purple-600", emerald: "bg-emerald-50 border-emerald-100 text-emerald-600" };
     return (
-        <div className={`p-8 rounded-[2.5rem] border ${colors[color]} flex flex-col space-y-3`}>
+        <div className={`p-8 rounded-[2.5rem] border ${colors[color]} flex flex-col space-y-3 shadow-sm`}>
             <Icon className="w-6 h-6" />
             <p className="text-3xl font-black">{value}</p>
             <p className="text-[10px] font-black uppercase tracking-widest opacity-70">{label}</p>

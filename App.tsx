@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { UploadCloud, Loader2, Cpu, LogOut, Settings, Zap, Users, CloudLightning, ShieldCheck, Inbox, Archive, Trash2, FileDown, RefreshCw, CheckCircle2, FileJson, FileCode } from 'lucide-react';
+import { UploadCloud, Loader2, Cpu, LogOut, Settings, Zap, Users, CloudLightning, ShieldCheck, Inbox, Archive, Trash2, FileDown, RefreshCw, CheckCircle2, FileJson, FileCode, X } from 'lucide-react';
 import { extractInvoiceData } from './services/geminiService';
 import { dbService } from './services/databaseService';
 import { InvoiceData, ErpStatus, ProcessingLog, ErpConfig, UserProfile, UserRole, PartnerMasterData, LookupTable, ExportTemplate, XmlMappingProfile } from './types';
@@ -11,8 +11,6 @@ import { ConfigurationModal } from './components/ConfigurationModal';
 import { UserManagement } from './components/UserManagement';
 import { generateTemplatedCSV, generateTemplatedXML } from './services/exportService';
 import { downloadCSV } from './utils/csvHelper';
-
-const INACTIVITY_TIMEOUT = 10 * 60 * 1000;
 
 const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<string | null>(localStorage.getItem('invoice-session-active-user'));
@@ -32,8 +30,6 @@ const App: React.FC = () => {
   const [lookupTables, setLookupTables] = useState<LookupTable[]>([]);
   const [templates, setTemplates] = useState<ExportTemplate[]>([]);
   const [xmlProfiles, setXmlProfiles] = useState<XmlMappingProfile[]>([]);
-
-  const lastActivityRef = useRef<number>(Date.now());
 
   const handleLogout = useCallback(() => {
     localStorage.removeItem('invoice-session-active-user');
@@ -62,7 +58,6 @@ const App: React.FC = () => {
     } catch (e) { console.error(e); }
   }, []);
 
-  // Fix: Added handleLogin to correctly process login success, persist the user session, and load relevant configuration/data.
   const handleLogin = useCallback((profile: UserProfile) => {
     localStorage.setItem('invoice-session-active-user', profile.username);
     setCurrentUser(profile.username);
@@ -75,9 +70,7 @@ const App: React.FC = () => {
         try {
           const profile = await dbService.getSessionProfile(currentUser);
           await applyProfileData(profile);
-        } catch (e) {
-          handleLogout();
-        }
+        } catch (e) { handleLogout(); }
       }
       setIsInitializing(false);
     };
@@ -110,7 +103,7 @@ const App: React.FC = () => {
         await dbService.saveInvoice(inv);
         await dbService.updateUserStats(userProfile.username, result.usage.totalTokens);
         setAllInvoices(prev => [inv, ...prev]);
-        addLog(`Facture ${inv.invoiceNumber} extraite (${result.usage.totalTokens} tokens)`, 'success');
+        addLog(`Facture ${inv.invoiceNumber} extraite`, 'success');
       } catch (err: any) { addLog(`Erreur : ${file.name} - ${err.message}`, 'error'); }
       finally { setProcessProgress(prev => ({ ...prev, current: prev.current + 1 })); }
     }
@@ -130,24 +123,34 @@ const App: React.FC = () => {
       const template = templates.find(t => t.id === templateId) || templates[0];
       if (!template) return alert("Veuillez créer un template CSV dans le Hub.");
       const csv = generateTemplatedCSV(selectedInvoices, template, lookupTables);
-      downloadCSV(csv, `export_factures_${new Date().getTime()}.csv`);
+      downloadCSV(csv, `export_${new Date().getTime()}.csv`);
+    } else if (type === 'XML') {
+      const profile = xmlProfiles[0];
+      if (!profile) return alert("Veuillez configurer un profil XML.");
+      const xml = generateTemplatedXML(selectedInvoices, profile, lookupTables);
+      const blob = new Blob([xml], { type: 'text/xml' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `export_${new Date().getTime()}.xml`;
+      link.click();
     }
-    addLog(`${selectedInvoices.length} factures exportées en ${type}`, 'success');
+    addLog(`${selectedInvoices.length} factures exportées`, 'success');
   };
 
-  // Fix: Cast the output of Array.from(selectedIds) to string[] to resolve 'unknown[]' type mismatch during bulk delete.
   const handleBulkDelete = async () => {
     if (!confirm(`Supprimer ${selectedIds.size} facture(s) ?`)) return;
-    const ids = Array.from(selectedIds) as string[];
+    // Explicitly define ids as string[] to fix type inference issues with Array.from/Set
+    const ids: string[] = [...selectedIds];
     await dbService.deleteInvoices(ids);
     setAllInvoices(prev => prev.filter(inv => !ids.includes(inv.id)));
     setSelectedIds(new Set());
     addLog(`${ids.length} factures supprimées`, 'warning');
   };
 
-  // Fix: Cast the output of Array.from(selectedIds) to string[] to resolve 'unknown[]' type mismatch during bulk archiving.
   const handleBulkArchive = async (archived: boolean) => {
-    const ids = Array.from(selectedIds) as string[];
+    // Explicitly define ids as string[] to fix type inference issues with Array.from/Set
+    const ids: string[] = [...selectedIds];
     await dbService.archiveInvoices(ids, archived);
     setAllInvoices(prev => prev.map(inv => ids.includes(inv.id) ? { ...inv, isArchived: archived } : inv));
     setSelectedIds(new Set());
@@ -160,7 +163,6 @@ const App: React.FC = () => {
 
   if (isInitializing) return <div className="min-h-screen bg-slate-950 flex items-center justify-center"><Loader2 className="w-12 h-12 text-indigo-500 animate-spin" /></div>;
 
-  // Fix: Referenced handleLogin instead of the non-existent handleLogin function.
   if (!currentUser || !userProfile) return (
     <LoginScreen onLogin={handleLogin} onRegister={(u, p, q, a) => dbService.register(u, p, q || '', a || '')} onResetPassword={(u, n, a) => dbService.resetPassword(u, n, a || '')} />
   );
@@ -207,7 +209,6 @@ const App: React.FC = () => {
         </div>
       </main>
 
-      {/* BARRE D'ACTIONS GROUPÉES (Rétablie) */}
       {selectedIds.size > 0 && (
         <div className="fixed bottom-10 left-1/2 -translate-x-1/2 bg-slate-900 text-white px-8 py-5 rounded-[2.5rem] shadow-[0_30px_60px_-15px_rgba(0,0,0,0.5)] flex items-center space-x-8 z-[60] border border-white/10 animate-in slide-in-from-bottom-10">
           <div className="flex flex-col border-r border-white/10 pr-8">
@@ -231,7 +232,5 @@ const App: React.FC = () => {
     </div>
   );
 };
-
-const X = ({ className }: { className?: string }) => <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>;
 
 export default App;
