@@ -144,7 +144,6 @@ app.post('/api/auth/login', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// New endpoint for session re-hydration
 app.get('/api/auth/session/:username', async (req, res) => {
   const { username } = req.params;
   try {
@@ -180,6 +179,32 @@ app.post('/api/auth/register', async (req, res) => {
       [username.trim(), password, 'USER', companyId, securityQuestion, securityAnswer, false]
     );
     res.status(201).json({ success: true, pending: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// --- INVOICE API ---
+app.get('/api/invoices', async (req, res) => {
+  const { user } = req.query;
+  try {
+    const result = await pool.query(
+      'SELECT data FROM invoices WHERE owner = $1 ORDER BY created_at DESC',
+      [user]
+    );
+    res.json(result.rows.map(row => row.data));
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/invoices', async (req, res) => {
+  const invoice = req.body;
+  try {
+    const userRes = await pool.query('SELECT company_id FROM users WHERE username = $1', [invoice.owner]);
+    if (userRes.rows.length === 0) return res.status(404).json({ error: "Owner not found" });
+    const cid = userRes.rows[0].company_id;
+    await pool.query(
+      'INSERT INTO invoices (id, owner, company_id, data) VALUES ($1, $2, $3, $4) ON CONFLICT (id) DO UPDATE SET data = $4', 
+      [invoice.id, invoice.owner, cid, invoice]
+    );
+    res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -223,19 +248,6 @@ app.delete('/api/admin/users/:username', async (req, res) => {
   }
   try {
     await pool.query('DELETE FROM users WHERE LOWER(username) = LOWER($1)', [username]);
-    res.json({ success: true });
-  } catch (err) { res.status(500).json({ error: err.message }); }
-});
-
-app.post('/api/invoices', async (req, res) => {
-  const invoice = req.body;
-  try {
-    const userRes = await pool.query('SELECT company_id FROM users WHERE username = $1', [invoice.owner]);
-    const cid = userRes.rows[0].company_id;
-    await pool.query(
-      'INSERT INTO invoices (id, owner, company_id, data) VALUES ($1, $2, $3, $4) ON CONFLICT (id) DO UPDATE SET data = $4', 
-      [invoice.id, invoice.owner, cid, invoice]
-    );
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
