@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { UserProfile, UserRole, Company } from '../types';
-import { User, X, ShieldCheck, Building2, Plus, CheckCircle, Clock, Trash2, ShieldAlert, Save, RefreshCw, Activity, BarChart3, UserCheck, UserX } from 'lucide-react';
+import { User, X, ShieldCheck, Building2, Plus, CheckCircle, Clock, Trash2, ShieldAlert, Save, RefreshCw, Activity, BarChart3, UserCheck, UserX, Zap, FileText, Database } from 'lucide-react';
 import { dbService } from '../services/databaseService';
 
 interface UserManagementProps {
@@ -35,7 +35,6 @@ export const UserManagement: React.FC<UserManagementProps> = ({
   const fetchAll = async () => {
     setIsLoading(true);
     try {
-        // Un Admin client ne récupère que les utilisateurs de son entreprise
         const [u, c] = await Promise.all([
             dbService.getAllUsers(isSuperAdmin ? undefined : currentUserCompanyId),
             isSuperAdmin ? dbService.getAllCompanies() : Promise.resolve([])
@@ -63,7 +62,6 @@ export const UserManagement: React.FC<UserManagementProps> = ({
 
   const handleUpdateUser = async (username: string, role: UserRole, companyId: string, isApproved: boolean) => {
     try {
-        // Un admin client ne peut pas changer l'entreprise
         const targetCompanyId = isSuperAdmin ? companyId : (currentUserCompanyId || companyId);
         await dbService.updateUser(username, { role, companyId: targetCompanyId, isApproved });
         fetchAll();
@@ -142,17 +140,35 @@ export const UserManagement: React.FC<UserManagementProps> = ({
                         </form>
                     )}
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                       {companies.map(comp => (
-                        <div key={comp.id} className="p-8 bg-slate-50 rounded-[2.5rem] border border-slate-100 flex items-center justify-between group hover:bg-white hover:shadow-xl transition-all duration-300">
-                          <div className="flex items-center space-x-5">
-                            <div className="p-4 bg-white rounded-2xl border border-slate-200 group-hover:border-indigo-200 shadow-sm"><Building2 className="w-6 h-6 text-indigo-500" /></div>
-                            <div>
-                                <p className="text-lg font-black text-slate-900">{comp.name}</p>
-                                <p className="text-[8px] font-mono text-slate-400 mt-1 uppercase">Partition: {comp.id}</p>
+                        <div key={comp.id} className="p-10 bg-slate-50 rounded-[3rem] border border-slate-100 flex flex-col space-y-8 group hover:bg-white hover:shadow-2xl transition-all duration-500">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center space-x-5">
+                              <div className="p-5 bg-white rounded-3xl border border-slate-200 group-hover:border-indigo-200 shadow-sm transition-all duration-300">
+                                <Building2 className="w-8 h-8 text-indigo-500" />
+                              </div>
+                              <div>
+                                  <p className="text-2xl font-black text-slate-900 leading-none">{comp.name}</p>
+                                  <p className="text-[9px] font-mono text-slate-400 mt-2 uppercase tracking-tighter">Partition: {comp.id}</p>
+                              </div>
                             </div>
+                            <span className="text-[9px] font-black bg-emerald-100 text-emerald-700 px-4 py-2 rounded-full uppercase border border-emerald-200 shadow-sm">Actif</span>
                           </div>
-                          <span className="text-[9px] font-black bg-emerald-50 text-emerald-600 px-3 py-1 rounded-full uppercase border border-emerald-100">Actif</span>
+
+                          <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
+                            <StatBadge icon={User} label="Users" value={comp.userCount || 0} color="blue" />
+                            <StatBadge icon={FileText} label="Docs" value={comp.invoiceCount || 0} color="emerald" />
+                            <StatBadge icon={Activity} label="Extr." value={comp.totalExtracts || 0} color="amber" />
+                            <StatBadge icon={Zap} label="Tokens" value={(comp.totalTokens || 0).toLocaleString()} color="purple" />
+                          </div>
+
+                          <div className="pt-4 border-t border-slate-200/50 flex items-center justify-between">
+                            <div className="flex -space-x-2">
+                               {[1,2,3].map(i => <div key={i} className="w-7 h-7 rounded-full bg-slate-200 border-2 border-slate-50 flex items-center justify-center"><User className="w-3 h-3 text-slate-400" /></div>)}
+                            </div>
+                            <button className="text-[9px] font-black uppercase text-indigo-600 hover:text-indigo-800 transition-colors tracking-widest">Voir Détails Audit</button>
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -267,6 +283,23 @@ export const UserManagement: React.FC<UserManagementProps> = ({
             </div>
         </div>
       </div>
+    </div>
+  );
+};
+
+const StatBadge = ({ icon: Icon, label, value, color }: { icon: any, label: string, value: string | number, color: string }) => {
+  const colors: Record<string, string> = {
+    blue: "bg-blue-50 border-blue-100 text-blue-600",
+    emerald: "bg-emerald-50 border-emerald-100 text-emerald-600",
+    amber: "bg-amber-50 border-amber-100 text-amber-600",
+    purple: "bg-purple-50 border-purple-100 text-purple-600"
+  };
+
+  return (
+    <div className={`px-4 py-3 rounded-2xl border ${colors[color] || colors.blue} flex flex-col items-center justify-center`}>
+      <Icon className="w-3.5 h-3.5 mb-1.5 opacity-60" />
+      <span className="text-xs font-black">{value}</span>
+      <span className="text-[7px] font-black uppercase tracking-widest opacity-60 mt-0.5">{label}</span>
     </div>
   );
 };

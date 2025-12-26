@@ -37,6 +37,11 @@ export interface Company {
   name: string;
   createdAt: string;
   config?: any;
+  // Statistiques agrégées (calculées par le serveur)
+  userCount?: number;
+  totalTokens?: number;
+  invoiceCount?: number;
+  totalExtracts?: number;
 }
 
 export interface PartnerMasterData {

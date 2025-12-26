@@ -162,8 +162,28 @@ app.post('/api/users/stats', async (req, res) => {
 
 app.get('/api/admin/companies', async (req, res) => {
   try {
-    const result = await pool.query('SELECT * FROM companies ORDER BY name ASC');
-    res.json(result.rows);
+    // Calcul des statistiques cumulées par entreprise via sous-requêtes
+    const result = await pool.query(`
+      SELECT 
+        c.*,
+        (SELECT COUNT(*) FROM users u WHERE u.company_id = c.id) as user_count,
+        (SELECT SUM(COALESCE((stats->>'totalTokens')::bigint, 0)) FROM users u WHERE u.company_id = c.id) as total_tokens,
+        (SELECT COUNT(*) FROM invoices i WHERE i.company_id = c.id) as invoice_count,
+        (SELECT SUM(COALESCE((stats->>'extractRequests')::int, 0)) FROM users u WHERE u.company_id = c.id) as total_extracts
+      FROM companies c 
+      ORDER BY c.name ASC
+    `);
+    
+    // Transformation des types (Postgres retourne parfois des chaînes pour les agrégats volumineux)
+    const companies = result.rows.map(row => ({
+      ...row,
+      userCount: parseInt(row.user_count) || 0,
+      totalTokens: parseInt(row.total_tokens) || 0,
+      invoiceCount: parseInt(row.invoice_count) || 0,
+      totalExtracts: parseInt(row.total_extracts) || 0
+    }));
+    
+    res.json(companies);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

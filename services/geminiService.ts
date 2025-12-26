@@ -32,6 +32,7 @@ export const extractInvoiceData = async (
   companyId: string,
   withItems: boolean = false
 ): Promise<ExtractionResult> => {
+  // Instanciation immédiate selon les règles de qualité pour garantir la clé à jour
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
   const ultimateSchema = {
@@ -93,7 +94,6 @@ export const extractInvoiceData = async (
     required: ["supplier_name", "invoice_number", "amount_incl_vat"],
   };
 
-  // PROMPT TECHNIQUE DENSE (RFE/EN16931 COMPLIANT)
   const systemInstruction = `EXTRACTEUR RFE EN16931 STRICT. 
 OBJET: Extraction structurée Factur-X pour plateformes agréées (PDP).
 RÈGLES CRITIQUES:
@@ -107,14 +107,15 @@ RÈGLES CRITIQUES:
 RÉPONSE: JSON STRICT UNIQUEMENT.`;
 
   try {
+    // Appel direct via ai.models.generateContent selon les nouvelles directives
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
-      contents: {
+      contents: [{
         parts: [
           { inlineData: { mimeType, data: base64Data } },
           { text: "Analyser ce document selon les règles EN16931." }
         ]
-      },
+      }],
       config: {
         systemInstruction,
         responseMimeType: "application/json",
@@ -124,6 +125,7 @@ RÉPONSE: JSON STRICT UNIQUEMENT.`;
       },
     });
 
+    // Accès à la propriété .text (et non méthode)
     const rawData = JSON.parse(response.text || "{}");
     const usage = response.usageMetadata || { totalTokenCount: 0 };
 
@@ -171,7 +173,14 @@ RÉPONSE: JSON STRICT UNIQUEMENT.`;
       items: withItems ? items : undefined,
     };
 
-    return { invoice: invoiceData, usage: { promptTokens: usage.promptTokenCount || 0, completionTokens: usage.candidatesTokenCount || 0, totalTokens: usage.totalTokenCount } };
+    return { 
+      invoice: invoiceData, 
+      usage: { 
+        promptTokens: usage.promptTokenCount || 0, 
+        completionTokens: usage.candidatesTokenCount || 0, 
+        totalTokens: usage.totalTokenCount || 0
+      } 
+    };
   } catch (error) {
     console.error("Gemini Extraction Error:", error);
     throw error;
