@@ -6,7 +6,6 @@ import { dbService } from '../services/databaseService';
 
 interface LoginScreenProps {
   onLogin: (user: UserProfile) => void;
-  users: UserProfile[];
   onRegister: (username: string, pass: string, securityQuestion?: string, securityAnswer?: string) => void;
   onResetPassword: (username: string, newPass: string, answer?: string) => void;
 }
@@ -22,15 +21,15 @@ const SECURITY_QUESTIONS = [
 
 type ViewState = 'LOGIN' | 'REGISTER' | 'RECOVER_IDENTIFY' | 'RECOVER_CHALLENGE' | 'RECOVER_RESET';
 
-export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, users = [], onRegister, onResetPassword }) => {
-  const [view, setView] = useState<ViewState>(users && users.length === 0 ? 'REGISTER' : 'LOGIN');
+export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onRegister, onResetPassword }) => {
+  const [view, setView] = useState<ViewState>('LOGIN');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [securityQuestion, setSecurityQuestion] = useState(SECURITY_QUESTIONS[0]);
   const [securityAnswer, setSecurityAnswer] = useState('');
   const [newPassword, setNewPassword] = useState('');
-  const [recoveryUser, setRecoveryUser] = useState<UserProfile | null>(null);
+  const [recoveryInfo, setRecoveryInfo] = useState<{username: string, security_question: string} | null>(null);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -63,59 +62,64 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, users = [], o
       setError('Champs obligatoires manquants.');
       return;
     }
+    
     setIsLoading(true);
     try {
-        const res = await dbService.register(cleanUser, password, securityQuestion, securityAnswer);
-        setSuccess("Inscription réussie ! Votre compte est en attente d'approbation par l'administrateur.");
-        setTimeout(() => setView('LOGIN'), 3000);
+      await dbService.register(cleanUser, password, securityQuestion, securityAnswer);
+      setSuccess("Inscription réussie ! Votre compte est en attente d'approbation par un administrateur.");
+      setTimeout(() => setView('LOGIN'), 3000);
     } catch (err: any) {
-        setError(err.message);
+      setError(err.message || "Erreur lors de l'inscription.");
     } finally {
-        setIsLoading(false);
+      setIsLoading(false);
     }
   };
 
-  const handleRecoveryIdentify = (e: React.FormEvent) => {
+  const handleRecoveryIdentify = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    const userList = Array.isArray(users) ? users : [];
-    const user = userList.find(u => u.username.toLowerCase().trim() === username.toLowerCase().trim());
-    if (!user) {
-      setError('Identité introuvable.');
+    const cleanUsername = username.trim();
+    if (!cleanUsername) {
+      setError("Veuillez saisir votre identifiant.");
       return;
     }
-    if (!user.securityQuestion) {
-      setError('Aucune question de sécurité configurée.');
-      return;
+    
+    setIsLoading(true);
+    try {
+      // Appel API direct au serveur pour vérifier l'existence réelle du compte
+      const info = await dbService.getRecoveryInfo(cleanUsername);
+      setRecoveryInfo(info);
+      setView('RECOVER_CHALLENGE');
+    } catch (err: any) {
+      setError(err.message || "Identité introuvable dans notre base de données.");
+    } finally {
+      setIsLoading(false);
     }
-    setRecoveryUser(user);
-    setView('RECOVER_CHALLENGE');
   };
 
-  const handleRecoveryChallenge = (e: React.FormEvent) => {
+  const handleRecoveryChallenge = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
-    if (securityAnswer.toLowerCase().trim() === recoveryUser?.securityAnswer?.toLowerCase().trim()) {
-      setView('RECOVER_RESET');
-    } else {
-      setError('Réponse incorrecte.');
+    if (!securityAnswer.trim()) {
+      setError("Veuillez saisir votre réponse.");
+      return;
     }
+    setView('RECOVER_RESET');
   };
 
   const handleRecoveryReset = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     if (!newPassword.trim()) {
-      setError('Le mot de passe ne peut pas être vide.');
+      setError('Le nouveau mot de passe ne peut pas être vide.');
       return;
     }
     try {
         setIsLoading(true);
-        await onResetPassword(recoveryUser!.username, newPassword, securityAnswer);
-        setSuccess('Mot de passe mis à jour.');
+        await onResetPassword(recoveryInfo!.username, newPassword, securityAnswer);
+        setSuccess('Mot de passe mis à jour avec succès.');
         setTimeout(() => { resetForm(); setView('LOGIN'); }, 2000);
     } catch (err: any) {
-        setError(err.message);
+        setError(err.message || "Erreur lors de la réinitialisation.");
     } finally {
         setIsLoading(false);
     }
@@ -125,11 +129,9 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, users = [], o
     setUsername('');
     setPassword('');
     setSecurityAnswer('');
-    setRecoveryUser(null);
+    setRecoveryInfo(null);
     setNewPassword('');
   };
-
-  const isInitialSetup = users && users.length === 0;
 
   return (
     <div className="min-h-screen bg-slate-950 flex items-center justify-center p-6 font-sans overflow-hidden">
@@ -148,7 +150,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, users = [], o
             Invoice<span className="text-indigo-500">Command</span>
           </h1>
           <p className="text-[10px] font-black uppercase text-slate-500 tracking-[0.3em] mt-3">
-             {isInitialSetup ? 'Initialisation requise' : 'Accès sécurisé'}
+             Accès Sécurisé - Partition Client
           </p>
         </div>
 
@@ -166,7 +168,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, users = [], o
 
           {view === 'LOGIN' && (
             <form onSubmit={handleLoginSubmit} className="space-y-6 animate-in fade-in duration-500">
-              <FormGroup label="Identifiant" icon={UserCircle} value={username} onChange={setUsername} placeholder="admin" theme="dark" />
+              <FormGroup label="Identifiant" icon={UserCircle} value={username} onChange={setUsername} placeholder="votre.nom" theme="dark" />
               <FormGroup 
                 label="Mot de passe" 
                 icon={Key} 
@@ -209,18 +211,17 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, users = [], o
               </div>
               <FormGroup label="Réponse" icon={ShieldCheck} value={securityAnswer} onChange={setSecurityAnswer} placeholder="Votre réponse" theme="dark" />
 
-              <button disabled={isLoading} type="submit" className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-black uppercase text-[11px] tracking-[0.2em] py-5 rounded-[1.5rem] flex items-center justify-center transition-all disabled:opacity-50">
-                <UserPlus className="w-5 h-5 mr-3" /> Créer mon compte
+              <button disabled={isLoading} type="submit" className="w-full bg-indigo-600 hover:bg-indigo-50 text-white font-black uppercase text-[11px] tracking-[0.2em] py-5 rounded-[1.5rem] flex items-center justify-center transition-all disabled:opacity-50">
+                {isLoading ? <RefreshCw className="w-5 h-5 animate-spin" /> : <UserPlus className="w-5 h-5 mr-3" />} Créer mon compte
               </button>
             </form>
           )}
 
-          {/* ... Récupération ... */}
           {view === 'RECOVER_IDENTIFY' && (
             <form onSubmit={handleRecoveryIdentify} className="space-y-6 animate-in fade-in">
               <FormGroup label="Identifiant" icon={Fingerprint} value={username} onChange={setUsername} placeholder="Nom d'utilisateur" theme="dark" />
-              <button type="submit" className="w-full bg-white text-slate-950 font-black uppercase text-[11px] tracking-[0.2em] py-5 rounded-[1.5rem] flex items-center justify-center">
-                Vérifier <ArrowRight className="w-4 h-4 ml-3" />
+              <button disabled={isLoading} type="submit" className="w-full bg-white text-slate-950 font-black uppercase text-[11px] tracking-[0.2em] py-5 rounded-[1.5rem] flex items-center justify-center disabled:opacity-50">
+                {isLoading ? <RefreshCw className="w-5 h-5 animate-spin" /> : <ArrowRight className="w-4 h-4 mr-3" />} Vérifier
               </button>
               <button type="button" onClick={() => setView('LOGIN')} className="w-full text-[10px] font-black uppercase text-slate-500 hover:text-white">
                 Retour
@@ -228,11 +229,11 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, users = [], o
             </form>
           )}
 
-          {view === 'RECOVER_CHALLENGE' && recoveryUser && (
+          {view === 'RECOVER_CHALLENGE' && recoveryInfo && (
             <form onSubmit={handleRecoveryChallenge} className="space-y-6 animate-in fade-in">
               <div className="bg-white/5 border border-white/10 rounded-2xl p-6">
                  <label className="text-[9px] font-black text-slate-500 uppercase block mb-2">Question de sécurité</label>
-                 <p className="text-sm font-black text-indigo-400 italic">"{recoveryUser.securityQuestion}"</p>
+                 <p className="text-sm font-black text-indigo-400 italic">"{recoveryInfo.security_question}"</p>
               </div>
               <FormGroup label="Réponse" icon={ShieldCheck} value={securityAnswer} onChange={setSecurityAnswer} placeholder="Votre réponse" theme="dark" />
               <button type="submit" className="w-full bg-indigo-600 text-white font-black uppercase text-[11px] tracking-[0.2em] py-5 rounded-[1.5rem] flex items-center justify-center">
@@ -244,8 +245,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, users = [], o
           {view === 'RECOVER_RESET' && (
             <form onSubmit={handleRecoveryReset} className="space-y-6 animate-in fade-in">
               <FormGroup label="Nouveau mot de passe" icon={Lock} type="password" value={newPassword} onChange={setNewPassword} placeholder="Saisissez le nouveau mot de passe" theme="dark" />
-              <button disabled={isLoading} type="submit" className="w-full bg-emerald-600 text-white font-black uppercase text-[11px] tracking-[0.2em] py-5 rounded-[1.5rem] flex items-center justify-center">
-                Réinitialiser
+              <button disabled={isLoading} type="submit" className="w-full bg-emerald-600 text-white font-black uppercase text-[11px] tracking-[0.2em] py-5 rounded-[1.5rem] flex items-center justify-center disabled:opacity-50">
+                {isLoading ? <RefreshCw className="w-5 h-5 animate-spin" /> : <RefreshCw className="w-5 h-5 mr-3" />} Réinitialiser
               </button>
             </form>
           )}
@@ -257,7 +258,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, users = [], o
                onClick={() => { resetForm(); setView(view === 'REGISTER' ? 'LOGIN' : 'REGISTER'); }}
                className="text-[10px] font-black uppercase tracking-[0.3em] text-white hover:text-indigo-400 transition-all bg-white/5 px-10 py-3 rounded-full border border-white/5"
              >
-               {view === 'REGISTER' ? 'Déjà un compte ?' : 'Créer un compte'}
+               {view === 'REGISTER' ? 'Déjà un compte ? Connexion' : 'Créer un compte'}
              </button>
           </div>
         )}

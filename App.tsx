@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { UploadCloud, Loader2, Cpu, LogOut, Settings, Zap, Users, CloudLightning, ShieldCheck, Inbox, Archive } from 'lucide-react';
+import { UploadCloud, Loader2, Cpu, LogOut, Settings, Zap, Users, CloudLightning, ShieldCheck, Inbox, Archive } from 'lucide-center-react';
 import { extractInvoiceData } from './services/geminiService';
 import { dbService } from './services/databaseService';
 import { InvoiceData, ErpStatus, ProcessingLog, ErpConfig, UserProfile, UserRole, PartnerMasterData, LookupTable, ExportTemplate, XmlMappingProfile } from './types';
@@ -13,7 +13,6 @@ import { UserManagement } from './components/UserManagement';
 const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<string | null>(localStorage.getItem('invoice-session-active-user'));
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
-  const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
   const [allInvoices, setAllInvoices] = useState<InvoiceData[]>([]);
   const [logs, setLogs] = useState<ProcessingLog[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -73,13 +72,6 @@ const App: React.FC = () => {
     await applyProfileData(profile);
   };
 
-  const syncConfigToCloud = useCallback(async () => {
-    if (!userProfile) return;
-    const config = { erpConfig, masterData, lookupTables, templates, xmlProfiles };
-    await dbService.saveCompanyConfig(userProfile.companyId, config);
-    setUserProfile(prev => prev ? { ...prev, companyConfig: config } : null);
-  }, [userProfile, erpConfig, masterData, lookupTables, templates, xmlProfiles]);
-
   const handleLogout = () => {
     localStorage.removeItem('invoice-session-active-user');
     setCurrentUser(null);
@@ -87,6 +79,13 @@ const App: React.FC = () => {
     setAllInvoices([]);
     setLogs([]);
   };
+
+  const syncConfigToCloud = useCallback(async () => {
+    if (!userProfile) return;
+    const config = { erpConfig, masterData, lookupTables, templates, xmlProfiles };
+    await dbService.saveCompanyConfig(userProfile.companyId, config);
+    setUserProfile(prev => prev ? { ...prev, companyConfig: config } : null);
+  }, [userProfile, erpConfig, masterData, lookupTables, templates, xmlProfiles]);
 
   const handleInvoiceUpdate = async (id: string, updates: Partial<InvoiceData>) => {
     if (!userProfile) return;
@@ -167,7 +166,6 @@ const App: React.FC = () => {
   if (!currentUser || !userProfile) return (
     <LoginScreen 
       onLogin={handleLogin} 
-      users={allUsers} 
       onRegister={(u, p, q, a) => dbService.register(u, p, q || '', a || '')} 
       onResetPassword={async (username, newPass, answer) => {
         await dbService.resetPassword(username, newPass, answer || '');
@@ -226,7 +224,7 @@ const App: React.FC = () => {
       </main>
 
       <ConfigurationModal isOpen={showConfig} onClose={() => { syncConfigToCloud(); setShowConfig(false); }} erpConfig={erpConfig} onSaveErp={setErpConfig} lookupTables={lookupTables} onSaveLookups={setLookupTables} templates={templates} onSaveTemplates={setTemplates} xmlProfiles={xmlProfiles} onSaveXmlProfiles={setXmlProfiles} masterData={masterData} onSaveMasterData={setMasterData} />
-      {userProfile && <UserManagement isOpen={showUserMgmt} onClose={() => setShowUserMgmt(false)} users={allUsers} currentUser={userProfile.username} currentUserCompanyId={userProfile.companyId} userRole={userProfile.role} onUpdateRole={() => {}} onDeleteUser={() => {}} onResetPassword={() => {}} />}
+      {userProfile && <UserManagement isOpen={showUserMgmt} onClose={() => setShowUserMgmt(false)} users={[]} currentUser={userProfile.username} currentUserCompanyId={userProfile.companyId} userRole={userProfile.role} onUpdateRole={() => {}} onDeleteUser={() => {}} onResetPassword={() => {}} />}
     </div>
   );
 };

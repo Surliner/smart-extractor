@@ -68,14 +68,6 @@ const FormInput = ({ label, value, onChange, type = "text", placeholder, btId, r
 };
 
 const Group = ({ title, icon: Icon, children, actions, variant = "indigo", className = "", fullHeight = true }: any) => {
-  const variants: Record<string, string> = {
-    indigo: "border-slate-200 bg-white",
-    orange: "border-slate-200 bg-white",
-    purple: "border-slate-200 bg-white",
-    slate: "border-slate-200 bg-white",
-    emerald: "border-slate-200 bg-white"
-  };
-
   const iconColors: Record<string, string> = {
     indigo: "bg-indigo-600",
     orange: "bg-orange-600",
@@ -85,7 +77,7 @@ const Group = ({ title, icon: Icon, children, actions, variant = "indigo", class
   };
 
   return (
-    <div className={`rounded-2xl border flex flex-col ${fullHeight ? 'h-full' : 'h-auto'} overflow-hidden transition-all duration-300 shadow-sm ${variants[variant]} ${className}`}>
+    <div className={`rounded-2xl border border-slate-200 bg-white flex flex-col ${fullHeight ? 'h-full' : 'h-auto'} overflow-hidden transition-all duration-300 shadow-sm ${className}`}>
       <div className="px-4 py-2 bg-slate-50/80 border-b border-slate-100 flex justify-between items-center shrink-0">
         <div className="flex items-center space-x-2">
           {Icon && (
@@ -279,7 +271,6 @@ export const FacturXModal: React.FC<{
             {activeTab === 'form' ? (
               <div className="flex h-full overflow-hidden">
                 <div className="flex-1 p-5 space-y-5 overflow-y-auto custom-scrollbar">
-                    
                     <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
                       <Group title="Master Data Hub" icon={CloudLightning} variant="purple" className="lg:col-span-4" actions={(supplierMatch || buyerMatch) && <div className="flex items-center space-x-2"><BadgeCheck className="w-4 h-4 text-emerald-500" /><span className="text-[7px] font-black uppercase text-emerald-600">Synced</span></div>}>
                         <div className="space-y-3">
@@ -332,7 +323,7 @@ export const FacturXModal: React.FC<{
                           <FormInput label="Nom Client" value={data.buyerName} onChange={(v:any)=>setData({...data, buyerName:v, isBuyerMasterMatched: false})} btId="44" required className="mb-3" themeColor="orange" source={buyerMatch ? 'MASTER_DATA' : 'AI'} />
                           <div className="grid grid-cols-2 gap-3 mb-3">
                             <FormInput label="SIRET Client" value={data.buyerSiret} onChange={(v:any)=>setData({...data, buyerSiret:v, isBuyerMasterMatched: false})} btId="47" required themeColor="orange" />
-                            <FormInput label="TVA Client" value={data.buyerVat} onChange={(v:any)=>setData({...data, buyerVat:v, isBuyerMasterMatched: false})} btId="48" themeColor="orange" source={buyerMatch ? 'MASTER_DATA' : 'AI'} />
+                            <FormInput label="TVA Client (BT-48)" value={data.buyerVat} onChange={(v:any)=>setData({...data, buyerVat:v, isBuyerMasterMatched: false})} btId="48" themeColor="orange" source={buyerMatch ? 'MASTER_DATA' : 'AI'} />
                           </div>
                           <FormInput label="Adresse Facturation" value={data.buyerAddress} onChange={(v:any)=>setData({...data, buyerAddress:v})} btId="BG-8" multiline themeColor="orange" />
                       </Group>
