@@ -61,6 +61,9 @@ export const generateFacturXXML = (invoice: InvoiceData, includeHeader: boolean 
 
   const sellerAddr = parseAddress(invoice.supplierAddress);
   const buyerAddr = parseAddress(invoice.buyerAddress);
+  
+  // Logistics parse
+  const shipAddr = parseAddress(invoice.logistics?.deliverToAddress);
 
   const lineTotalHT = (invoice.items || []).reduce((sum, item) => sum + (item.amount || 0), 0);
   const charge = invoice.globalCharge || 0;
@@ -106,7 +109,7 @@ export const generateFacturXXML = (invoice: InvoiceData, includeHeader: boolean 
   xmlns:qdt="urn:un:unece:uncefact:data:standard:QualifiedDataType:100">
   <rsm:ExchangedDocumentContext>
     <ram:GuidelineSpecifiedDocumentContextParameter>
-      <ram:ID>${guidelineID}</ram:ID>
+      <ram:ID>${esc(invoice.businessProcessId || guidelineID)}</ram:ID>
     </ram:GuidelineSpecifiedDocumentContextParameter>
   </rsm:ExchangedDocumentContext>
   <rsm:ExchangedDocument>
@@ -124,6 +127,7 @@ export const generateFacturXXML = (invoice: InvoiceData, includeHeader: boolean 
       <ram:SpecifiedTradeProduct>
         <ram:Name>${esc(item.description)}</ram:Name>
         ${item.articleId ? `<ram:SellerAssignedID>${esc(item.articleId)}</ram:SellerAssignedID>` : ''}
+        ${item.originCountry ? `<ram:OriginTradeCountry><ram:ID>${esc(item.originCountry)}</ram:ID></ram:OriginTradeCountry>` : ''}
       </ram:SpecifiedTradeProduct>
       <ram:SpecifiedLineTradeAgreement>
         <ram:NetPriceProductTradePrice>
@@ -181,17 +185,42 @@ export const generateFacturXXML = (invoice: InvoiceData, includeHeader: boolean 
         </ram:SpecifiedTaxRegistration>
       </ram:BuyerTradeParty>
     </ram:ApplicableHeaderTradeAgreement>
-    <ram:ApplicableHeaderTradeDelivery />
+    <ram:ApplicableHeaderTradeDelivery>
+      ${invoice.logistics?.deliverToName ? `
+      <ram:ShipToTradeParty>
+        <ram:Name>${esc(invoice.logistics.deliverToName)}</ram:Name>
+        <ram:PostalTradeAddress>
+          <ram:LineOne>${esc(shipAddr.line)}</ram:LineOne>
+          ${shipAddr.postcode ? `<ram:PostcodeCode>${esc(shipAddr.postcode)}</ram:PostcodeCode>` : ''}
+          ${shipAddr.city ? `<ram:CityName>${esc(shipAddr.city)}</ram:CityName>` : ''}
+          <ram:CountryID>FR</ram:CountryID>
+        </ram:PostalTradeAddress>
+      </ram:ShipToTradeParty>` : ''}
+      ${(invoice.logistics?.deliveryDate || invoice.deliveryDate) ? `
+      <ram:ActualDeliverySupplyChainEvent>
+        <ram:OccurrenceDateTime>
+          <udt:DateTimeString format="102">${formatToUDT(invoice.logistics?.deliveryDate || invoice.deliveryDate)}</udt:DateTimeString>
+        </ram:OccurrenceDateTime>
+      </ram:ActualDeliverySupplyChainEvent>` : ''}
+    </ram:ApplicableHeaderTradeDelivery>
     <ram:ApplicableHeaderTradeSettlement>
+      ${(invoice.billingPeriod?.startDate || invoice.billingPeriod?.endDate) ? `
+      <ram:BillingSpecifiedPeriod>
+        ${invoice.billingPeriod.startDate ? `<ram:StartDateTime><udt:DateTimeString format="102">${formatToUDT(invoice.billingPeriod.startDate)}</udt:DateTimeString></ram:StartDateTime>` : ''}
+        ${invoice.billingPeriod.endDate ? `<ram:EndDateTime><udt:DateTimeString format="102">${formatToUDT(invoice.billingPeriod.endDate)}</udt:DateTimeString></ram:EndDateTime>` : ''}
+      </ram:BillingSpecifiedPeriod>` : ''}
       <ram:InvoiceCurrencyCode>${esc(invoice.currency) || 'EUR'}</ram:InvoiceCurrencyCode>
-      <ram:PayeePartyCreditorFinancialAccount>
-        <ram:IBANID>${cleanID(invoice.iban)}</ram:IBANID>
-        <ram:AccountName>${esc(invoice.supplier)}</ram:AccountName>
-      </ram:PayeePartyCreditorFinancialAccount>
-      ${invoice.bic ? `
-      <ram:PayeeSpecifiedCreditorFinancialInstitution>
-        <ram:BICID>${cleanID(invoice.bic)}</ram:BICID>
-      </ram:PayeeSpecifiedCreditorFinancialInstitution>` : ''}
+      <ram:SpecifiedTradeSettlementPaymentMeans>
+        <ram:TypeCode>${esc(invoice.paymentMeansCode || '30')}</ram:TypeCode>
+        <ram:PayeePartyCreditorFinancialAccount>
+          <ram:IBANID>${cleanID(invoice.iban)}</ram:IBANID>
+          <ram:AccountName>${esc(invoice.supplier)}</ram:AccountName>
+        </ram:PayeePartyCreditorFinancialAccount>
+        ${invoice.bic ? `
+        <ram:PayeeSpecifiedCreditorFinancialInstitution>
+          <ram:BICID>${cleanID(invoice.bic)}</ram:BICID>
+        </ram:PayeeSpecifiedCreditorFinancialInstitution>` : ''}
+      </ram:SpecifiedTradeSettlementPaymentMeans>
       ${taxSegments}
       ${taxPointDateUDT ? `
       <ram:TaxPointDate>

@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { X, Save, CheckCircle, AlertTriangle, Download, Plus, Trash2, LayoutList, Truck, Receipt, Package, ShieldCheck, Globe, Briefcase, Landmark, Percent, Hash, Calendar as CalendarIcon, Coins, ChevronDown, Calculator, Info, FileCode, Eye, EyeOff, FileSearch, ExternalLink, Settings2, CloudLightning, Shield, Clock, CreditCard, StickyNote, Box, FileDown, FileCheck, Banknote, ListChecks, ShieldAlert, BadgeCheck, Database, ListTodo, Trash, Search, Zap } from 'lucide-react';
+import { X, Save, CheckCircle, AlertTriangle, Download, Plus, Trash2, LayoutList, Truck, Receipt, Package, ShieldCheck, Globe, Briefcase, Landmark, Percent, Hash, Calendar as CalendarIcon, Coins, ChevronDown, Calculator, Info, FileCode, Eye, EyeOff, FileSearch, ExternalLink, Settings2, CloudLightning, Shield, Clock, CreditCard, StickyNote, Box, FileDown, FileCheck, Banknote, ListChecks, ShieldAlert, BadgeCheck, Database, ListTodo, Trash, Search, Zap, MapPin, Timer } from 'lucide-react';
 import { InvoiceData, InvoiceItem, InvoiceType, LookupTable, OperationCategory, TaxPointType, FacturXProfile, PartnerMasterData, VatBreakdown } from '../types';
 import { generateFacturXXML } from '../services/facturXService';
 
@@ -27,13 +27,35 @@ const findMatches = (name: string, masterData: PartnerMasterData[]): PartnerMast
   }).slice(0, 5);
 };
 
-// --- Constants ---
+// --- Constants Standards ---
 const VAT_CATEGORIES = [
   { code: 'S', label: 'Standard' },
   { code: 'Z', label: 'Zéro' },
   { code: 'E', label: 'Exonéré' },
   { code: 'AE', label: 'Autoliquidation' },
   { code: 'G', label: 'Export' },
+];
+
+const PAYMENT_MEANS = [
+  { code: '30', label: 'Virement bancaire' },
+  { code: '10', label: 'Espèces' },
+  { code: '48', label: 'Carte bancaire' },
+  { code: '49', label: 'Prélèvement' },
+  { code: '20', label: 'Chèque' },
+  { code: '1', label: 'Autre / Non défini' },
+];
+
+const UNIT_CODES = [
+  { code: 'C62', label: 'Pièce / Unité' },
+  { code: 'HUR', label: 'Heure' },
+  { code: 'DAY', label: 'Jour' },
+  { code: 'KGM', label: 'Kilogramme' },
+  { code: 'LTR', label: 'Litre' },
+  { code: 'MTR', label: 'Mètre' },
+  { code: 'MTK', label: 'Mètre carré' },
+  { code: 'MTQ', label: 'Mètre cube' },
+  { code: 'TNE', label: 'Tonne' },
+  { code: 'ZZ', label: 'Service / Prestation' },
 ];
 
 const FormInput = ({ label, value, onChange, type = "text", placeholder, btId, required, multiline, className = "", themeColor = "indigo", badge, source, suggestions, onSelectSuggestion }: any) => {
@@ -102,6 +124,39 @@ const FormInput = ({ label, value, onChange, type = "text", placeholder, btId, r
   );
 };
 
+const FormSelect = ({ label, value, onChange, options, btId, required, className = "", themeColor = "indigo" }: any) => {
+  const colorMap: Record<string, string> = {
+    indigo: "focus-within:border-indigo-500 text-slate-900 bg-slate-50/50",
+    orange: "focus-within:border-orange-500 text-slate-900 bg-slate-50/50",
+    purple: "focus-within:border-purple-500 text-slate-900 bg-slate-50/50",
+    slate: "focus-within:border-slate-500 text-slate-900 bg-slate-50/50"
+  };
+
+  return (
+    <div className={`flex flex-col space-y-0.5 relative ${className}`}>
+      <div className="flex justify-between items-center px-1">
+        <label className="text-[9px] font-black uppercase text-slate-500 tracking-[0.05em] flex items-center">
+          {label} {required && <span className="text-rose-500 font-bold ml-1">*</span>}
+        </label>
+        {btId && <span className="text-[7px] font-mono font-black bg-slate-100 px-1 py-0.5 rounded border border-slate-200 text-slate-400">BT-{btId}</span>}
+      </div>
+      <div className={`relative flex items-center border rounded-lg overflow-hidden transition-all duration-150 group bg-white border-slate-200 ${colorMap[themeColor] || colorMap.indigo}`}>
+        <select
+          value={value || ''}
+          onChange={(e) => onChange(e.target.value)}
+          className="w-full px-2.5 py-1.5 text-xs bg-transparent outline-none text-slate-900 font-bold h-8 cursor-pointer appearance-none"
+        >
+          <option value="">Sélectionner...</option>
+          {options.map((opt: any) => (
+            <option key={opt.code} value={opt.code}>{opt.label} ({opt.code})</option>
+          ))}
+        </select>
+        <ChevronDown className="absolute right-2.5 w-3 h-3 text-slate-400 pointer-events-none" />
+      </div>
+    </div>
+  );
+};
+
 const Group = ({ title, icon: Icon, children, actions, variant = "indigo", className = "", fullHeight = true }: any) => {
   const iconColors: Record<string, string> = {
     indigo: "bg-indigo-600",
@@ -141,7 +196,9 @@ export const FacturXModal: React.FC<{
   const [data, setData] = useState<InvoiceData>(() => ({ 
     ...invoice, 
     items: (invoice.items || []).map(it => ({ ...it, unitOfMeasure: it.unitOfMeasure || 'C62', lineVatCategory: it.lineVatCategory || 'S' })),
-    vatBreakdowns: invoice.vatBreakdowns || []
+    vatBreakdowns: invoice.vatBreakdowns || [],
+    billingPeriod: invoice.billingPeriod || {},
+    logistics: invoice.logistics || {}
   }));
   const [activeTab, setActiveTab] = useState<'form' | 'xml'>('form');
   const [showPdf, setShowPdf] = useState(true);
@@ -198,10 +255,8 @@ export const FacturXModal: React.FC<{
     else setBuyerSuggestions([]);
   }, []);
 
-  // Correction Auto-Link : On compare les SIRETs nettoyés dès l'ouverture
   useEffect(() => {
     if (isOpen && masterData.length > 0) {
-      // 1. Rapprochement automatique par SIRET exact (Auto-Link)
       const supplierSiretClean = cleanNumeric(data.supplierSiret);
       if (supplierSiretClean && !data.isMasterMatched) {
         const exactMatch = masterData.find(m => cleanNumeric(m.siret) === supplierSiretClean);
@@ -218,7 +273,6 @@ export const FacturXModal: React.FC<{
         }
       }
 
-      // 2. Suggestions s'il n'y a toujours pas de match par nom
       if (!data.isMasterMatched) {
         setSupplierSuggestions(findMatches(data.supplier, masterData));
       } else {
@@ -289,17 +343,12 @@ export const FacturXModal: React.FC<{
       { id: 'BT-2', label: 'Date Facture', status: !!data.invoiceDate, mandatory: true },
       { id: 'BT-3', label: 'Type Document', status: !!data.invoiceType, mandatory: true },
       { id: 'BT-5', label: 'Devise ISO', status: !!data.currency, mandatory: true },
-      { id: 'BT-7', label: 'Point de Taxe', status: !!data.taxPointDate, mandatory: false },
-      { id: 'BT-9', label: 'Date Échéance', status: !!data.dueDate, mandatory: false },
-      { id: 'BT-20', label: 'Cond. Paiement', status: !!data.paymentTermsText, mandatory: false },
       { id: 'BT-27', label: 'Nom Vendeur', status: !!data.supplier, mandatory: true },
       { id: 'BT-29', label: 'SIRET Vendeur', status: !!data.supplierSiret && cleanNumeric(data.supplierSiret).length === 14, mandatory: true },
       { id: 'BT-31', label: 'TVA Vendeur', status: !!data.supplierVat && data.supplierVat.startsWith('FR'), mandatory: true },
       { id: 'BT-44', label: 'Nom Acheteur', status: !!data.buyerName, mandatory: true },
       { id: 'BT-47', label: 'SIRET Acheteur', status: !!data.buyerSiret && cleanNumeric(data.buyerSiret).length === 14, mandatory: true },
-      { id: 'BT-48', label: 'TVA Acheteur', status: !!data.buyerVat, mandatory: false },
       { id: 'BT-84', label: 'IBAN Vendeur', status: !!data.iban && cleanNumeric(data.iban).length >= 14, mandatory: true },
-      { id: 'BT-85', label: 'BIC/SWIFT', status: !!data.bic && data.bic.length >= 8, mandatory: false },
       { id: 'BT-109', label: 'Total HT Net', status: (data.amountExclVat || 0) > 0, mandatory: true },
       { id: 'BT-110', label: 'Total TVA', status: (data.totalVat || 0) >= 0, mandatory: true },
       { id: 'BT-112', label: 'Total TTC', status: (data.amountInclVat || 0) > 0, mandatory: true },
@@ -322,7 +371,6 @@ export const FacturXModal: React.FC<{
   };
 
   const handleAddItem = () => {
-    // FIX: Added missing InvoiceItem properties: discount, lineAllowanceAmount, and lineChargeAmount
     const newItem: InvoiceItem = {
       articleId: '',
       description: 'Nouvelle ligne',
@@ -335,7 +383,8 @@ export const FacturXModal: React.FC<{
       lineChargeAmount: 0,
       taxRate: 20,
       lineVatCategory: 'S',
-      amount: 0
+      amount: 0,
+      originCountry: ''
     };
     setData(prev => ({ ...prev, items: [...(prev.items || []), newItem] }));
   };
@@ -401,19 +450,13 @@ export const FacturXModal: React.FC<{
                           </div>
                       </Group>
                       
-                      <Group title="Partition & MasterData" icon={CloudLightning} variant="purple" className="lg:col-span-4">
-                        <div className="space-y-3">
-                           <div className="p-3 bg-white border border-slate-100 rounded-xl flex items-center space-x-3">
-                              <div className="p-1.5 bg-emerald-500 rounded-lg text-white shadow-sm"><Database className="w-4 h-4" /></div>
-                              <div className="flex-1 min-w-0">
-                                 <p className="text-[9px] font-black uppercase text-slate-400 tracking-widest">Référentiel Vendeur</p>
-                                 <p className="text-[10px] font-black text-slate-900 truncate">{data.supplier || 'Non identifié'}</p>
-                              </div>
-                           </div>
+                      <Group title="Logistique & Périodes" icon={Timer} variant="purple" className="lg:col-span-4">
+                        <div className="space-y-4">
                            <div className="grid grid-cols-2 gap-3">
-                              <FormInput label="Code ERP VND" value={data.supplierErpCode} onChange={(v:any)=>setData({...data, supplierErpCode:v})} themeColor="purple" source={data.isMasterMatched ? 'MASTER_DATA' : undefined} />
-                              <FormInput label="Code ERP ACH" value={data.buyerErpCode} onChange={(v:any)=>setData({...data, buyerErpCode:v})} themeColor="purple" source={data.isBuyerMasterMatched ? 'MASTER_DATA' : undefined} />
+                              <FormInput label="Début Période" value={data.billingPeriod?.startDate} onChange={(v:any)=>setData({...data, billingPeriod: {...(data.billingPeriod || {}), startDate: v}})} btId="73" themeColor="purple" />
+                              <FormInput label="Fin Période" value={data.billingPeriod?.endDate} onChange={(v:any)=>setData({...data, billingPeriod: {...(data.billingPeriod || {}), endDate: v}})} btId="74" themeColor="purple" />
                            </div>
+                           <FormInput label="Date Livraison" value={data.logistics?.deliveryDate || data.deliveryDate} onChange={(v:any)=>setData({...data, deliveryDate: v, logistics: {...(data.logistics || {}), deliveryDate: v}})} btId="72" themeColor="purple" />
                         </div>
                       </Group>
                     </div>
@@ -440,23 +483,18 @@ export const FacturXModal: React.FC<{
                             <FormInput label="BIC/SWIFT" value={data.bic} onChange={(v:any)=>setData({...data, bic:v.replace(/\s/g, "")})} btId="85" themeColor="indigo" source={data.isMasterMatched ? 'MASTER_DATA' : undefined} />
                           </div>
                       </Group>
-                      <Group title="Acheteur (BT-44)" icon={Receipt} variant="orange">
-                          <FormInput label="Nom Client" value={data.buyerName} onChange={(v:any)=>setData({...data, buyerName:v})} btId="44" required className="mb-3" themeColor="orange" />
-                          <div className="grid grid-cols-2 gap-3 mb-3">
-                            <FormInput 
-                              label="SIRET Client" 
-                              value={data.buyerSiret} 
-                              onChange={(v:any)=>setData({...data, buyerSiret:v})} 
-                              btId="47" 
-                              required 
-                              themeColor="orange" 
-                              source={data.isBuyerMasterMatched ? 'MASTER_DATA' : undefined}
-                              suggestions={buyerSuggestions}
-                              onSelectSuggestion={(s: PartnerMasterData) => handleApplyMasterSuggestion(s, 'BUYER')}
-                            />
-                            <FormInput label="TVA Client" value={data.buyerVat} onChange={(v:any)=>setData({...data, buyerVat:v})} btId="48" themeColor="orange" source={data.isBuyerMasterMatched ? 'MASTER_DATA' : undefined} />
-                          </div>
-                          <FormInput label="Adresse Facturation" value={data.buyerAddress} onChange={(v:any)=>setData({...data, buyerAddress:v})} btId="BG-8" multiline themeColor="orange" />
+                      <Group title="Règlement & Livraison (BG-13)" icon={CreditCard} variant="orange">
+                          <FormSelect 
+                            label="Mode de Paiement" 
+                            value={data.paymentMeansCode} 
+                            onChange={(v:any)=>setData({...data, paymentMeansCode: v})} 
+                            options={PAYMENT_MEANS}
+                            btId="81" 
+                            themeColor="orange" 
+                            className="mb-3"
+                          />
+                          <FormInput label="Destinataire Réel" value={data.logistics?.deliverToName} onChange={(v:any)=>setData({...data, logistics: {...(data.logistics || {}), deliverToName: v}})} btId="70" placeholder="Si différent de l'acheteur" className="mb-3" themeColor="orange" />
+                          <FormInput label="Adresse de Livraison" value={data.logistics?.deliverToAddress} onChange={(v:any)=>setData({...data, logistics: {...(data.logistics || {}), deliverToAddress: v}})} btId="BG-15" multiline themeColor="orange" placeholder="Lieu effectif de la prestation/livraison" />
                       </Group>
                     </div>
 
@@ -477,16 +515,16 @@ export const FacturXModal: React.FC<{
                     >
                       <div className="w-full rounded-xl border border-slate-200 bg-white overflow-hidden shadow-sm">
                         <div className="overflow-x-auto custom-scrollbar">
-                          <table className="w-full text-[10px] border-collapse table-auto min-w-[1000px]">
+                          <table className="w-full text-[10px] border-collapse table-auto min-w-[1100px]">
                             <thead className="bg-slate-50 text-[8px] font-black uppercase text-slate-500 border-b border-slate-200 sticky top-0 z-10">
                               <tr>
                                 <th className="px-3 py-4 text-left w-[8%]">Réf.</th>
-                                <th className="px-3 py-4 text-left w-[35%]">Désignation (BT-129)</th>
+                                <th className="px-3 py-4 text-left w-[25%]">Désignation (BT-129)</th>
                                 <th className="px-3 py-4 text-right w-[6%]">Qté</th>
-                                <th className="px-3 py-4 text-left w-[12%] bg-indigo-50/20">TVA (BT-151)</th>
+                                <th className="px-3 py-4 text-left w-[12%] bg-indigo-50/20">Unité (BT-130)</th>
+                                <th className="px-3 py-4 text-left w-[10%] bg-indigo-50/10">TVA (BT-151)</th>
                                 <th className="px-3 py-4 text-right w-[8%]">P.U Brut</th>
                                 <th className="px-3 py-4 text-right w-[10%] bg-indigo-50/30">P.U Net</th>
-                                <th className="px-3 py-4 text-right w-[6%]">TVA%</th>
                                 <th className="px-3 py-4 text-right w-[12%] bg-slate-100/50">Montant HT</th>
                                 <th className="px-3 py-4 text-center w-[3%]"></th>
                               </tr>
@@ -518,6 +556,15 @@ export const FacturXModal: React.FC<{
                                   </td>
                                   <td className="p-1.5 bg-indigo-50/10">
                                     <select 
+                                      value={item.unitOfMeasure || 'C62'} 
+                                      onChange={e=>handleUpdateItem(idx, 'unitOfMeasure', e.target.value)} 
+                                      className="w-full bg-white border border-slate-200 rounded px-2 py-1 outline-none font-black text-[9px] appearance-none cursor-pointer"
+                                    >
+                                      {UNIT_CODES.map(u => <option key={u.code} value={u.code}>{u.label} ({u.code})</option>)}
+                                    </select>
+                                  </td>
+                                  <td className="p-1.5 bg-indigo-50/5">
+                                    <select 
                                       value={item.lineVatCategory || 'S'} 
                                       onChange={e=>handleUpdateItem(idx, 'lineVatCategory', e.target.value)} 
                                       className="w-full bg-white border border-slate-200 rounded px-2 py-1 outline-none font-black text-[9px] appearance-none cursor-pointer"
@@ -535,14 +582,6 @@ export const FacturXModal: React.FC<{
                                   </td>
                                   <td className="p-1.5 bg-indigo-50/10 text-right font-black text-indigo-600">
                                     {(item.unitPrice || 0).toFixed(4)}
-                                  </td>
-                                  <td className="p-1.5">
-                                    <input 
-                                      type="number" 
-                                      value={item.taxRate || ''} 
-                                      onChange={e=>handleUpdateItem(idx, 'taxRate', parseFloat(e.target.value))} 
-                                      className="w-full text-right bg-transparent border border-transparent focus:border-indigo-200 rounded px-1.5 py-1 outline-none font-black" 
-                                    />
                                   </td>
                                   <td className="p-1.5 text-right font-black font-mono text-slate-700 bg-slate-50">
                                     {(item.amount || 0).toFixed(2)}

@@ -39,6 +39,7 @@ export const extractInvoiceData = async (
   const schema = {
     type: Type.OBJECT,
     properties: {
+      specification_id: { type: Type.STRING }, // BT-24
       invoice_type: { type: Type.STRING, enum: ["INVOICE", "CREDIT_NOTE"] },
       invoice_number: { type: Type.STRING },
       invoice_date: { type: Type.STRING },
@@ -48,6 +49,27 @@ export const extractInvoiceData = async (
       po_number: { type: Type.STRING },
       buyer_reference: { type: Type.STRING },
       contract_number: { type: Type.STRING },
+      delivery_note_number: { type: Type.STRING },
+      
+      // Nouveau Bloc Logistique (BG-13/15)
+      logistics: {
+        type: Type.OBJECT,
+        properties: {
+          deliver_to_name: { type: Type.STRING }, // BT-70
+          delivery_date: { type: Type.STRING },    // BT-72
+          deliver_to_address: { type: Type.STRING } // BG-15
+        }
+      },
+
+      // Nouveau Bloc Période (BG-14)
+      billing_period: {
+        type: Type.OBJECT,
+        properties: {
+          start_date: { type: Type.STRING }, // BT-73
+          end_date: { type: Type.STRING }    // BT-74
+        }
+      },
+
       supplier_name: { type: Type.STRING },
       supplier_vat: { type: Type.STRING },
       supplier_siret: { type: Type.STRING },
@@ -56,10 +78,13 @@ export const extractInvoiceData = async (
       buyer_vat: { type: Type.STRING },
       buyer_siret: { type: Type.STRING },
       buyer_address: { type: Type.STRING },
+      
+      payment_means_code: { type: Type.STRING }, // BT-81 (Numeric)
       payment_terms_text: { type: Type.STRING },
       invoice_note: { type: Type.STRING },
       iban: { type: Type.STRING },
       bic: { type: Type.STRING },
+      
       amount_excl_vat: { type: Type.NUMBER },
       global_discount: { type: Type.NUMBER },
       global_charge: { type: Type.NUMBER },
@@ -67,6 +92,7 @@ export const extractInvoiceData = async (
       amount_incl_vat: { type: Type.NUMBER },
       prepaid_amount: { type: Type.NUMBER },
       amount_due: { type: Type.NUMBER },
+      
       vat_breakdowns: {
         type: Type.ARRAY,
         items: {
@@ -90,10 +116,11 @@ export const extractInvoiceData = async (
             quantity: { type: Type.NUMBER },
             unit_of_measure: { type: Type.STRING },
             unit_price: { type: Type.NUMBER },
-            gross_price: { type: Type.NUMBER },
+            gross_price: { type: Type.NUMBER }, // BT-148
             tax_rate: { type: Type.NUMBER },
             line_vat_category: { type: Type.STRING },
-            amount: { type: Type.NUMBER }
+            amount: { type: Type.NUMBER },
+            origin_country: { type: Type.STRING } // BT-159
           }
         }
       }
@@ -101,15 +128,15 @@ export const extractInvoiceData = async (
     required: ["supplier_name", "invoice_number", "amount_incl_vat", "vat_breakdowns"],
   };
 
-  const systemInstruction = `EXTRACTEUR RFE EN16931 (FACTUR-X 2026).
-Extraire toutes les données sémantiques BT-xxx du document PDF.
+  const systemInstruction = `EXTRACTEUR RFE EN16931 (FACTUR-X COMFORT).
+Extraire toutes les données sémantiques BT-xxx du document.
 
-RÈGLES CRITIQUES :
-1. VAT_BREAKDOWN (BG-23) : Requis par taux de TVA. vat_category doit être (S, Z, E, AE, K, G, O).
-2. LIGNES (BG-25) : Chaque ligne doit avoir son line_vat_category.
-3. IDENTIFIANTS : SIRET (14 chiffres), TVA (Code Pays + 11 chiffres).
-4. MONTANTS : Décimales précises. amount_due = amount_incl_vat - prepaid_amount.
-5. BANCAIRE : Extraire l'IBAN du vendeur.
+PRECISIONS COMMERCIALES (BG-13, 14, 15) :
+1. LOGISTIQUE : Extraire deliver_to_name (BT-70) et deliver_to_address (BG-15) si différents de l'acheteur.
+2. PERIODE : Extraire start_date (BT-73) et end_date (BT-74) si présentes (ex: abonnement, services).
+3. PRIX LIGNES : Extraire gross_price (BT-148) avant toute remise de ligne.
+4. ORIGINE : Extraire origin_country (BT-159) pour chaque article si mentionné.
+5. PAIEMENT : Extraire le code numérique BT-81 (ex: 30=Virement, 48=Carte).
 
 REPONDRE UNIQUEMENT EN JSON.`;
 
@@ -119,7 +146,7 @@ REPONDRE UNIQUEMENT EN JSON.`;
       contents: [{
         parts: [
           { inlineData: { mimeType, data: base64Data } },
-          { text: "Analyse cette facture et retourne le JSON complet conforme RFE EN16931." }
+          { text: "Analyse cette facture et retourne le JSON complet conforme EN16931 avec détails logistiques." }
         ]
       }],
       config: {
@@ -133,7 +160,6 @@ REPONDRE UNIQUEMENT EN JSON.`;
     const raw = JSON.parse(response.text || "{}");
     const usage = response.usageMetadata || { totalTokenCount: 0 };
 
-    // Mapping Item par Item (Pas de perte)
     const items: InvoiceItem[] = (raw.line_items || []).map((it: any) => ({
       articleId: it.article_id || "",
       description: it.description || "",
@@ -147,9 +173,9 @@ REPONDRE UNIQUEMENT EN JSON.`;
       taxRate: parseNum(it.tax_rate),
       lineVatCategory: it.line_vat_category || "S",
       amount: parseNum(it.amount),
+      originCountry: it.origin_country || ""
     }));
 
-    // Mapping TVA par TVA
     const vats: VatBreakdown[] = (raw.vat_breakdowns || []).map((v: any) => ({
       vatCategory: v.vat_category || "S",
       vatRate: parseNum(v.vat_rate),
@@ -157,7 +183,6 @@ REPONDRE UNIQUEMENT EN JSON.`;
       vatAmount: parseNum(v.vat_amount)
     }));
 
-    // Objet final exhaustif
     const invoice: InvoiceData = {
       id: crypto.randomUUID(),
       companyId,
@@ -169,6 +194,7 @@ REPONDRE UNIQUEMENT EN JSON.`;
       erpStatus: ErpStatus.PENDING,
       
       facturXProfile: FacturXProfile.COMFORT,
+      businessProcessId: raw.specification_id || "urn:cen.eu:en16931:2017#compliant#urn:factur-x.eu:1p0:comfort",
       invoiceType: raw.invoice_type === 'CREDIT_NOTE' ? InvoiceType.CREDIT_NOTE : InvoiceType.INVOICE,
       invoiceNumber: raw.invoice_number || "INCONNU",
       invoiceDate: parseInvoiceDate(raw.invoice_date),
@@ -178,7 +204,19 @@ REPONDRE UNIQUEMENT EN JSON.`;
       poNumber: raw.po_number || "",
       buyerReference: raw.buyer_reference || "",
       contractNumber: raw.contract_number || "",
+      deliveryNoteNumber: raw.delivery_note_number || "",
       invoiceNote: raw.invoice_note || "",
+
+      billingPeriod: raw.billing_period ? {
+        startDate: parseInvoiceDate(raw.billing_period.start_date),
+        endDate: parseInvoiceDate(raw.billing_period.end_date)
+      } : undefined,
+
+      logistics: raw.logistics ? {
+        deliverToName: raw.logistics.deliver_to_name || "",
+        deliveryDate: parseInvoiceDate(raw.logistics.delivery_date),
+        deliverToAddress: raw.logistics.deliver_to_address || ""
+      } : undefined,
 
       supplier: raw.supplier_name || "",
       supplierAddress: raw.supplier_address || "",
@@ -192,6 +230,7 @@ REPONDRE UNIQUEMENT EN JSON.`;
       
       iban: raw.iban?.replace(/\s/g, "") || "",
       bic: raw.bic?.replace(/\s/g, "") || "",
+      paymentMeansCode: raw.payment_means_code || "",
       paymentTermsText: raw.payment_terms_text || "",
 
       amountExclVat: parseNum(raw.amount_excl_vat),

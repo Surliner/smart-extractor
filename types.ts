@@ -14,7 +14,7 @@ export interface InvoiceItem {
   description: string; // BT-129
   quantity: number | null; // BT-129
   unitOfMeasure: string; // BT-130 (Code rec. 20)
-  grossPrice: number | null; // BT-148
+  grossPrice: number | null; // BT-148 (Prix avant remise)
   discount: number | null; // BT-147 (Rate %)
   lineAllowanceAmount: number | null; // BT-136 (€)
   lineChargeAmount: number | null;    // BT-141 (€)
@@ -22,6 +22,7 @@ export interface InvoiceItem {
   taxRate: number | null; // BT-152
   lineVatCategory: string; // BT-151 (OBLIGATOIRE RFE)
   amount: number | null; // BT-131 (Line total HT)
+  originCountry?: string; // BT-159 (Pays d'origine)
 }
 
 export enum ErpStatus {
@@ -98,7 +99,7 @@ export interface InvoiceData {
 
   // Header (BG-2)
   facturXProfile: FacturXProfile;
-  businessProcessId?: string; // BT-23
+  businessProcessId?: string; // BT-23/24 (Specification ID)
   invoiceType: InvoiceType; // BT-3
   invoiceNumber: string; // BT-1
   invoiceDate: string; // BT-2
@@ -112,6 +113,17 @@ export interface InvoiceData {
   projectReference?: string; // BT-11
   deliveryDate?: string; // BT-72
   invoiceNote?: string; // BT-22
+
+  // Commercial & Logistics (New Blocks)
+  billingPeriod?: {
+    startDate?: string; // BT-73
+    endDate?: string;   // BT-74
+  };
+  logistics?: {
+    deliverToName?: string;    // BT-70
+    deliveryDate?: string;     // BT-72 (duplicated for logic)
+    deliverToAddress?: string; // BG-15
+  };
 
   // Parties (BG-4 / BG-7)
   supplier: string; // BT-27
@@ -131,8 +143,8 @@ export interface InvoiceData {
   // Payment (BG-16)
   iban?: string; // BT-84
   bic?: string; // BT-85
-  paymentMethod?: string; // BT-81/83 (FIX: Added missing property)
-  paymentMeansCode?: string; // BT-81
+  paymentMethod?: string; // BT-81/83
+  paymentMeansCode?: string; // BT-81 (Numeric code)
   paymentTermsText?: string; // BT-20
 
   // Totals (BG-22)
