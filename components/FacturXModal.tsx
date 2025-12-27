@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { X, Save, CheckCircle, AlertTriangle, Download, Plus, Trash2, LayoutList, Truck, Receipt, Package, ShieldCheck, Globe, Briefcase, Landmark, Percent, Hash, Calendar as CalendarIcon, Coins, ChevronDown, Calculator, Info, FileCode, Eye, EyeOff, FileSearch, ExternalLink, Settings2, CloudLightning, Shield, Clock, CreditCard, StickyNote, Box, FileDown, FileCheck, Banknote, ListChecks, ShieldAlert, BadgeCheck, Database, ListTodo } from 'lucide-react';
+import { X, Save, CheckCircle, AlertTriangle, Download, Plus, Trash2, LayoutList, Truck, Receipt, Package, ShieldCheck, Globe, Briefcase, Landmark, Percent, Hash, Calendar as CalendarIcon, Coins, ChevronDown, Calculator, Info, FileCode, Eye, EyeOff, FileSearch, ExternalLink, Settings2, CloudLightning, Shield, Clock, CreditCard, StickyNote, Box, FileDown, FileCheck, Banknote, ListChecks, ShieldAlert, BadgeCheck, Database, ListTodo, Trash } from 'lucide-react';
 import { InvoiceData, InvoiceItem, InvoiceType, LookupTable, OperationCategory, TaxPointType, FacturXProfile, PartnerMasterData, VatBreakdown } from '../types';
 import { generateFacturXXML } from '../services/facturXService';
 
@@ -214,6 +214,25 @@ export const FacturXModal: React.FC<{
     setData({ ...data, items: newItems });
   };
 
+  const handleAddItem = () => {
+    const newItem: InvoiceItem = {
+      articleId: '',
+      description: 'Nouvelle ligne',
+      quantity: 1,
+      unitOfMeasure: 'C62',
+      unitPrice: 0,
+      grossPrice: 0,
+      taxRate: 20,
+      lineVatCategory: 'S',
+      amount: 0
+    };
+    setData(prev => ({ ...prev, items: [...(prev.items || []), newItem] }));
+  };
+
+  const handleDeleteItem = (idx: number) => {
+    setData(prev => ({ ...prev, items: (prev.items || []).filter((_, i) => i !== idx) }));
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -310,7 +329,21 @@ export const FacturXModal: React.FC<{
                       </Group>
                     </div>
 
-                    <Group title="Détails des Lignes (BG-25)" icon={Package} variant="slate" fullHeight={false}>
+                    <Group 
+                      title="Détails des Lignes (BG-25)" 
+                      icon={Package} 
+                      variant="slate" 
+                      fullHeight={false}
+                      actions={
+                        <button 
+                          onClick={handleAddItem}
+                          className="flex items-center space-x-1.5 px-3 py-1 bg-indigo-600 text-white rounded-lg text-[9px] font-black uppercase tracking-widest shadow-sm hover:bg-indigo-700 active:scale-95 transition-all"
+                        >
+                          <Plus className="w-3 h-3" />
+                          <span>Ajouter une ligne</span>
+                        </button>
+                      }
+                    >
                       <div className="w-full rounded-xl border border-slate-200 bg-white overflow-hidden shadow-sm">
                         <div className="overflow-x-auto custom-scrollbar">
                           <table className="w-full text-[10px] border-collapse table-auto min-w-[1000px]">
@@ -323,15 +356,35 @@ export const FacturXModal: React.FC<{
                                 <th className="px-3 py-4 text-right w-[8%]">P.U Brut</th>
                                 <th className="px-3 py-4 text-right w-[10%] bg-indigo-50/30">P.U Net</th>
                                 <th className="px-3 py-4 text-right w-[6%]">TVA%</th>
-                                <th className="px-3 py-4 text-right w-[15%] bg-slate-100/50">Montant HT</th>
+                                <th className="px-3 py-4 text-right w-[12%] bg-slate-100/50">Montant HT</th>
+                                <th className="px-3 py-4 text-center w-[3%]"></th>
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100">
                               {(data.items || []).map((item, idx) => (
                                 <tr key={idx} className="hover:bg-slate-50/50 transition-colors group">
-                                  <td className="p-1.5"><input value={item.articleId} onChange={e=>handleUpdateItem(idx, 'articleId', e.target.value)} className="w-full bg-transparent border border-transparent focus:border-indigo-200 rounded px-1.5 py-1 outline-none font-mono text-[9px]" /></td>
-                                  <td className="p-1.5"><input value={item.description} onChange={e=>handleUpdateItem(idx, 'description', e.target.value)} className="w-full bg-transparent border border-transparent focus:border-indigo-200 rounded px-1.5 py-1 outline-none font-bold" /></td>
-                                  <td className="p-1.5"><input type="number" value={item.quantity || ''} onChange={e=>handleUpdateItem(idx, 'quantity', parseFloat(e.target.value))} className="w-full text-right bg-transparent border border-transparent focus:border-indigo-200 rounded px-1.5 py-1 outline-none font-black" /></td>
+                                  <td className="p-1.5">
+                                    <input 
+                                      value={item.articleId || ''} 
+                                      onChange={e=>handleUpdateItem(idx, 'articleId', e.target.value)} 
+                                      className="w-full bg-transparent border border-transparent focus:border-indigo-200 rounded px-1.5 py-1 outline-none font-mono text-[9px]" 
+                                    />
+                                  </td>
+                                  <td className="p-1.5">
+                                    <input 
+                                      value={item.description || ''} 
+                                      onChange={e=>handleUpdateItem(idx, 'description', e.target.value)} 
+                                      className="w-full bg-transparent border border-transparent focus:border-indigo-200 rounded px-1.5 py-1 outline-none font-bold" 
+                                    />
+                                  </td>
+                                  <td className="p-1.5">
+                                    <input 
+                                      type="number" 
+                                      value={item.quantity || ''} 
+                                      onChange={e=>handleUpdateItem(idx, 'quantity', parseFloat(e.target.value))} 
+                                      className="w-full text-right bg-transparent border border-transparent focus:border-indigo-200 rounded px-1.5 py-1 outline-none font-black" 
+                                    />
+                                  </td>
                                   <td className="p-1.5 bg-indigo-50/10">
                                     <select 
                                       value={item.lineVatCategory || 'S'} 
@@ -341,12 +394,45 @@ export const FacturXModal: React.FC<{
                                       {VAT_CATEGORIES.map(c => <option key={c.code} value={c.code}>{c.label} ({c.code})</option>)}
                                     </select>
                                   </td>
-                                  <td className="p-1.5"><input type="number" value={item.grossPrice || ''} onChange={e=>handleUpdateItem(idx, 'grossPrice', parseFloat(e.target.value))} className="w-full text-right bg-transparent border border-transparent focus:border-indigo-200 rounded px-1.5 py-1 outline-none font-black" /></td>
-                                  <td className="p-1.5 bg-indigo-50/10 text-right font-black text-indigo-600">{(item.unitPrice || 0).toFixed(4)}</td>
-                                  <td className="p-1.5"><input type="number" value={item.taxRate || ''} onChange={e=>handleUpdateItem(idx, 'taxRate', parseFloat(e.target.value))} className="w-full text-right bg-transparent border border-transparent focus:border-indigo-200 rounded px-1.5 py-1 outline-none font-black" /></td>
-                                  <td className="p-1.5 text-right font-black font-mono text-slate-700 bg-slate-50">{(item.amount || 0).toFixed(2)}</td>
+                                  <td className="p-1.5">
+                                    <input 
+                                      type="number" 
+                                      value={item.grossPrice || ''} 
+                                      onChange={e=>handleUpdateItem(idx, 'grossPrice', parseFloat(e.target.value))} 
+                                      className="w-full text-right bg-transparent border border-transparent focus:border-indigo-200 rounded px-1.5 py-1 outline-none font-black" 
+                                    />
+                                  </td>
+                                  <td className="p-1.5 bg-indigo-50/10 text-right font-black text-indigo-600">
+                                    {(item.unitPrice || 0).toFixed(4)}
+                                  </td>
+                                  <td className="p-1.5">
+                                    <input 
+                                      type="number" 
+                                      value={item.taxRate || ''} 
+                                      onChange={e=>handleUpdateItem(idx, 'taxRate', parseFloat(e.target.value))} 
+                                      className="w-full text-right bg-transparent border border-transparent focus:border-indigo-200 rounded px-1.5 py-1 outline-none font-black" 
+                                    />
+                                  </td>
+                                  <td className="p-1.5 text-right font-black font-mono text-slate-700 bg-slate-50">
+                                    {(item.amount || 0).toFixed(2)}
+                                  </td>
+                                  <td className="p-1.5 text-center">
+                                    <button 
+                                      onClick={() => handleDeleteItem(idx)}
+                                      className="p-1.5 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-all"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  </td>
                                 </tr>
                               ))}
+                              {(data.items || []).length === 0 && (
+                                <tr>
+                                  <td colSpan={9} className="p-8 text-center text-slate-400 italic font-medium">
+                                    Aucune ligne. Cliquez sur "Ajouter une ligne" pour commencer.
+                                  </td>
+                                </tr>
+                              )}
                             </tbody>
                           </table>
                         </div>
