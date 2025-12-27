@@ -1,8 +1,26 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { X, Save, CheckCircle, AlertTriangle, Download, Plus, Trash2, LayoutList, Truck, Receipt, Package, ShieldCheck, Globe, Briefcase, Landmark, Percent, Hash, Calendar as CalendarIcon, Coins, ChevronDown, Calculator, Info, FileCode, Eye, EyeOff, FileSearch, ExternalLink, Settings2, CloudLightning, Shield, Clock, CreditCard, StickyNote, Box, FileDown, FileCheck, Banknote, ListChecks, ShieldAlert, BadgeCheck, Database, ListTodo, Trash } from 'lucide-react';
+import { X, Save, CheckCircle, AlertTriangle, Download, Plus, Trash2, LayoutList, Truck, Receipt, Package, ShieldCheck, Globe, Briefcase, Landmark, Percent, Hash, Calendar as CalendarIcon, Coins, ChevronDown, Calculator, Info, FileCode, Eye, EyeOff, FileSearch, ExternalLink, Settings2, CloudLightning, Shield, Clock, CreditCard, StickyNote, Box, FileDown, FileCheck, Banknote, ListChecks, ShieldAlert, BadgeCheck, Database, ListTodo, Trash, Search, Zap } from 'lucide-react';
 import { InvoiceData, InvoiceItem, InvoiceType, LookupTable, OperationCategory, TaxPointType, FacturXProfile, PartnerMasterData, VatBreakdown } from '../types';
 import { generateFacturXXML } from '../services/facturXService';
+
+// --- Utils for Matching ---
+const normalizeName = (name: string): string => {
+  return name.toLowerCase()
+    .replace(/\b(sarl|sas|sa|eurl|snc|sci|corp|inc|ltd)\b/g, '')
+    .replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+};
+
+const findMatches = (name: string, masterData: PartnerMasterData[]): PartnerMasterData[] => {
+  if (!name || name.length < 3) return [];
+  const normalizedSearch = normalizeName(name);
+  return masterData.filter(m => {
+    const normalizedMaster = normalizeName(m.name);
+    return normalizedMaster.includes(normalizedSearch) || normalizedSearch.includes(normalizedMaster);
+  }).slice(0, 5);
+};
 
 // --- Constants ---
 const VAT_CATEGORIES = [
@@ -13,7 +31,7 @@ const VAT_CATEGORIES = [
   { code: 'G', label: 'Export' },
 ];
 
-const FormInput = ({ label, value, onChange, type = "text", placeholder, btId, required, multiline, className = "", themeColor = "indigo", badge, source }: any) => {
+const FormInput = ({ label, value, onChange, type = "text", placeholder, btId, required, multiline, className = "", themeColor = "indigo", badge, source, suggestions, onSelectSuggestion }: any) => {
   const colorMap: Record<string, string> = {
     indigo: "focus-within:border-indigo-500 focus-within:ring-indigo-500/10 text-slate-900 bg-slate-50/50",
     orange: "focus-within:border-orange-500 focus-within:ring-orange-500/10 text-slate-900 bg-slate-50/50",
@@ -23,11 +41,11 @@ const FormInput = ({ label, value, onChange, type = "text", placeholder, btId, r
   };
 
   return (
-    <div className={`flex flex-col space-y-0.5 ${className}`}>
+    <div className={`flex flex-col space-y-0.5 relative ${className}`}>
       <div className="flex justify-between items-center px-1">
         <label className="text-[9px] font-black uppercase text-slate-500 tracking-[0.05em] flex items-center">
           {label} {required && <span className="text-rose-500 font-bold ml-1">*</span>}
-          {source === 'MASTER_DATA' && <span className="ml-2 bg-emerald-100 text-emerald-600 px-1.5 py-0.5 rounded text-[7px] font-black border border-emerald-200">MASTER</span>}
+          {source === 'MASTER_DATA' && <span className="ml-2 bg-emerald-100 text-emerald-600 px-1.5 py-0.5 rounded text-[7px] font-black border border-emerald-200">MASTER MATCHED</span>}
         </label>
         <div className="flex space-x-1.5 items-center">
             {badge && badge}
@@ -57,6 +75,25 @@ const FormInput = ({ label, value, onChange, type = "text", placeholder, btId, r
           />
         )}
       </div>
+
+      {/* Suggestions UI */}
+      {suggestions && suggestions.length > 0 && (
+        <div className="mt-1 flex flex-wrap gap-1 animate-in slide-in-from-top-1">
+          <div className="flex items-center space-x-1 px-1.5 py-0.5 bg-indigo-50 text-indigo-600 rounded text-[7px] font-black uppercase border border-indigo-100">
+            <Zap className="w-2 h-2 fill-indigo-500" />
+            <span>Sug. Référentiel ({suggestions.length})</span>
+          </div>
+          {suggestions.map((s: PartnerMasterData) => (
+            <button
+              key={s.id}
+              onClick={() => onSelectSuggestion(s)}
+              className="px-1.5 py-0.5 bg-white border border-slate-200 rounded text-[7px] font-black text-slate-600 hover:border-indigo-400 hover:text-indigo-600 hover:bg-indigo-50 transition-all shadow-sm"
+            >
+              {s.name} ({s.siret})
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 };
@@ -106,6 +143,10 @@ export const FacturXModal: React.FC<{
   const [showPdf, setShowPdf] = useState(true);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
 
+  // States for probabilistic matching
+  const [supplierSuggestions, setSupplierSuggestions] = useState<PartnerMasterData[]>([]);
+  const [buyerSuggestions, setBuyerSuggestions] = useState<PartnerMasterData[]>([]);
+
   useEffect(() => {
     if (data.fileData) {
       try {
@@ -124,6 +165,47 @@ export const FacturXModal: React.FC<{
       }
     }
   }, [data.fileData]);
+
+  // Handle Automatic Matching for missing SIRETs
+  useEffect(() => {
+    if (isOpen && masterData.length > 0) {
+      if (!data.supplierSiret || data.supplierSiret.length < 9) {
+        setSupplierSuggestions(findMatches(data.supplier, masterData));
+      } else {
+        setSupplierSuggestions([]);
+      }
+
+      if (!data.buyerSiret || data.buyerSiret.length < 9) {
+        setBuyerSuggestions(findMatches(data.buyerName, masterData));
+      } else {
+        setBuyerSuggestions([]);
+      }
+    }
+  }, [isOpen, data.supplier, data.buyerName, masterData]);
+
+  const handleApplyMasterSuggestion = (tier: PartnerMasterData, type: 'SUPPLIER' | 'BUYER') => {
+    if (type === 'SUPPLIER') {
+      setData(prev => ({
+        ...prev,
+        supplier: tier.name,
+        supplierSiret: tier.siret,
+        supplierVat: tier.vatNumber,
+        iban: tier.iban || prev.iban,
+        bic: tier.bic || prev.bic,
+        isMasterMatched: true
+      }));
+      setSupplierSuggestions([]);
+    } else {
+      setData(prev => ({
+        ...prev,
+        buyerName: tier.name,
+        buyerSiret: tier.siret,
+        buyerVat: tier.vatNumber,
+        isBuyerMasterMatched: true
+      }));
+      setBuyerSuggestions([]);
+    }
+  };
 
   // Recalcul dynamique des totaux et de la ventilation TVA (BG-23)
   useEffect(() => {
@@ -311,19 +393,39 @@ export const FacturXModal: React.FC<{
                       <Group title="Vendeur (BT-27)" icon={Truck} variant="indigo">
                           <FormInput label="Raison Sociale" value={data.supplier} onChange={(v:any)=>setData({...data, supplier:v})} btId="27" required className="mb-3" themeColor="indigo" />
                           <div className="grid grid-cols-2 gap-3 mb-3">
-                            <FormInput label="SIRET" value={data.supplierSiret} onChange={(v:any)=>setData({...data, supplierSiret:v})} btId="29" required themeColor="indigo" />
-                            <FormInput label="TVA Intra" value={data.supplierVat} onChange={(v:any)=>setData({...data, supplierVat:v})} btId="31" themeColor="indigo" />
+                            <FormInput 
+                              label="SIRET" 
+                              value={data.supplierSiret} 
+                              onChange={(v:any)=>setData({...data, supplierSiret:v})} 
+                              btId="29" 
+                              required 
+                              themeColor="indigo" 
+                              source={data.isMasterMatched ? 'MASTER_DATA' : undefined}
+                              suggestions={supplierSuggestions}
+                              onSelectSuggestion={(s: PartnerMasterData) => handleApplyMasterSuggestion(s, 'SUPPLIER')}
+                            />
+                            <FormInput label="TVA Intra" value={data.supplierVat} onChange={(v:any)=>setData({...data, supplierVat:v})} btId="31" themeColor="indigo" source={data.isMasterMatched ? 'MASTER_DATA' : undefined} />
                           </div>
                           <div className="grid grid-cols-2 gap-3">
-                            <FormInput label="IBAN Vendeur" value={data.iban} onChange={(v:any)=>setData({...data, iban:v.replace(/\s/g, "")})} btId="84" required themeColor="indigo" />
-                            <FormInput label="BIC/SWIFT" value={data.bic} onChange={(v:any)=>setData({...data, bic:v.replace(/\s/g, "")})} btId="85" themeColor="indigo" />
+                            <FormInput label="IBAN Vendeur" value={data.iban} onChange={(v:any)=>setData({...data, iban:v.replace(/\s/g, "")})} btId="84" required themeColor="indigo" source={data.isMasterMatched ? 'MASTER_DATA' : undefined} />
+                            <FormInput label="BIC/SWIFT" value={data.bic} onChange={(v:any)=>setData({...data, bic:v.replace(/\s/g, "")})} btId="85" themeColor="indigo" source={data.isMasterMatched ? 'MASTER_DATA' : undefined} />
                           </div>
                       </Group>
                       <Group title="Acheteur (BT-44)" icon={Receipt} variant="orange">
                           <FormInput label="Nom Client" value={data.buyerName} onChange={(v:any)=>setData({...data, buyerName:v})} btId="44" required className="mb-3" themeColor="orange" />
                           <div className="grid grid-cols-2 gap-3 mb-3">
-                            <FormInput label="SIRET Client" value={data.buyerSiret} onChange={(v:any)=>setData({...data, buyerSiret:v})} btId="47" required themeColor="orange" />
-                            <FormInput label="TVA Client" value={data.buyerVat} onChange={(v:any)=>setData({...data, buyerVat:v})} btId="48" themeColor="orange" />
+                            <FormInput 
+                              label="SIRET Client" 
+                              value={data.buyerSiret} 
+                              onChange={(v:any)=>setData({...data, buyerSiret:v})} 
+                              btId="47" 
+                              required 
+                              themeColor="orange" 
+                              source={data.isBuyerMasterMatched ? 'MASTER_DATA' : undefined}
+                              suggestions={buyerSuggestions}
+                              onSelectSuggestion={(s: PartnerMasterData) => handleApplyMasterSuggestion(s, 'BUYER')}
+                            />
+                            <FormInput label="TVA Client" value={data.buyerVat} onChange={(v:any)=>setData({...data, buyerVat:v})} btId="48" themeColor="orange" source={data.isBuyerMasterMatched ? 'MASTER_DATA' : undefined} />
                           </div>
                           <FormInput label="Adresse Facturation" value={data.buyerAddress} onChange={(v:any)=>setData({...data, buyerAddress:v})} btId="BG-8" multiline themeColor="orange" />
                       </Group>

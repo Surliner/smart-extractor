@@ -191,7 +191,7 @@ const App: React.FC = () => {
       </header>
 
       <main className="max-w-[1700px] mx-auto px-10 py-10 space-y-10">
-        <div className="grid grid-cols-1 xl:grid-cols-12 gap-10">
+        <div className="grid grid-cols-1 xl:grid-cols-12 gap-10 items-start">
           <div className="xl:col-span-9 space-y-10">
             <div onClick={() => !isProcessing && document.getElementById('f-up')?.click()} className={`bg-white rounded-[3rem] border-4 border-dashed p-16 flex flex-col items-center justify-center text-center space-y-8 transition-all cursor-pointer hover:border-indigo-400 hover:bg-indigo-50/20 ${isProcessing ? 'opacity-50 pointer-events-none' : 'border-slate-100 shadow-sm'}`}>
               <input id="f-up" type="file" multiple accept="application/pdf" onChange={(e) => processFiles(e.target.files)} className="hidden" />
@@ -204,7 +204,9 @@ const App: React.FC = () => {
             </div>
             <InvoiceTable invoices={filteredInvoices} selectedIds={selectedIds} isArchiveView={viewMode === 'ARCHIVED'} onToggleSelection={(id) => setSelectedIds(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; })} onToggleAll={() => setSelectedIds(selectedIds.size === filteredInvoices.length ? new Set() : new Set(filteredInvoices.map(i => i.id)))} onUpdate={handleInvoiceUpdate} onDeleteInvoices={handleBulkDelete} onArchiveInvoices={handleBulkArchive} onSyncInvoices={() => {}} lookupTables={lookupTables} templates={templates} xmlProfiles={xmlProfiles} masterData={masterData} />
           </div>
-          <div className="xl:col-span-3"><ProcessingLogs logs={logs} /></div>
+          <div className="xl:col-span-3 xl:sticky xl:top-28">
+            <ProcessingLogs logs={logs} />
+          </div>
         </div>
       </main>
 

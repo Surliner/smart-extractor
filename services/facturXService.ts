@@ -15,6 +15,7 @@ const formatToUDT = (dateStr: string | undefined): string => {
     return `${y}${m}${d}`;
   }
   if (/^\d{4}-\d{2}-\d{2}$/.test(clean)) return clean.replace(/-/g, '');
+  
   const date = new Date(dateStr);
   if (!isNaN(date.getTime())) {
     const y = date.getFullYear();
@@ -55,18 +56,19 @@ export const generateFacturXXML = (invoice: InvoiceData, includeHeader: boolean 
   const typeCode = invoice.invoiceType === InvoiceType.CREDIT_NOTE ? '381' : '380';
   const issueDateUDT = formatToUDT(invoice.invoiceDate);
   const dueDateUDT = formatToUDT(invoice.dueDate);
+  const taxPointDateUDT = formatToUDT(invoice.taxPointDate);
   const guidelineID = PROFILE_URIS[profile];
 
   const sellerAddr = parseAddress(invoice.supplierAddress);
   const buyerAddr = parseAddress(invoice.buyerAddress);
 
   const lineTotalHT = (invoice.items || []).reduce((sum, item) => sum + (item.amount || 0), 0);
-  const taxBasisTotal = lineTotalHT + (invoice.globalCharge || 0) - (invoice.globalDiscount || 0);
+  const charge = invoice.globalCharge || 0;
+  const discount = invoice.globalDiscount || 0;
+  const taxBasisTotal = lineTotalHT + charge - discount;
   const taxTotal = (invoice.totalVat || 0);
-  const grandTotal = (invoice.amountInclVat || 0);
+  const grandTotal = taxBasisTotal + taxTotal;
 
-  // Ventilation TVA (BG-23)
-  // On privilégie les données extraites explicitement par l'IA si présentes
   let taxSegments = '';
   if (invoice.vatBreakdowns && invoice.vatBreakdowns.length > 0) {
     taxSegments = invoice.vatBreakdowns.map(v => `
@@ -79,7 +81,6 @@ export const generateFacturXXML = (invoice: InvoiceData, includeHeader: boolean 
         <ram:RateApplicablePercent>${(v.vatRate || 0).toFixed(2)}</ram:RateApplicablePercent>
       </ram:ApplicableTradeTax>`).join('');
   } else {
-    // Fallback dynamique si vatBreakdowns est absent (recalcul par taux)
     const taxRates = new Map<string, { basis: number, tax: number, cat: string }>();
     (invoice.items || []).forEach(item => {
       const rate = (item.taxRate || 20.0).toFixed(2);
@@ -122,7 +123,7 @@ export const generateFacturXXML = (invoice: InvoiceData, includeHeader: boolean 
       <ram:AssociatedDocumentLineDocument><ram:LineID>${index + 1}</ram:LineID></ram:AssociatedDocumentLineDocument>
       <ram:SpecifiedTradeProduct>
         <ram:Name>${esc(item.description)}</ram:Name>
-        <ram:SellerAssignedID>${esc(item.articleId)}</ram:SellerAssignedID>
+        ${item.articleId ? `<ram:SellerAssignedID>${esc(item.articleId)}</ram:SellerAssignedID>` : ''}
       </ram:SpecifiedTradeProduct>
       <ram:SpecifiedLineTradeAgreement>
         <ram:NetPriceProductTradePrice>
@@ -134,7 +135,7 @@ export const generateFacturXXML = (invoice: InvoiceData, includeHeader: boolean 
         </ram:GrossPriceProductTradePrice>` : ''}
       </ram:SpecifiedLineTradeAgreement>
       <ram:SpecifiedLineTradeDelivery>
-        <ram:BilledQuantity unitCode="${item.unitOfMeasure || 'C62'}">${(item.quantity || 0).toFixed(2)}</ram:BilledQuantity>
+        <ram:BilledQuantity unitCode="${item.unitOfMeasure || 'C62'}">${(item.quantity || 0).toFixed(4)}</ram:BilledQuantity>
       </ram:SpecifiedLineTradeDelivery>
       <ram:SpecifiedLineTradeSettlement>
         <ram:ApplicableTradeTax>
@@ -187,9 +188,19 @@ export const generateFacturXXML = (invoice: InvoiceData, includeHeader: boolean 
         <ram:IBANID>${cleanID(invoice.iban)}</ram:IBANID>
         <ram:AccountName>${esc(invoice.supplier)}</ram:AccountName>
       </ram:PayeePartyCreditorFinancialAccount>
+      ${invoice.bic ? `
+      <ram:PayeeSpecifiedCreditorFinancialInstitution>
+        <ram:BICID>${cleanID(invoice.bic)}</ram:BICID>
+      </ram:PayeeSpecifiedCreditorFinancialInstitution>` : ''}
       ${taxSegments}
+      ${taxPointDateUDT ? `
+      <ram:TaxPointDate>
+        <udt:DateTimeString format="102">${taxPointDateUDT}</udt:DateTimeString>
+      </ram:TaxPointDate>` : ''}
       <ram:SpecifiedTradeSettlementHeaderMonetarySummation>
         <ram:LineTotalAmount>${lineTotalHT.toFixed(2)}</ram:LineTotalAmount>
+        <ram:ChargeTotalAmount>${charge.toFixed(2)}</ram:ChargeTotalAmount>
+        <ram:AllowanceTotalAmount>${discount.toFixed(2)}</ram:AllowanceTotalAmount>
         <ram:TaxBasisTotalAmount>${taxBasisTotal.toFixed(2)}</ram:TaxBasisTotalAmount>
         <ram:TaxTotalAmount currencyID="${esc(invoice.currency) || 'EUR'}">${taxTotal.toFixed(2)}</ram:TaxTotalAmount>
         <ram:GrandTotalAmount>${grandTotal.toFixed(2)}</ram:GrandTotalAmount>
