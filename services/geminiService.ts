@@ -1,11 +1,13 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
-import { InvoiceData, InvoiceItem, InvoiceType, ExtractionMode, ExtractionResult, OperationCategory, TaxPointType, VatBreakdown } from "../types";
+import { InvoiceData, InvoiceItem, InvoiceType, ExtractionMode, ExtractionResult, FacturXProfile, ErpStatus, VatBreakdown } from "../types";
 
 const parseInvoiceDate = (dateStr: string): string => {
   if (!dateStr) return "";
   const clean = dateStr.trim();
+  // Format YYYYMMDD to DD/MM/YYYY
   if (/^\d{8}$/.test(clean)) return `${clean.substring(6, 8)}/${clean.substring(4, 6)}/${clean.substring(0, 4)}`;
+  // Format YYYY-MM-DD to DD/MM/YYYY
   if (/^\d{4}-\d{2}-\d{2}$/.test(clean)) {
     const [y, m, d] = clean.split('-');
     return `${d}/${m}/${y}`;
@@ -13,14 +15,14 @@ const parseInvoiceDate = (dateStr: string): string => {
   return clean;
 };
 
-const parseQuantity = (val: any): number | null => {
+const parseNum = (val: any): number => {
   if (typeof val === 'number') return val;
   if (typeof val === 'string') {
     let clean = val.trim().replace(',', '.').replace(/[^0-9.-]/g, '');
     const num = parseFloat(clean);
-    return isNaN(num) ? null : num;
+    return isNaN(num) ? 0 : num;
   }
-  return null;
+  return 0;
 };
 
 export const extractInvoiceData = async (
@@ -30,25 +32,22 @@ export const extractInvoiceData = async (
   mode: ExtractionMode,
   direction: 'INBOUND' | 'OUTBOUND',
   companyId: string,
-  withItems: boolean = false
+  owner: string
 ): Promise<ExtractionResult> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
-  const ultimateSchema = {
+  const schema = {
     type: Type.OBJECT,
     properties: {
-      invoice_type: { type: Type.STRING, enum: ["INVOICE", "CREDIT_NOTE", "CORRECTIVE", "SELF_INVOICE"] },
+      invoice_type: { type: Type.STRING, enum: ["INVOICE", "CREDIT_NOTE"] },
       invoice_number: { type: Type.STRING },
       invoice_date: { type: Type.STRING },
       due_date: { type: Type.STRING },
+      tax_point_date: { type: Type.STRING },
       currency: { type: Type.STRING },
       po_number: { type: Type.STRING },
-      sales_order_number: { type: Type.STRING },
       buyer_reference: { type: Type.STRING },
       contract_number: { type: Type.STRING },
-      delivery_note_number: { type: Type.STRING },
-      project_reference: { type: Type.STRING },
-      delivery_date: { type: Type.STRING },
       supplier_name: { type: Type.STRING },
       supplier_vat: { type: Type.STRING },
       supplier_siret: { type: Type.STRING },
@@ -57,18 +56,17 @@ export const extractInvoiceData = async (
       buyer_vat: { type: Type.STRING },
       buyer_siret: { type: Type.STRING },
       buyer_address: { type: Type.STRING },
-      buyer_iban: { type: Type.STRING },
-      buyer_bic: { type: Type.STRING },
       payment_terms_text: { type: Type.STRING },
-      payment_reference: { type: Type.STRING },
-      payment_means_code: { type: Type.STRING },
       invoice_note: { type: Type.STRING },
       iban: { type: Type.STRING },
       bic: { type: Type.STRING },
-      prepaid_amount: { type: Type.NUMBER },
       amount_excl_vat: { type: Type.NUMBER },
+      global_discount: { type: Type.NUMBER },
+      global_charge: { type: Type.NUMBER },
       total_vat_amount: { type: Type.NUMBER },
       amount_incl_vat: { type: Type.NUMBER },
+      prepaid_amount: { type: Type.NUMBER },
+      amount_due: { type: Type.NUMBER },
       vat_breakdowns: {
         type: Type.ARRAY,
         items: {
@@ -77,8 +75,7 @@ export const extractInvoiceData = async (
             vat_category: { type: Type.STRING },
             vat_rate: { type: Type.NUMBER },
             vat_taxable_amount: { type: Type.NUMBER },
-            vat_amount: { type: Type.NUMBER },
-            exemption_reason: { type: Type.STRING }
+            vat_amount: { type: Type.NUMBER }
           },
           required: ["vat_category", "vat_rate", "vat_taxable_amount", "vat_amount"]
         }
@@ -92,9 +89,8 @@ export const extractInvoiceData = async (
             description: { type: Type.STRING },
             quantity: { type: Type.NUMBER },
             unit_of_measure: { type: Type.STRING },
-            gross_price: { type: Type.NUMBER },
-            discount_rate: { type: Type.NUMBER },
             unit_price: { type: Type.NUMBER },
+            gross_price: { type: Type.NUMBER },
             tax_rate: { type: Type.NUMBER },
             line_vat_category: { type: Type.STRING },
             amount: { type: Type.NUMBER }
@@ -105,24 +101,17 @@ export const extractInvoiceData = async (
     required: ["supplier_name", "invoice_number", "amount_incl_vat", "vat_breakdowns"],
   };
 
-  const systemInstruction = `EXTRACTEUR RFE EN16931 STRICT (FAC-X 2026).
-OBJET: Extraction pour plateformes agréées (PDP) & rapprochement automatique (STP).
+  const systemInstruction = `EXTRACTEUR RFE EN16931 (FACTUR-X 2026).
+Extraire toutes les données sémantiques BT-xxx du document PDF.
 
-CHAMPS CRITIQUES TRANSMISSION (PDP):
-1. VENTILATION TVA (BG-23): Un array 'vat_breakdowns' PAR TAUX obligatoire.
-   - vat_category (BT-118): S=Standard, Z=Zéro, E=Exo, AE=Autoliquid, K=Intracom.
-   - exemption_reason (BT-120): Requis si non Standard.
-2. LIGNES (BG-25): line_vat_category (BT-151) requis par ligne.
-3. IDENTIFIANTS: SIRET 14 chiffres, TVA FR+11 chiffres.
-4. BANCAIRE: IBAN Vendeur (BT-84) ET IBAN Acheteur (BT-91) si prélèvement.
+RÈGLES CRITIQUES :
+1. VAT_BREAKDOWN (BG-23) : Requis par taux de TVA. vat_category doit être (S, Z, E, AE, K, G, O).
+2. LIGNES (BG-25) : Chaque ligne doit avoir son line_vat_category.
+3. IDENTIFIANTS : SIRET (14 chiffres), TVA (Code Pays + 11 chiffres).
+4. MONTANTS : Décimales précises. amount_due = amount_incl_vat - prepaid_amount.
+5. BANCAIRE : Extraire l'IBAN du vendeur.
 
-CHAMPS CRITIQUES RAPPROCHEMENT (STP):
-1. COMMANDE: PO (BT-13) et Sales Order (BT-14).
-2. LOGISTIQUE: Bon de livraison (BT-16) et Date de livraison (BT-72).
-3. RÉFÉRENCES: Réf. Acheteur (BT-10), Contrat (BT-12), Projet (BT-11).
-4. PAIEMENT: Référence de paiement (BT-83).
-
-RÉPONSE: JSON STRICT UNIQUEMENT.`;
+REPONDRE UNIQUEMENT EN JSON.`;
 
   try {
     const response = await ai.models.generateContent({
@@ -130,89 +119,97 @@ RÉPONSE: JSON STRICT UNIQUEMENT.`;
       contents: [{
         parts: [
           { inlineData: { mimeType, data: base64Data } },
-          { text: "Extrais les données EN16931 exhaustives pour PDP et STP." }
+          { text: "Analyse cette facture et retourne le JSON complet conforme RFE EN16931." }
         ]
       }],
       config: {
         systemInstruction,
         responseMimeType: "application/json",
-        responseSchema: ultimateSchema,
-        temperature: 0,
-        thinkingConfig: { thinkingBudget: 0 }
+        responseSchema: schema,
+        temperature: 0
       },
     });
 
-    const rawData = JSON.parse(response.text || "{}");
+    const raw = JSON.parse(response.text || "{}");
     const usage = response.usageMetadata || { totalTokenCount: 0 };
 
-    const items: InvoiceItem[] = (rawData.line_items || []).map((item: any) => ({
-      articleId: item.article_id || "",
-      description: item.description || "",
-      quantity: parseQuantity(item.quantity),
-      unitOfMeasure: item.unit_of_measure || "C62",
-      grossPrice: item.gross_price || null,
-      discount: item.discount_rate || null,
-      unitPrice: item.unit_price || null,
-      taxRate: item.tax_rate || 20.0,
-      lineVatCategory: item.line_vat_category || "S",
-      amount: item.amount || null,
+    // Mapping Item par Item (Pas de perte)
+    const items: InvoiceItem[] = (raw.line_items || []).map((it: any) => ({
+      articleId: it.article_id || "",
+      description: it.description || "",
+      quantity: parseNum(it.quantity),
+      unitOfMeasure: it.unit_of_measure || "C62",
+      unitPrice: parseNum(it.unit_price),
+      grossPrice: parseNum(it.gross_price),
+      discount: 0,
+      lineAllowanceAmount: 0,
+      lineChargeAmount: 0,
+      taxRate: parseNum(it.tax_rate),
+      lineVatCategory: it.line_vat_category || "S",
+      amount: parseNum(it.amount),
     }));
 
-    const vatBreakdowns: VatBreakdown[] = (rawData.vat_breakdowns || []).map((v: any) => ({
+    // Mapping TVA par TVA
+    const vats: VatBreakdown[] = (raw.vat_breakdowns || []).map((v: any) => ({
       vatCategory: v.vat_category || "S",
-      vatRate: v.vat_rate || 20.0,
-      vatTaxableAmount: v.vat_taxable_amount || 0,
-      vatAmount: v.vat_amount || 0,
-      exemptionReason: v.exemption_reason || ""
+      vatRate: parseNum(v.vat_rate),
+      vatTaxableAmount: parseNum(v.vat_taxable_amount),
+      vatAmount: parseNum(v.vat_amount)
     }));
 
-    const invoiceData: InvoiceData = {
+    // Objet final exhaustif
+    const invoice: InvoiceData = {
       id: crypto.randomUUID(),
-      companyId: companyId,
-      extractionMode: 'ULTIMATE',
-      direction: direction,
-      invoiceType: rawData.invoice_type === 'CREDIT_NOTE' ? InvoiceType.CREDIT_NOTE : 
-                   rawData.invoice_type === 'CORRECTIVE' ? InvoiceType.CORRECTIVE :
-                   rawData.invoice_type === 'SELF_INVOICE' ? InvoiceType.SELF_INVOICE : InvoiceType.INVOICE,
-      supplier: rawData.supplier_name || "",
-      supplierAddress: rawData.supplier_address || "",
-      supplierVat: rawData.supplier_vat || "",
-      supplierSiret: rawData.supplier_siret?.replace(/\s/g, "") || "",
-      buyerName: rawData.buyer_name || "",
-      buyerAddress: rawData.buyer_address || "",
-      buyerVat: rawData.buyer_vat || "",
-      buyerSiret: rawData.buyer_siret?.replace(/\s/g, "") || "",
-      buyerIban: rawData.buyer_iban?.replace(/\s/g, "") || "",
-      buyerBic: rawData.buyer_bic || "",
-      invoiceNumber: rawData.invoice_number || "",
-      invoiceDate: parseInvoiceDate(rawData.invoice_date),
-      dueDate: parseInvoiceDate(rawData.due_date),
-      poNumber: rawData.po_number || "",
-      salesOrderReference: rawData.sales_order_number || "",
-      deliveryNoteNumber: rawData.delivery_note_number || "",
-      contractNumber: rawData.contract_number || "",
-      buyerReference: rawData.buyer_reference || "",
-      projectReference: rawData.project_reference || "",
-      deliveryDate: parseInvoiceDate(rawData.delivery_date),
-      amountExclVat: rawData.amount_excl_vat || null,
-      totalVat: rawData.total_vat_amount || null,
-      amountInclVat: rawData.amount_incl_vat || null,
-      prepaidAmount: rawData.prepaid_amount || 0,
-      currency: rawData.currency || "EUR",
-      iban: rawData.iban?.replace(/\s/g, "") || "",
-      bic: rawData.bic || "",
-      paymentTermsText: rawData.payment_terms_text || "",
-      paymentReference: rawData.payment_reference || "",
-      paymentMeansCode: rawData.payment_means_code || "30",
-      invoiceNote: rawData.invoice_note || "",
+      companyId,
+      owner,
+      extractionMode: mode,
+      extractedAt: new Date().toISOString(),
+      direction,
+      isArchived: false,
+      erpStatus: ErpStatus.PENDING,
+      
+      facturXProfile: FacturXProfile.COMFORT,
+      invoiceType: raw.invoice_type === 'CREDIT_NOTE' ? InvoiceType.CREDIT_NOTE : InvoiceType.INVOICE,
+      invoiceNumber: raw.invoice_number || "INCONNU",
+      invoiceDate: parseInvoiceDate(raw.invoice_date),
+      dueDate: parseInvoiceDate(raw.due_date),
+      taxPointDate: parseInvoiceDate(raw.tax_point_date),
+      currency: raw.currency || "EUR",
+      poNumber: raw.po_number || "",
+      buyerReference: raw.buyer_reference || "",
+      contractNumber: raw.contract_number || "",
+      invoiceNote: raw.invoice_note || "",
+
+      supplier: raw.supplier_name || "",
+      supplierAddress: raw.supplier_address || "",
+      supplierVat: raw.supplier_vat || "",
+      supplierSiret: raw.supplier_siret?.replace(/\s/g, "") || "",
+      
+      buyerName: raw.buyer_name || "",
+      buyerAddress: raw.buyer_address || "",
+      buyerVat: raw.buyer_vat || "",
+      buyerSiret: raw.buyer_siret?.replace(/\s/g, "") || "",
+      
+      iban: raw.iban?.replace(/\s/g, "") || "",
+      bic: raw.bic?.replace(/\s/g, "") || "",
+      paymentTermsText: raw.payment_terms_text || "",
+
+      amountExclVat: parseNum(raw.amount_excl_vat),
+      globalDiscount: parseNum(raw.global_discount),
+      globalCharge: parseNum(raw.global_charge),
+      totalVat: parseNum(raw.total_vat_amount),
+      amountInclVat: parseNum(raw.amount_incl_vat),
+      prepaidAmount: parseNum(raw.prepaid_amount),
+      amountDueForPayment: parseNum(raw.amount_due) || parseNum(raw.amount_incl_vat),
+
+      items,
+      vatBreakdowns: vats,
       originalFilename: filename,
-      fileData: base64Data,
-      items: withItems ? items : undefined,
-      vatBreakdowns: vatBreakdowns,
+      fileData: base64Data
     };
 
     return { 
-      invoice: invoiceData, 
+      invoice, 
       usage: { 
         promptTokens: usage.promptTokenCount || 0, 
         completionTokens: usage.candidatesTokenCount || 0, 
@@ -220,7 +217,7 @@ RÉPONSE: JSON STRICT UNIQUEMENT.`;
       } 
     };
   } catch (error) {
-    console.error("Gemini RFE Extraction Error:", error);
+    console.error("Critical Extraction Error:", error);
     throw error;
   }
 };

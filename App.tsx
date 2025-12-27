@@ -1,9 +1,9 @@
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { UploadCloud, Loader2, Cpu, LogOut, Settings, Zap, Users, Inbox, Archive, Trash2, FileDown, FileCode, X, AlertTriangle } from 'lucide-react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { UploadCloud, Loader2, Cpu, LogOut, Settings, Zap, Users, CloudLightning, ShieldCheck, Inbox, Archive, Trash2, FileDown, RefreshCw, CheckCircle2, FileJson, FileCode, X } from 'lucide-react';
 import { extractInvoiceData } from './services/geminiService';
 import { dbService } from './services/databaseService';
-import { InvoiceData, ProcessingLog, ErpConfig, UserProfile, PartnerMasterData, LookupTable, ExportTemplate, XmlMappingProfile } from './types';
+import { InvoiceData, ErpStatus, ProcessingLog, ErpConfig, UserProfile, UserRole, PartnerMasterData, LookupTable, ExportTemplate, XmlMappingProfile } from './types';
 import { ProcessingLogs } from './components/ProcessingLogs';
 import { InvoiceTable } from './components/InvoiceTable';
 import { LoginScreen } from './components/LoginScreen';
@@ -12,7 +12,6 @@ import { UserManagement } from './components/UserManagement';
 import { generateTemplatedCSV } from './services/exportService';
 import { generateFacturXXML } from './services/facturXService';
 import { downloadCSV } from './utils/csvHelper';
-import { sendInvoiceToErp } from './services/erpService';
 
 const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<string | null>(localStorage.getItem('invoice-session-active-user'));
@@ -79,13 +78,6 @@ const App: React.FC = () => {
     initSession();
   }, [currentUser, applyProfileData, handleLogout]);
 
-  const addLog = async (message: string, type: ProcessingLog['type'] = 'info') => {
-    if (!userProfile) return;
-    await dbService.saveLog(userProfile.username, message, type);
-    const newLogs = await dbService.getLogs(userProfile.username);
-    setLogs(newLogs);
-  };
-
   const handleInvoiceUpdate = async (id: string, updates: Partial<InvoiceData>) => {
     if (!userProfile) return;
     setAllInvoices(prev => {
@@ -102,46 +94,29 @@ const App: React.FC = () => {
     if (!files || !userProfile) return;
     setIsProcessing(true);
     setProcessProgress({ current: 0, total: files.length });
-    
     for (const file of Array.from(files)) {
       try {
         const base64Data = await new Promise<string>((r) => {
-          const reader = new FileReader(); 
-          reader.onload = () => r((reader.result as string).split(',')[1]); 
-          reader.readAsDataURL(file);
+          const reader = new FileReader(); reader.onload = () => r((reader.result as string).split(',')[1]); reader.readAsDataURL(file);
         });
-
-        const result = await extractInvoiceData(base64Data, file.type, file.name, 'ULTIMATE', 'INBOUND', userProfile.companyId, true);
-        const inv = { 
-          ...result.invoice, 
-          owner: userProfile.username, 
-          companyId: userProfile.companyId, 
-          extractedAt: new Date().toISOString() 
-        };
-
-        // DÉDOUBLONNAGE INTELLIGENT
-        const isDuplicate = allInvoices.some(existing => 
-          existing.invoiceNumber === inv.invoiceNumber && 
-          existing.supplier === inv.supplier && 
-          !existing.isArchived
-        );
-
-        if (isDuplicate) {
-          addLog(`Doublon détecté : ${inv.supplier} - ${inv.invoiceNumber}. Fichier ignoré.`, 'warning');
-          continue;
-        }
-
+        // FIX: Replaced boolean "true" with userProfile.username string for owner parameter
+        const result = await extractInvoiceData(base64Data, file.type, file.name, 'ULTIMATE', 'INBOUND', userProfile.companyId, userProfile.username);
+        const inv = { ...result.invoice, owner: userProfile.username, companyId: userProfile.companyId, extractedAt: new Date().toISOString() };
         await dbService.saveInvoice(inv);
         await dbService.updateUserStats(userProfile.username, result.usage.totalTokens);
         setAllInvoices(prev => [inv, ...prev]);
         addLog(`Facture ${inv.invoiceNumber} extraite (${result.usage.totalTokens} tokens)`, 'success');
-      } catch (err: any) { 
-        addLog(`Erreur : ${file.name} - ${err.message}`, 'error'); 
-      } finally { 
-        setProcessProgress(prev => ({ ...prev, current: prev.current + 1 })); 
-      }
+      } catch (err: any) { addLog(`Erreur : ${file.name} - ${err.message}`, 'error'); }
+      finally { setProcessProgress(prev => ({ ...prev, current: prev.current + 1 })); }
     }
     setIsProcessing(false);
+  };
+
+  const addLog = async (message: string, type: ProcessingLog['type'] = 'info') => {
+    if (!userProfile) return;
+    await dbService.saveLog(userProfile.username, message, type);
+    const newLogs = await dbService.getLogs(userProfile.username);
+    setLogs(newLogs);
   };
 
   const handleBulkExport = (type: 'CSV' | 'XML', templateId?: string) => {
@@ -150,7 +125,7 @@ const App: React.FC = () => {
 
     if (type === 'CSV') {
       const template = templates.find(t => t.id === templateId) || templates[0];
-      if (!template) return alert("Veuillez créer un template CSV.");
+      if (!template) return alert("Veuillez créer un template CSV dans le Hub.");
       const csv = generateTemplatedCSV(selectedInvoices, template, lookupTables);
       downloadCSV(csv, `export_${new Date().getTime()}.csv`);
     } else if (type === 'XML') {
@@ -162,38 +137,13 @@ const App: React.FC = () => {
       } else {
         xmlContent = generateFacturXXML(selectedInvoices[0], true);
       }
+      
       const blob = new Blob(['\ufeff', xmlContent], { type: 'text/xml;charset=utf-8' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
-      link.href = url; 
-      link.download = `facturx_${new Date().getTime()}.xml`; 
-      link.click();
+      link.href = url; link.download = `export_norme_CII_${new Date().getTime()}.xml`; link.click();
     }
-    addLog(`${selectedInvoices.length} factures exportées (${type})`, 'success');
-  };
-
-  // Fix: Updated handleSyncToErp to handle multiple IDs as expected by InvoiceTable and added loop logic
-  const handleSyncToErp = async (ids: string[]) => {
-    if (!erpConfig.enabled) return alert("ERP non configuré.");
-    
-    for (const id of ids) {
-      const inv = allInvoices.find(i => i.id === id);
-      if (!inv) continue;
-      
-      addLog(`Synchronisation ERP pour ${inv.invoiceNumber}...`, 'info');
-      try {
-        const res = await sendInvoiceToErp(inv, erpConfig);
-        if (res.success) {
-          handleInvoiceUpdate(id, { erpStatus: 'SUCCESS' as any, erpReference: res.reference });
-          addLog(`Succès synchronisation ERP : ${inv.invoiceNumber}`, 'success');
-        } else {
-          handleInvoiceUpdate(id, { erpStatus: 'ERROR' as any });
-          addLog(`Erreur ERP : ${res.message}`, 'error');
-        }
-      } catch (err: any) {
-        addLog(`Erreur critique synchronisation ERP (${inv.invoiceNumber}) : ${err.message}`, 'error');
-      }
-    }
+    addLog(`${selectedInvoices.length} factures exportées au format ${type}`, 'success');
   };
 
   const handleBulkDelete = async (ids: string[]) => {
@@ -215,6 +165,10 @@ const App: React.FC = () => {
 
   const filteredInvoices = useMemo(() => allInvoices.filter(inv => viewMode === 'ARCHIVED' ? inv.isArchived : !inv.isArchived), [allInvoices, viewMode]);
 
+  const setLocalMasterData = (data: PartnerMasterData[]) => {
+    setMasterData(data);
+  };
+
   if (isInitializing) return <div className="min-h-screen bg-slate-950 flex items-center justify-center"><Loader2 className="w-12 h-12 text-indigo-500 animate-spin" /></div>;
 
   if (!currentUser || !userProfile) return (
@@ -226,10 +180,7 @@ const App: React.FC = () => {
       <header className="bg-slate-950 px-8 h-20 flex items-center justify-between sticky top-0 z-50 shadow-xl border-b border-white/5">
         <div className="flex items-center space-x-6">
           <div className="bg-indigo-600 p-2.5 rounded-xl text-white shadow-lg shadow-indigo-500/20"><Cpu className="w-6 h-6" /></div>
-          <div>
-            <h1 className="text-xl font-black text-white tracking-[0.2em] uppercase">Invoice Command</h1>
-            <div className="flex items-center space-x-2 mt-0.5"><span className="text-[9px] font-black text-indigo-400 uppercase tracking-widest">{userProfile?.companyName}</span></div>
-          </div>
+          <div><h1 className="text-xl font-black text-white tracking-[0.2em] uppercase">Invoice Command</h1><div className="flex items-center space-x-2 mt-0.5"><span className="text-[9px] font-black text-indigo-400 uppercase tracking-widest">{userProfile?.companyName}</span></div></div>
         </div>
         <div className="flex items-center space-x-4">
           {(userProfile?.role === 'ADMIN' || userProfile?.role === 'SUPER_ADMIN') && (
@@ -252,7 +203,7 @@ const App: React.FC = () => {
                 <button onClick={() => {setViewMode('ACTIVE'); setSelectedIds(new Set());}} className={`flex items-center space-x-2 px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${viewMode === 'ACTIVE' ? 'bg-slate-900 text-white shadow-xl' : 'bg-white border border-slate-200 text-slate-400 hover:bg-slate-50'}`}><Inbox className="w-4 h-4" /><span>Actives ({allInvoices.filter(i => !i.isArchived).length})</span></button>
                 <button onClick={() => {setViewMode('ARCHIVED'); setSelectedIds(new Set());}} className={`flex items-center space-x-2 px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${viewMode === 'ARCHIVED' ? 'bg-slate-900 text-white shadow-xl' : 'bg-white border border-slate-200 text-slate-400 hover:bg-slate-50'}`}><Archive className="w-4 h-4" /><span>Archives ({allInvoices.filter(i => i.isArchived).length})</span></button>
             </div>
-            <InvoiceTable invoices={filteredInvoices} selectedIds={selectedIds} isArchiveView={viewMode === 'ARCHIVED'} onToggleSelection={(id) => setSelectedIds(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; })} onToggleAll={() => setSelectedIds(selectedIds.size === filteredInvoices.length ? new Set() : new Set(filteredInvoices.map(i => i.id)))} onUpdate={handleInvoiceUpdate} onDeleteInvoices={handleBulkDelete} onArchiveInvoices={handleBulkArchive} onSyncInvoices={handleSyncToErp} lookupTables={lookupTables} templates={templates} xmlProfiles={xmlProfiles} masterData={masterData} />
+            <InvoiceTable invoices={filteredInvoices} selectedIds={selectedIds} isArchiveView={viewMode === 'ARCHIVED'} onToggleSelection={(id) => setSelectedIds(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; })} onToggleAll={() => setSelectedIds(selectedIds.size === filteredInvoices.length ? new Set() : new Set(filteredInvoices.map(i => i.id)))} onUpdate={handleInvoiceUpdate} onDeleteInvoices={handleBulkDelete} onArchiveInvoices={handleBulkArchive} onSyncInvoices={() => {}} lookupTables={lookupTables} templates={templates} xmlProfiles={xmlProfiles} masterData={masterData} />
           </div>
           <div className="xl:col-span-3 xl:sticky xl:top-28">
             <ProcessingLogs logs={logs} />
@@ -272,6 +223,7 @@ const App: React.FC = () => {
                 <div className="absolute bottom-full left-0 pb-3 hidden group-hover:block min-w-[200px] z-[70]">
                     <div className="bg-white border border-slate-200 rounded-xl shadow-2xl p-2">
                         {templates.map(t => ( <button key={t.id} onClick={() => handleBulkExport('CSV', t.id)} className="w-full text-left px-4 py-2 hover:bg-slate-50 text-[9px] font-black uppercase text-slate-600 rounded-lg">{t.name}</button> ))}
+                        {templates.length === 0 && <p className="p-2 text-[8px] text-slate-400 uppercase italic">Aucun template</p>}
                     </div>
                 </div>
              </div>
@@ -283,7 +235,7 @@ const App: React.FC = () => {
         </div>
       )}
 
-      <ConfigurationModal isOpen={showConfig} onClose={() => { if (userProfile) dbService.saveCompanyConfig(userProfile.companyId, { erpConfig, masterData, lookupTables, templates, xmlProfiles }); setShowConfig(false); }} erpConfig={erpConfig} onSaveErp={setErpConfig} lookupTables={lookupTables} onSaveLookups={setLookupTables} templates={templates} onSaveTemplates={setTemplates} xmlProfiles={xmlProfiles} onSaveXmlProfiles={setXmlProfiles} masterData={masterData} onSaveMasterData={setMasterData} />
+      <ConfigurationModal isOpen={showConfig} onClose={() => { if (userProfile) dbService.saveCompanyConfig(userProfile.companyId, { erpConfig, masterData, lookupTables, templates, xmlProfiles }); setShowConfig(false); }} erpConfig={erpConfig} onSaveErp={setErpConfig} lookupTables={lookupTables} onSaveLookups={setLookupTables} templates={templates} onSaveTemplates={setTemplates} xmlProfiles={xmlProfiles} onSaveXmlProfiles={setXmlProfiles} masterData={masterData} onSaveMasterData={setLocalMasterData} />
       {userProfile && <UserManagement isOpen={showUserMgmt} onClose={() => setShowUserMgmt(false)} users={[]} currentUser={userProfile.username} currentUserCompanyId={userProfile.companyId} userRole={userProfile.role} onUpdateRole={() => {}} onDeleteUser={() => {}} onResetPassword={() => {}} />}
     </div>
   );

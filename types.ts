@@ -1,25 +1,27 @@
 
 export interface VatBreakdown {
-  vatCategory: string; // BT-118 (S, Z, E, AE, etc.)
+  vatCategory: string; // BT-118 (S, Z, E, AE, K, G, O)
   vatRate: number;    // BT-119
   vatTaxableAmount: number; // BT-116
   vatAmount: number;   // BT-117
-  exemptionReason?: string; // BT-120 (OBLIGATOIRE si non Standard)
+  exemptionReasonCode?: string; // BT-121
+  exemptionReason?: string; // BT-120
 }
 
 export interface InvoiceItem {
-  articleId: string;
-  description: string;
-  quantity: number | null;
-  unitOfMeasure?: string;
-  grossPrice?: number | null;
-  discount?: number | null; // BT-147 (Rate %)
-  lineAllowanceAmount?: number | null; // BT-136 (€)
-  lineChargeAmount?: number | null;    // BT-141 (€)
-  unitPrice: number | null;
-  taxRate?: number | null;
-  lineVatCategory?: string; // BT-151 (OBLIGATOIRE RFE)
-  amount: number | null;
+  articleId: string; // BT-128
+  name?: string; // BT-153
+  description: string; // BT-129
+  quantity: number | null; // BT-129
+  unitOfMeasure: string; // BT-130 (Code rec. 20)
+  grossPrice: number | null; // BT-148
+  discount: number | null; // BT-147 (Rate %)
+  lineAllowanceAmount: number | null; // BT-136 (€)
+  lineChargeAmount: number | null;    // BT-141 (€)
+  unitPrice: number | null; // BT-146 (Net price)
+  taxRate: number | null; // BT-152
+  lineVatCategory: string; // BT-151 (OBLIGATOIRE RFE)
+  amount: number | null; // BT-131 (Line total HT)
 }
 
 export enum ErpStatus {
@@ -31,8 +33,6 @@ export enum ErpStatus {
 export enum InvoiceType {
   INVOICE = 'INVOICE',
   CREDIT_NOTE = 'CREDIT_NOTE',
-  CORRECTIVE = 'CORRECTIVE', // BT-3: 384
-  SELF_INVOICE = 'SELF_INVOICE', // BT-3: 389
 }
 
 export enum FacturXProfile {
@@ -44,6 +44,23 @@ export enum FacturXProfile {
 export type OperationCategory = 'GOODS' | 'SERVICES' | 'MIXED';
 export type TaxPointType = 'DEBIT' | 'CASH' | 'DELIVERY';
 export type ExtractionMode = 'BASIC' | 'ULTIMATE';
+
+export interface UserProfile {
+  username: string;
+  companyId: string;
+  role: UserRole;
+  isApproved: boolean;
+  createdAt: string;
+  companyName?: string;
+  companyConfig?: any;
+  stats: {
+    extractRequests: number;
+    totalTokens: number;
+    lastActive: string;
+  };
+}
+
+export type UserRole = 'SUPER_ADMIN' | 'ADMIN' | 'USER';
 
 export interface Company {
   id: string;
@@ -68,67 +85,73 @@ export interface PartnerMasterData {
 }
 
 export interface InvoiceData {
+  // Metadata & System
   id: string;
   companyId: string;
   owner?: string; 
-  sessionId?: string;
-  extractionMode?: ExtractionMode;
-  direction?: 'INBOUND' | 'OUTBOUND';
-  facturXProfile?: FacturXProfile;
-  businessProcessId?: string;
-  operationCategory?: OperationCategory;
-  taxPointType?: TaxPointType;
-  invoiceType: InvoiceType;
-  invoiceNumber: string;
-  invoiceDate: string;
-  extractedAt?: string; 
-  dueDate?: string;
-  taxPointDate?: string;
-  currency: string;
+  extractionMode: ExtractionMode;
+  extractedAt: string;
+  direction: 'INBOUND' | 'OUTBOUND';
+  isArchived: boolean;
+  erpStatus: ErpStatus;
+  erpReference?: string;
+
+  // Header (BG-2)
+  facturXProfile: FacturXProfile;
+  businessProcessId?: string; // BT-23
+  invoiceType: InvoiceType; // BT-3
+  invoiceNumber: string; // BT-1
+  invoiceDate: string; // BT-2
+  dueDate?: string; // BT-9
+  taxPointDate?: string; // BT-7
+  currency: string; // BT-5
   poNumber?: string; // BT-13
-  salesOrderReference?: string; // BT-14
   buyerReference?: string; // BT-10
   contractNumber?: string; // BT-12
   deliveryNoteNumber?: string; // BT-16
   projectReference?: string; // BT-11
   deliveryDate?: string; // BT-72
-  supplier: string;
+  invoiceNote?: string; // BT-22
+
+  // Parties (BG-4 / BG-7)
+  supplier: string; // BT-27
   supplierAddress?: string;
-  supplierVat?: string;
-  supplierSiret?: string;
+  supplierVat?: string; // BT-31
+  supplierSiret?: string; // BT-29
   supplierErpCode?: string;
-  buyerName?: string;
+  isMasterMatched?: boolean;
+
+  buyerName?: string; // BT-44
   buyerAddress?: string;
-  buyerVat?: string;
-  buyerSiret?: string;
+  buyerVat?: string; // BT-48
+  buyerSiret?: string; // BT-47
   buyerErpCode?: string;
-  buyerIban?: string; // BT-91
-  buyerBic?: string; // BT-86
-  amountExclVat: number | null;
-  totalVat?: number | null;
-  amountInclVat: number | null;
-  amountDueForPayment?: number | null; // BT-115
+  isBuyerMasterMatched?: boolean;
+
+  // Payment (BG-16)
+  iban?: string; // BT-84
+  bic?: string; // BT-85
+  paymentMethod?: string; // BT-81/83 (FIX: Added missing property)
+  paymentMeansCode?: string; // BT-81
+  paymentTermsText?: string; // BT-20
+
+  // Totals (BG-22)
+  amountExclVat: number; // BT-109
+  globalDiscount?: number; // BT-107
+  globalCharge?: number; // BT-108
+  totalVat: number; // BT-110
+  amountInclVat: number; // BT-112
   prepaidAmount?: number; // BT-113
   roundingAmount?: number; // BT-114
-  globalDiscount?: number;
-  globalCharge?: number;
-  iban?: string;
-  bic?: string;
-  paymentMethod?: string;
-  paymentTerms?: string;
-  paymentTermsText?: string; // BT-20
-  paymentReference?: string; // BT-83
-  paymentMeansCode?: string; // BT-81
-  invoiceNote?: string; // BT-22
+  amountDueForPayment: number; // BT-115
+
+  // Detailed Data
+  items: InvoiceItem[]; // BG-25
+  vatBreakdowns: VatBreakdown[]; // BG-23
+
+  // File Reference
   originalFilename: string;
   fileData?: string; 
-  items?: InvoiceItem[];
-  vatBreakdowns?: VatBreakdown[]; 
-  erpStatus?: ErpStatus;
-  erpReference?: string;
-  isMasterMatched?: boolean;
-  isBuyerMasterMatched?: boolean;
-  isArchived?: boolean;
 }
 
 export interface ProcessingLog {
@@ -136,6 +159,12 @@ export interface ProcessingLog {
   timestamp: Date;
   message: string;
   type: 'info' | 'success' | 'warning' | 'error';
+}
+
+export interface LookupTable {
+  id: string;
+  name: string;
+  entries: { key: string; value: string }[];
 }
 
 export interface ExportColumn {
@@ -159,29 +188,6 @@ export interface XmlMappingProfile {
   rootTag: string;
   itemTag: string;
   mappings: { btId: string; xmlTag: string; enabled: boolean }[];
-}
-
-export type UserRole = 'SUPER_ADMIN' | 'ADMIN' | 'USER';
-
-export interface UserProfile {
-  username: string;
-  companyId: string;
-  role: UserRole;
-  isApproved: boolean;
-  createdAt: string;
-  companyName?: string;
-  companyConfig?: any;
-  stats: {
-    extractRequests: number;
-    totalTokens: number;
-    lastActive: string;
-  };
-}
-
-export interface LookupTable {
-  id: string;
-  name: string;
-  entries: { key: string; value: string }[];
 }
 
 export interface ErpConfig {

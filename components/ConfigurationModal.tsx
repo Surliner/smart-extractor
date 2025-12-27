@@ -15,100 +15,145 @@ const FIELD_GROUPS = [
     { id: 'currency', label: 'Devise ISO (BT-5)' },
     { id: 'businessProcessId', label: 'Profil Standard (BT-24)' },
     { id: 'invoiceNote', label: 'Notes Facture (BT-22)' },
-    { id: 'extractionMode', label: 'Mode IA' }
+    { id: 'extractionMode', label: 'Mode IA' },
+    { id: 'direction', label: 'Sens Flux' }
   ]},
   { name: 'Vendeur (Seller)', fields: [
     { id: 'supplier', label: 'Nom Vendeur (BT-27)' },
-    { id: 'supplierSiret', label: 'SIRET Vendeur (BT-29)' },
-    { id: 'supplierVat', label: 'TVA Vendeur (BT-31)' },
+    { id: 'supplierSiret', label: 'SIRET Vendeur (BT-29) ⚠️' },
+    { id: 'supplierVat', label: 'TVA Vendeur (BT-31) ⚠️' },
     { id: 'supplierErpCode', label: 'Code ERP Vendeur' },
     { id: 'supplierAddress', label: 'Adresse Vendeur (BG-5)' },
-    { id: 'iban', label: 'IBAN Vendeur (BT-84)' },
-    { id: 'bic', label: 'BIC Vendeur (BT-85)' }
+    { id: 'iban', label: 'IBAN Vendeur (BT-84) ⚠️' },
+    { id: 'bic', label: 'BIC/SWIFT Vendeur (BT-85)' }
   ]},
   { name: 'Acheteur (Buyer)', fields: [
     { id: 'buyerName', label: 'Nom Acheteur (BT-44)' },
-    { id: 'buyerSiret', label: 'SIRET Acheteur (BT-47)' },
-    { id: 'buyerVat', label: 'TVA Acheteur (BT-48)' },
+    { id: 'buyerSiret', label: 'SIRET Acheteur (BT-47) ⚠️' },
+    { id: 'buyerVat', label: 'TVA Acheteur (BT-48) ⚠️' },
     { id: 'buyerErpCode', label: 'Code ERP Acheteur' },
-    { id: 'buyerAddress', label: 'Adresse Acheteur (BG-8)' },
-    { id: 'buyerIban', label: 'IBAN Acheteur (BT-91)' },
-    { id: 'buyerBic', label: 'BIC Acheteur (BT-86)' }
+    { id: 'buyerAddress', label: 'Adresse Acheteur (BG-8)' }
   ]},
-  { name: 'Logistique & Rapprochement', fields: [
-    { id: 'poNumber', label: 'N° Bon Commande (BT-13)' },
-    { id: 'salesOrderReference', label: 'N° Commande Vendeur (BT-14)' },
-    { id: 'deliveryNoteNumber', label: 'N° Bon Livraison (BT-16)' },
-    { id: 'buyerReference', label: 'Réf. Acheteur (BT-10)' },
+  { name: 'Références & Logistique', fields: [
+    { id: 'poNumber', label: 'N° Commande (BT-13)' },
+    { id: 'buyerReference', label: 'Réf. Acheteur (BT-10) ⚠️' },
     { id: 'contractNumber', label: 'N° Contrat (BT-12)' },
+    { id: 'deliveryNoteNumber', label: 'N° Bon Livraison (BT-16)' },
     { id: 'projectReference', label: 'Réf. Projet (BT-11)' },
     { id: 'deliveryDate', label: 'Date Livraison (BT-72)' }
   ]},
-  { name: 'Totaux & Paiement', fields: [
+  { name: 'Totaux Financiers', fields: [
     { id: 'amountExclVat', label: 'Total HT Net (BT-109)' },
     { id: 'totalVat', label: 'Total TVA (BT-110)' },
     { id: 'amountInclVat', label: 'Total TTC (BT-112)' },
-    { id: 'amountDueForPayment', label: 'Net à payer (BT-115)' },
-    { id: 'prepaidAmount', label: 'Acomptes (BT-113)' },
-    { id: 'roundingAmount', label: 'Arrondi (BT-114)' },
-    { id: 'paymentReference', label: 'Réf. de paiement (BT-83)' },
-    { id: 'paymentMeansCode', label: 'Code Mode Paiement (BT-81)' }
+    { id: 'prepaidAmount', label: 'Montant Acomptes (BT-113)' },
+    { id: 'globalDiscount', label: 'Remises Totales (BT-107)' },
+    { id: 'globalCharge', label: 'Frais Totaux (BT-108)' },
+    { id: 'paymentMethod', label: 'Mode Paiement' },
+    { id: 'paymentMeansCode', label: 'Code UN/CEFACT (BT-81)' },
+    { id: 'paymentTermsText', label: 'Conditions Paiement (BT-20)' }
   ]},
-  { name: 'Détail des Lignes', fields: [
-    { id: 'articleId', label: 'Ligne: Réf (BT-128)' },
+  { name: '⚠️ Ventilation TVA (BG-23) OBLIGATOIRE', fields: [
+    { id: 'vatBreakdowns', label: 'Détail TVA (Array JSON)' },
+    { id: 'vatCategory', label: 'Catégorie TVA (BT-118)' },
+    { id: 'vatRate', label: 'Taux % (BT-119)' },
+    { id: 'vatTaxableAmount', label: 'Base HT (BT-116)' },
+    { id: 'vatAmount', label: 'Montant TVA (BT-117)' }
+  ]},
+  { name: 'Détail des Lignes (BG-25)', fields: [
+    { id: 'articleId', label: 'Ligne: Réf. Article (BT-128)' },
     { id: 'description', label: 'Ligne: Désignation (BT-129)' },
     { id: 'quantity', label: 'Ligne: Quantité (BT-131)' },
     { id: 'unitOfMeasure', label: 'Ligne: Unité (BT-130)' },
     { id: 'unitPrice', label: 'Ligne: P.U. Net (BT-146)' },
+    { id: 'grossPrice', label: 'Ligne: P.U. Brut (BT-149)' },
+    { id: 'discount', label: 'Ligne: Remise % (BT-147)' },
+    { id: 'lineAllowanceAmount', label: 'Ligne: Remise € (BT-136)' },
+    { id: 'lineChargeAmount', label: 'Ligne: Frais € (BT-141)' },
     { id: 'taxRate', label: 'Ligne: Taux TVA % (BT-152)' },
-    { id: 'lineVatCategory', label: 'Ligne: Catégorie TVA (BT-151)' },
+    { id: 'lineVatCategory', label: 'Ligne: Catégorie TVA (BT-151) ⚠️' },
     { id: 'amount', label: 'Ligne: Montant HT (BT-131)' }
   ]}
 ];
 
-// glossary data stays the same as provided in original file
 const GLOSSARY_DATA = [
   {
     category: "En-tête & Identité (Header)",
     items: [
       { bt: 'BT-1', label: 'Invoice Number', desc: 'Identifiant unique de la facture (ex: FAC-2024-001).' },
       { bt: 'BT-2', label: 'Issue Date', desc: 'Date d\'émission légale du document.' },
-      { bt: 'BT-3', label: 'Invoice Type Code', desc: '380=Facture, 381=Avoir, 384=Rectif, 389=Auto.' },
+      { bt: 'BT-3', label: 'Invoice Type Code', desc: 'Code du type de document (380=Facture, 381=Avoir).' },
       { bt: 'BT-9', label: 'Payment Due Date', desc: 'Date à laquelle le paiement est exigible.' },
       { bt: 'BT-5', label: 'Currency Code', desc: 'Code devise ISO 4217 (ex: EUR).' },
-      { bt: 'BT-10', label: 'Buyer Reference', desc: 'Référence fournie par l\'acheteur.' },
-      { bt: 'BT-22', label: 'Invoice Note', desc: 'Commentaire ou mention légale additionnelle.' }
+      { bt: 'BT-10', label: 'Buyer Reference', desc: 'Référence fournie par l\'acheteur pour son suivi interne.' },
+      { bt: 'BT-22', label: 'Invoice Note', desc: 'Commentaire ou mention légale additionnelle.' },
+      { bt: 'BT-24', label: 'Business Process ID', desc: 'Identifiant du processus métier standardisé.' }
     ]
   },
   {
     category: "Vendeur (Seller)",
     items: [
       { bt: 'BT-27', label: 'Seller Name', desc: 'Raison sociale complète de l\'émetteur.' },
-      { bt: 'BT-29', label: 'Seller ID (SIRET)', desc: 'SIRET 14 chiffres.' },
-      { bt: 'BT-31', label: 'Seller VAT ID', desc: 'N° de TVA intracommunautaire.' },
-      { bt: 'BT-84', label: 'IBAN Vendeur', desc: 'Identifiant compte créancier.' }
+      { bt: 'BT-29', label: 'Seller ID (SIRET)', desc: 'Identifiant légal (SIRET 14 chiffres en France).' },
+      { bt: 'BT-31', label: 'Seller VAT ID', desc: 'N° de TVA intracommunautaire du vendeur.' },
+      { bt: 'BT-34', label: 'Seller Address', desc: 'Adresse géographique complète du siège du vendeur.' },
+      { bt: 'BT-30', label: 'Seller Legal Registration', desc: 'Identifiant d\'enregistrement légal (ex: RCS).' }
     ]
   },
   {
-    category: "Logistique & Références",
+    category: "Acheteur (Buyer)",
     items: [
-      { bt: 'BT-13', label: 'Purchase Order', desc: 'N° de commande de l\'acheteur.' },
-      { bt: 'BT-14', label: 'Sales Order', desc: 'N° de commande interne du vendeur.' },
-      { bt: 'BT-16', label: 'Despatch Advice', desc: 'N° du bon de livraison.' },
-      { bt: 'BT-12', label: 'Contract Number', desc: 'Identifiant du contrat cadre.' },
-      { bt: 'BT-11', label: 'Project Reference', desc: 'Référence au projet concerné.' },
-      { bt: 'BT-72', label: 'Delivery Date', desc: 'Date effective de la livraison.' }
+      { bt: 'BT-44', label: 'Buyer Name', desc: 'Raison sociale complète du client acheteur.' },
+      { bt: 'BT-47', label: 'Buyer ID (SIRET)', desc: 'Identifiant légal SIRET du client.' },
+      { bt: 'BT-48', label: 'Buyer VAT ID', desc: 'N° de TVA intracommunautaire du client.' },
+      { bt: 'BT-49', label: 'Buyer Address', desc: 'Adresse de facturation du client.' }
     ]
   },
   {
-    category: "Totaux & Règlements",
+    category: "Règlement (Payment)",
     items: [
-      { bt: 'BT-109', label: 'Total HT', desc: 'Montant total hors taxes.' },
-      { bt: 'BT-112', label: 'Total TTC', desc: 'Montant total toutes taxes comprises.' },
-      { bt: 'BT-115', label: 'Amount Due', desc: 'Net à payer final (TTC - Acomptes).' },
-      { bt: 'BT-81', label: 'Payment Means', desc: '30=Virement, 48=Carte, 49=Prélèvement.' },
-      { bt: 'BT-83', label: 'Payment Reference', desc: 'Libellé à utiliser pour le virement.' },
-      { bt: 'BT-91', label: 'Buyer IBAN', desc: 'IBAN de l\'acheteur si prélèvement.' }
+      { bt: 'BT-20', label: 'Payment Terms', desc: 'Conditions de règlement textuelles.' },
+      { bt: 'BT-81', label: 'Payment Means Code', desc: 'Code du mode de paiement (30=Virement, 48=Carte, etc.).' },
+      { bt: 'BT-83', label: 'Payment Reference', desc: 'Libellé à utiliser lors du virement (ex: N° Facture).' },
+      { bt: 'BT-84', label: 'IBAN', desc: 'Identifiant de compte bancaire international.' },
+      { bt: 'BT-85', label: 'BIC/SWIFT', desc: 'Code d\'identification de la banque.' }
+    ]
+  },
+  {
+    category: "⚠️ Ventilation TVA (BG-23) - Obligatoire",
+    items: [
+      { bt: 'BT-116', label: 'VAT Taxable Amount', desc: 'Base HT pour un taux donné. Somme des lignes à ce taux.' },
+      { bt: 'BT-117', label: 'VAT Amount', desc: 'Montant TVA calculé = Base × Taux. Requis pour chaque taux.' },
+      { bt: 'BT-118', label: 'VAT Category Code', desc: 'S=Standard, Z=Zéro, E=Exonéré, AE=Autoliquidation, G=Export.' },
+      { bt: 'BT-119', label: 'VAT Rate %', desc: 'Taux TVA: 20.00, 10.00, 5.50, 2.10, 0.00. Deux décimales.' },
+      { bt: 'BT-120', label: 'Exemption Reason', desc: 'Texte justificatif si exonération (ex: Art.293B CGI).' }
+    ]
+  },
+  {
+    category: "Totaux Financiers (Monetary Summation)",
+    items: [
+      { bt: 'BT-106', label: 'Net Amount', desc: 'Somme des montants HT des lignes.' },
+      { bt: 'BT-107', label: 'Allowances Total', desc: 'Somme des remises au niveau en-tête.' },
+      { bt: 'BT-108', label: 'Charges Total', desc: 'Somme des frais au niveau en-tête.' },
+      { bt: 'BT-109', label: 'Total HT', desc: 'Montant total hors taxes du document.' },
+      { bt: 'BT-110', label: 'Total VAT', desc: 'Montant total de la TVA.' },
+      { bt: 'BT-112', label: 'Total TTC', desc: 'Montant total TTC de la facture.' },
+      { bt: 'BT-113', label: 'Prepaid Amount', desc: 'Montant des acomptes déjà réglés.' },
+      { bt: 'BT-115', label: 'Amount Due', desc: 'Montant net à payer (TTC - Acomptes).' }
+    ]
+  },
+  {
+    category: "Lignes (Invoice Lines)",
+    items: [
+      { bt: 'BT-126', label: 'Line ID', desc: 'Identifiant de la ligne (1, 2, 3...).' },
+      { bt: 'BT-129', label: 'Item Name', desc: 'Désignation de l\'article ou service.' },
+      { bt: 'BT-131', label: 'Quantity', desc: 'Quantité facturée pour la ligne.' },
+      { bt: 'BT-136', label: 'Line Allowance', desc: 'Montant remise appliquée sur la ligne en €.' },
+      { bt: 'BT-141', label: 'Line Charge', desc: 'Montant frais ajoutés sur la ligne en €.' },
+      { bt: 'BT-146', label: 'Net Price', desc: 'Prix unitaire net de remise.' },
+      { bt: 'BT-149', label: 'Gross Price', desc: 'Prix unitaire brut avant remise.' },
+      { bt: 'BT-151', label: 'VAT Category', desc: 'Code catégorie TVA ligne (S, Z, E, AE). OBLIGATOIRE.' },
+      { bt: 'BT-152', label: 'VAT Rate', desc: 'Taux de TVA applicable en pourcentage.' }
     ]
   }
 ];
@@ -319,9 +364,7 @@ export const ConfigurationModal: React.FC<ConfigurationModalProps> = ({
                     <div className="space-y-2">
                        {tbl.entries.map((ent, idx) => (
                          <div key={idx} className="flex space-x-3">
-                            {/* Fixed: Use 't' instead of 'en' for the outer map fallback to correctly reference the current table item */}
                             <input placeholder="Libellé Source (ex: Amazon)" value={ent.key} onChange={e=>setLocalLookups(prev=>prev.map(t=>t.id===tbl.id?{...t, entries: t.entries.map((en, i)=>i===idx?{...en, key:e.target.value}:en)}:t))} className="flex-1 px-4 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold" />
-                            {/* Fixed: Use 't' instead of 'en' for the outer map fallback to correctly reference the current table item */}
                             <input placeholder="Code ERP (ex: 401AMZ)" value={ent.value} onChange={e=>setLocalLookups(prev=>prev.map(t=>t.id===tbl.id?{...t, entries: t.entries.map((en, i)=>i===idx?{...en, value:e.target.value}:en)}:t))} className="flex-1 px-4 py-2 bg-white border border-slate-200 rounded-lg text-xs font-black text-indigo-600" />
                             <button onClick={()=>setLocalLookups(prev=>prev.map(t=>t.id===tbl.id?{...t, entries: t.entries.filter((_, i)=>i!==idx)}:t))} className="p-2 text-slate-300 hover:text-rose-500"><Trash2 className="w-4 h-4" /></button>
                          </div>
