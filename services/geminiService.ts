@@ -37,13 +37,18 @@ export const extractInvoiceData = async (
   const ultimateSchema = {
     type: Type.OBJECT,
     properties: {
-      invoice_type: { type: Type.STRING, enum: ["INVOICE", "CREDIT_NOTE"] },
+      invoice_type: { type: Type.STRING, enum: ["INVOICE", "CREDIT_NOTE", "CORRECTIVE", "SELF_INVOICE"] },
       invoice_number: { type: Type.STRING },
       invoice_date: { type: Type.STRING },
       due_date: { type: Type.STRING },
       currency: { type: Type.STRING },
       po_number: { type: Type.STRING },
+      sales_order_number: { type: Type.STRING },
       buyer_reference: { type: Type.STRING },
+      contract_number: { type: Type.STRING },
+      delivery_note_number: { type: Type.STRING },
+      project_reference: { type: Type.STRING },
+      delivery_date: { type: Type.STRING },
       supplier_name: { type: Type.STRING },
       supplier_vat: { type: Type.STRING },
       supplier_siret: { type: Type.STRING },
@@ -52,10 +57,15 @@ export const extractInvoiceData = async (
       buyer_vat: { type: Type.STRING },
       buyer_siret: { type: Type.STRING },
       buyer_address: { type: Type.STRING },
+      buyer_iban: { type: Type.STRING },
+      buyer_bic: { type: Type.STRING },
       payment_terms_text: { type: Type.STRING },
+      payment_reference: { type: Type.STRING },
+      payment_means_code: { type: Type.STRING },
       invoice_note: { type: Type.STRING },
       iban: { type: Type.STRING },
       bic: { type: Type.STRING },
+      prepaid_amount: { type: Type.NUMBER },
       amount_excl_vat: { type: Type.NUMBER },
       total_vat_amount: { type: Type.NUMBER },
       amount_incl_vat: { type: Type.NUMBER },
@@ -67,7 +77,8 @@ export const extractInvoiceData = async (
             vat_category: { type: Type.STRING },
             vat_rate: { type: Type.NUMBER },
             vat_taxable_amount: { type: Type.NUMBER },
-            vat_amount: { type: Type.NUMBER }
+            vat_amount: { type: Type.NUMBER },
+            exemption_reason: { type: Type.STRING }
           },
           required: ["vat_category", "vat_rate", "vat_taxable_amount", "vat_amount"]
         }
@@ -95,17 +106,21 @@ export const extractInvoiceData = async (
   };
 
   const systemInstruction = `EXTRACTEUR RFE EN16931 STRICT (FAC-X 2026).
-OBJET: Extraction pour plateformes agréées (PDP).
+OBJET: Extraction pour plateformes agréées (PDP) & rapprochement automatique (STP).
 
-CHAMPS CRITIQUES:
-1. VENTILATION TVA (BG-23): Créer un array 'vat_breakdowns' PAR TAUX. 
-   - vat_category (BT-118): S=Standard, Z=Zéro, E=Exo, AE=Autoliquid.
-   - vat_taxable_amount (BT-116): Base HT du taux.
-   - vat_amount (BT-117): Base * Taux.
-2. LIGNES (BG-25): line_vat_category (BT-151) obligatoire par ligne.
-3. IDENTIFIANTS: SIRET 14 chiffres, TVA FR+11.
-4. BANCAIRE: IBAN Vendeur (BT-84) format FR.
-5. NOTES & PAIEMENT: invoice_note (BT-22) et payment_terms_text (BT-20).
+CHAMPS CRITIQUES TRANSMISSION (PDP):
+1. VENTILATION TVA (BG-23): Un array 'vat_breakdowns' PAR TAUX obligatoire.
+   - vat_category (BT-118): S=Standard, Z=Zéro, E=Exo, AE=Autoliquid, K=Intracom.
+   - exemption_reason (BT-120): Requis si non Standard.
+2. LIGNES (BG-25): line_vat_category (BT-151) requis par ligne.
+3. IDENTIFIANTS: SIRET 14 chiffres, TVA FR+11 chiffres.
+4. BANCAIRE: IBAN Vendeur (BT-84) ET IBAN Acheteur (BT-91) si prélèvement.
+
+CHAMPS CRITIQUES RAPPROCHEMENT (STP):
+1. COMMANDE: PO (BT-13) et Sales Order (BT-14).
+2. LOGISTIQUE: Bon de livraison (BT-16) et Date de livraison (BT-72).
+3. RÉFÉRENCES: Réf. Acheteur (BT-10), Contrat (BT-12), Projet (BT-11).
+4. PAIEMENT: Référence de paiement (BT-83).
 
 RÉPONSE: JSON STRICT UNIQUEMENT.`;
 
@@ -115,7 +130,7 @@ RÉPONSE: JSON STRICT UNIQUEMENT.`;
       contents: [{
         parts: [
           { inlineData: { mimeType, data: base64Data } },
-          { text: "Analyse cette facture et retourne le JSON conforme EN16931." }
+          { text: "Extrais les données EN16931 exhaustives pour PDP et STP." }
         ]
       }],
       config: {
@@ -147,7 +162,8 @@ RÉPONSE: JSON STRICT UNIQUEMENT.`;
       vatCategory: v.vat_category || "S",
       vatRate: v.vat_rate || 20.0,
       vatTaxableAmount: v.vat_taxable_amount || 0,
-      vatAmount: v.vat_amount || 0
+      vatAmount: v.vat_amount || 0,
+      exemptionReason: v.exemption_reason || ""
     }));
 
     const invoiceData: InvoiceData = {
@@ -155,7 +171,9 @@ RÉPONSE: JSON STRICT UNIQUEMENT.`;
       companyId: companyId,
       extractionMode: 'ULTIMATE',
       direction: direction,
-      invoiceType: rawData.invoice_type === 'CREDIT_NOTE' ? InvoiceType.CREDIT_NOTE : InvoiceType.INVOICE,
+      invoiceType: rawData.invoice_type === 'CREDIT_NOTE' ? InvoiceType.CREDIT_NOTE : 
+                   rawData.invoice_type === 'CORRECTIVE' ? InvoiceType.CORRECTIVE :
+                   rawData.invoice_type === 'SELF_INVOICE' ? InvoiceType.SELF_INVOICE : InvoiceType.INVOICE,
       supplier: rawData.supplier_name || "",
       supplierAddress: rawData.supplier_address || "",
       supplierVat: rawData.supplier_vat || "",
@@ -164,16 +182,28 @@ RÉPONSE: JSON STRICT UNIQUEMENT.`;
       buyerAddress: rawData.buyer_address || "",
       buyerVat: rawData.buyer_vat || "",
       buyerSiret: rawData.buyer_siret?.replace(/\s/g, "") || "",
+      buyerIban: rawData.buyer_iban?.replace(/\s/g, "") || "",
+      buyerBic: rawData.buyer_bic || "",
       invoiceNumber: rawData.invoice_number || "",
       invoiceDate: parseInvoiceDate(rawData.invoice_date),
       dueDate: parseInvoiceDate(rawData.due_date),
+      poNumber: rawData.po_number || "",
+      salesOrderReference: rawData.sales_order_number || "",
+      deliveryNoteNumber: rawData.delivery_note_number || "",
+      contractNumber: rawData.contract_number || "",
+      buyerReference: rawData.buyer_reference || "",
+      projectReference: rawData.project_reference || "",
+      deliveryDate: parseInvoiceDate(rawData.delivery_date),
       amountExclVat: rawData.amount_excl_vat || null,
       totalVat: rawData.total_vat_amount || null,
       amountInclVat: rawData.amount_incl_vat || null,
+      prepaidAmount: rawData.prepaid_amount || 0,
       currency: rawData.currency || "EUR",
       iban: rawData.iban?.replace(/\s/g, "") || "",
       bic: rawData.bic || "",
       paymentTermsText: rawData.payment_terms_text || "",
+      paymentReference: rawData.payment_reference || "",
+      paymentMeansCode: rawData.payment_means_code || "30",
       invoiceNote: rawData.invoice_note || "",
       originalFilename: filename,
       fileData: base64Data,

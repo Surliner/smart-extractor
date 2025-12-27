@@ -15,7 +15,6 @@ const formatToUDT = (dateStr: string | undefined): string => {
     return `${y}${m}${d}`;
   }
   if (/^\d{4}-\d{2}-\d{2}$/.test(clean)) return clean.replace(/-/g, '');
-  
   const date = new Date(dateStr);
   if (!isNaN(date.getTime())) {
     const y = date.getFullYear();
@@ -28,12 +27,7 @@ const formatToUDT = (dateStr: string | undefined): string => {
 
 const esc = (str: string | undefined | null): string => {
   if (!str) return '';
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&apos;');
+  return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');
 };
 
 const cleanID = (str: string | undefined | null): string => str ? str.replace(/\s/g, '') : '';
@@ -53,10 +47,13 @@ const parseAddress = (addressStr: string | undefined) => {
 
 export const generateFacturXXML = (invoice: InvoiceData, includeHeader: boolean = true): string => {
   const profile = invoice.facturXProfile || FacturXProfile.COMFORT;
-  const typeCode = invoice.invoiceType === InvoiceType.CREDIT_NOTE ? '381' : '380';
+  const typeCode = invoice.invoiceType === InvoiceType.CREDIT_NOTE ? '381' : 
+                   invoice.invoiceType === InvoiceType.CORRECTIVE ? '384' :
+                   invoice.invoiceType === InvoiceType.SELF_INVOICE ? '389' : '380';
+  
   const issueDateUDT = formatToUDT(invoice.invoiceDate);
   const dueDateUDT = formatToUDT(invoice.dueDate);
-  const taxPointDateUDT = formatToUDT(invoice.taxPointDate);
+  const deliveryDateUDT = formatToUDT(invoice.deliveryDate);
   const guidelineID = PROFILE_URIS[profile];
 
   const sellerAddr = parseAddress(invoice.supplierAddress);
@@ -68,10 +65,9 @@ export const generateFacturXXML = (invoice: InvoiceData, includeHeader: boolean 
   const taxBasisTotal = lineTotalHT + charge - discount;
   const taxTotal = (invoice.totalVat || 0);
   const grandTotal = taxBasisTotal + taxTotal;
+  const duePayable = (invoice.amountDueForPayment || grandTotal);
 
-  let taxSegments = '';
-  if (invoice.vatBreakdowns && invoice.vatBreakdowns.length > 0) {
-    taxSegments = invoice.vatBreakdowns.map(v => `
+  let taxSegments = (invoice.vatBreakdowns || []).map(v => `
       <ram:ApplicableTradeTax>
         <ram:CalculatedAmount>${(v.vatAmount || 0).toFixed(2)}</ram:CalculatedAmount>
         <ram:TypeCode>VAT</ram:TypeCode>
@@ -80,24 +76,6 @@ export const generateFacturXXML = (invoice: InvoiceData, includeHeader: boolean 
         <ram:CategoryCode>${esc(v.vatCategory || 'S')}</ram:CategoryCode>
         <ram:RateApplicablePercent>${(v.vatRate || 0).toFixed(2)}</ram:RateApplicablePercent>
       </ram:ApplicableTradeTax>`).join('');
-  } else {
-    const taxRates = new Map<string, { basis: number, tax: number, cat: string }>();
-    (invoice.items || []).forEach(item => {
-      const rate = (item.taxRate || 20.0).toFixed(2);
-      const current = taxRates.get(rate) || { basis: 0, tax: 0, cat: item.lineVatCategory || 'S' };
-      current.basis += (item.amount || 0);
-      current.tax += ((item.amount || 0) * (item.taxRate || 0) / 100);
-      taxRates.set(rate, current);
-    });
-    taxSegments = Array.from(taxRates.entries()).map(([rate, vals]) => `
-      <ram:ApplicableTradeTax>
-        <ram:CalculatedAmount>${vals.tax.toFixed(2)}</ram:CalculatedAmount>
-        <ram:TypeCode>VAT</ram:TypeCode>
-        <ram:BasisAmount>${vals.basis.toFixed(2)}</ram:BasisAmount>
-        <ram:CategoryCode>${vals.cat}</ram:CategoryCode>
-        <ram:RateApplicablePercent>${rate}</ram:RateApplicablePercent>
-      </ram:ApplicableTradeTax>`).join('');
-  }
 
   const xmlBody = `<rsm:CrossIndustryInvoice 
   xmlns:udt="urn:un:unece:uncefact:data:standard:UnqualifiedDataType:100" 
@@ -112,9 +90,7 @@ export const generateFacturXXML = (invoice: InvoiceData, includeHeader: boolean 
   <rsm:ExchangedDocument>
     <ram:ID>${esc(invoice.invoiceNumber)}</ram:ID>
     <ram:TypeCode>${typeCode}</ram:TypeCode>
-    <ram:IssueDateTime>
-      <udt:DateTimeString format="102">${issueDateUDT}</udt:DateTimeString>
-    </ram:IssueDateTime>
+    <ram:IssueDateTime><udt:DateTimeString format="102">${issueDateUDT}</udt:DateTimeString></ram:IssueDateTime>
     ${invoice.invoiceNote ? `<ram:IncludedNote><ram:Content>${esc(invoice.invoiceNote)}</ram:Content></ram:IncludedNote>` : ''}
   </rsm:ExchangedDocument>
   <rsm:SupplyChainTradeTransaction>
@@ -126,13 +102,7 @@ export const generateFacturXXML = (invoice: InvoiceData, includeHeader: boolean 
         ${item.articleId ? `<ram:SellerAssignedID>${esc(item.articleId)}</ram:SellerAssignedID>` : ''}
       </ram:SpecifiedTradeProduct>
       <ram:SpecifiedLineTradeAgreement>
-        <ram:NetPriceProductTradePrice>
-          <ram:ChargeAmount>${(item.unitPrice || 0).toFixed(4)}</ram:ChargeAmount>
-        </ram:NetPriceProductTradePrice>
-        ${item.grossPrice ? `
-        <ram:GrossPriceProductTradePrice>
-          <ram:ChargeAmount>${(item.grossPrice || 0).toFixed(4)}</ram:ChargeAmount>
-        </ram:GrossPriceProductTradePrice>` : ''}
+        <ram:NetPriceProductTradePrice><ram:ChargeAmount>${(item.unitPrice || 0).toFixed(4)}</ram:ChargeAmount></ram:NetPriceProductTradePrice>
       </ram:SpecifiedLineTradeAgreement>
       <ram:SpecifiedLineTradeDelivery>
         <ram:BilledQuantity unitCode="${item.unitOfMeasure || 'C62'}">${(item.quantity || 0).toFixed(4)}</ram:BilledQuantity>
@@ -143,60 +113,50 @@ export const generateFacturXXML = (invoice: InvoiceData, includeHeader: boolean 
           <ram:CategoryCode>${item.lineVatCategory || 'S'}</ram:CategoryCode>
           <ram:RateApplicablePercent>${(item.taxRate || 20.0).toFixed(2)}</ram:RateApplicablePercent>
         </ram:ApplicableTradeTax>
-        <ram:SpecifiedTradeSettlementLineMonetarySummation>
-          <ram:LineTotalAmount>${(item.amount || 0).toFixed(2)}</ram:LineTotalAmount>
-        </ram:SpecifiedTradeSettlementLineMonetarySummation>
+        <ram:SpecifiedTradeSettlementLineMonetarySummation><ram:LineTotalAmount>${(item.amount || 0).toFixed(2)}</ram:LineTotalAmount></ram:SpecifiedTradeSettlementLineMonetarySummation>
       </ram:SpecifiedLineTradeSettlement>
     </ram:IncludedSupplyChainTradeLineItem>`).join('')}
     <ram:ApplicableHeaderTradeAgreement>
       ${invoice.buyerReference ? `<ram:BuyerReference>${esc(invoice.buyerReference)}</ram:BuyerReference>` : ''}
       <ram:SellerTradeParty>
         <ram:Name>${esc(invoice.supplier)}</ram:Name>
-        <ram:SpecifiedLegalOrganization>
-          <ram:ID schemeID="0002">${cleanID(invoice.supplierSiret)}</ram:ID>
-        </ram:SpecifiedLegalOrganization>
+        <ram:SpecifiedLegalOrganization><ram:ID schemeID="0002">${cleanID(invoice.supplierSiret)}</ram:ID></ram:SpecifiedLegalOrganization>
         <ram:PostalTradeAddress>
           <ram:LineOne>${esc(sellerAddr.line)}</ram:LineOne>
-          ${sellerAddr.postcode ? `<ram:PostcodeCode>${esc(sellerAddr.postcode)}</ram:PostcodeCode>` : ''}
-          ${sellerAddr.city ? `<ram:CityName>${esc(sellerAddr.city)}</ram:CityName>` : ''}
+          <ram:PostcodeCode>${esc(sellerAddr.postcode)}</ram:PostcodeCode>
+          <ram:CityName>${esc(sellerAddr.city)}</ram:CityName>
           <ram:CountryID>FR</ram:CountryID>
         </ram:PostalTradeAddress>
-        <ram:SpecifiedTaxRegistration>
-          <ram:ID schemeID="VA">${cleanID(invoice.supplierVat)}</ram:ID>
-        </ram:SpecifiedTaxRegistration>
+        <ram:SpecifiedTaxRegistration><ram:ID schemeID="VA">${cleanID(invoice.supplierVat)}</ram:ID></ram:SpecifiedTaxRegistration>
       </ram:SellerTradeParty>
       <ram:BuyerTradeParty>
         <ram:Name>${esc(invoice.buyerName)}</ram:Name>
-        <ram:SpecifiedLegalOrganization>
-          <ram:ID schemeID="0002">${cleanID(invoice.buyerSiret)}</ram:ID>
-        </ram:SpecifiedLegalOrganization>
+        <ram:SpecifiedLegalOrganization><ram:ID schemeID="0002">${cleanID(invoice.buyerSiret)}</ram:ID></ram:SpecifiedLegalOrganization>
         <ram:PostalTradeAddress>
           <ram:LineOne>${esc(buyerAddr.line)}</ram:LineOne>
-          ${buyerAddr.postcode ? `<ram:PostcodeCode>${esc(buyerAddr.postcode)}</ram:PostcodeCode>` : ''}
-          ${buyerAddr.city ? `<ram:CityName>${esc(buyerAddr.city)}</ram:CityName>` : ''}
+          <ram:PostcodeCode>${esc(buyerAddr.postcode)}</ram:PostcodeCode>
+          <ram:CityName>${esc(buyerAddr.city)}</ram:CityName>
           <ram:CountryID>FR</ram:CountryID>
         </ram:PostalTradeAddress>
-        <ram:SpecifiedTaxRegistration>
-          <ram:ID schemeID="VA">${cleanID(invoice.buyerVat)}</ram:ID>
-        </ram:SpecifiedTaxRegistration>
       </ram:BuyerTradeParty>
+      ${invoice.poNumber ? `<ram:BuyerOrderReferencedDocument><ram:IssuerAssignedID>${esc(invoice.poNumber)}</ram:IssuerAssignedID></ram:BuyerOrderReferencedDocument>` : ''}
+      ${invoice.salesOrderReference ? `<ram:SellerOrderReferencedDocument><ram:IssuerAssignedID>${esc(invoice.salesOrderReference)}</ram:IssuerAssignedID></ram:SellerOrderReferencedDocument>` : ''}
+      ${invoice.contractNumber ? `<ram:ContractReferencedDocument><ram:IssuerAssignedID>${esc(invoice.contractNumber)}</ram:IssuerAssignedID></ram:ContractReferencedDocument>` : ''}
+      ${invoice.projectReference ? `<ram:SpecifiedProcurementProject><ram:ID>${esc(invoice.projectReference)}</ram:ID></ram:SpecifiedProcurementProject>` : ''}
     </ram:ApplicableHeaderTradeAgreement>
-    <ram:ApplicableHeaderTradeDelivery />
+    <ram:ApplicableHeaderTradeDelivery>
+       ${invoice.deliveryNoteNumber ? `<ram:DespatchAdviceReferencedDocument><ram:IssuerAssignedID>${esc(invoice.deliveryNoteNumber)}</ram:IssuerAssignedID></ram:DespatchAdviceReferencedDocument>` : ''}
+       ${deliveryDateUDT ? `<ram:ActualDeliverySupplyChainEvent><ram:OccurrenceDateTime><udt:DateTimeString format="102">${deliveryDateUDT}</udt:DateTimeString></ram:OccurrenceDateTime></ram:ActualDeliverySupplyChainEvent>` : ''}
+    </ram:ApplicableHeaderTradeDelivery>
     <ram:ApplicableHeaderTradeSettlement>
       <ram:InvoiceCurrencyCode>${esc(invoice.currency) || 'EUR'}</ram:InvoiceCurrencyCode>
-      <ram:PayeePartyCreditorFinancialAccount>
-        <ram:IBANID>${cleanID(invoice.iban)}</ram:IBANID>
-        <ram:AccountName>${esc(invoice.supplier)}</ram:AccountName>
-      </ram:PayeePartyCreditorFinancialAccount>
-      ${invoice.bic ? `
-      <ram:PayeeSpecifiedCreditorFinancialInstitution>
-        <ram:BICID>${cleanID(invoice.bic)}</ram:BICID>
-      </ram:PayeeSpecifiedCreditorFinancialInstitution>` : ''}
+      <ram:SpecifiedTradeSettlementPaymentMeans>
+        <ram:TypeCode>${esc(invoice.paymentMeansCode) || '30'}</ram:TypeCode>
+        ${invoice.paymentReference ? `<ram:Information>${esc(invoice.paymentReference)}</ram:Information>` : ''}
+        <ram:PayeePartyCreditorFinancialAccount><ram:IBANID>${cleanID(invoice.iban)}</ram:IBANID></ram:PayeePartyCreditorFinancialAccount>
+      </ram:SpecifiedTradeSettlementPaymentMeans>
+      ${invoice.buyerIban ? `<ram:PayerPartyDebtorFinancialAccount><ram:IBANID>${cleanID(invoice.buyerIban)}</ram:IBANID></ram:PayerPartyDebtorFinancialAccount>` : ''}
       ${taxSegments}
-      ${taxPointDateUDT ? `
-      <ram:TaxPointDate>
-        <udt:DateTimeString format="102">${taxPointDateUDT}</udt:DateTimeString>
-      </ram:TaxPointDate>` : ''}
       <ram:SpecifiedTradeSettlementHeaderMonetarySummation>
         <ram:LineTotalAmount>${lineTotalHT.toFixed(2)}</ram:LineTotalAmount>
         <ram:ChargeTotalAmount>${charge.toFixed(2)}</ram:ChargeTotalAmount>
@@ -204,13 +164,9 @@ export const generateFacturXXML = (invoice: InvoiceData, includeHeader: boolean 
         <ram:TaxBasisTotalAmount>${taxBasisTotal.toFixed(2)}</ram:TaxBasisTotalAmount>
         <ram:TaxTotalAmount currencyID="${esc(invoice.currency) || 'EUR'}">${taxTotal.toFixed(2)}</ram:TaxTotalAmount>
         <ram:GrandTotalAmount>${grandTotal.toFixed(2)}</ram:GrandTotalAmount>
-        <ram:DuePayableAmount>${grandTotal.toFixed(2)}</ram:DuePayableAmount>
+        <ram:DuePayableAmount>${duePayable.toFixed(2)}</ram:DuePayableAmount>
       </ram:SpecifiedTradeSettlementHeaderMonetarySummation>
-      ${invoice.paymentTermsText || dueDateUDT ? `
-      <ram:SpecifiedTradePaymentTerms>
-        ${invoice.paymentTermsText ? `<ram:Description>${esc(invoice.paymentTermsText)}</ram:Description>` : ''}
-        ${dueDateUDT ? `<ram:DueDateTime><udt:DateTimeString format="102">${dueDateUDT}</udt:DateTimeString></ram:DueDateTime>` : ''}
-      </ram:SpecifiedTradePaymentTerms>` : ''}
+      ${dueDateUDT ? `<ram:SpecifiedTradePaymentTerms><ram:DueDateTime><udt:DateTimeString format="102">${dueDateUDT}</udt:DateTimeString></ram:DueDateTime></ram:SpecifiedTradePaymentTerms>` : ''}
     </ram:ApplicableHeaderTradeSettlement>
   </rsm:SupplyChainTradeTransaction>
 </rsm:CrossIndustryInvoice>`;

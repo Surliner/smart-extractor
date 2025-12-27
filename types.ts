@@ -4,7 +4,7 @@ export interface VatBreakdown {
   vatRate: number;    // BT-119
   vatTaxableAmount: number; // BT-116
   vatAmount: number;   // BT-117
-  exemptionReason?: string; // BT-120
+  exemptionReason?: string; // BT-120 (OBLIGATOIRE si non Standard)
 }
 
 export interface InvoiceItem {
@@ -31,6 +31,8 @@ export enum ErpStatus {
 export enum InvoiceType {
   INVOICE = 'INVOICE',
   CREDIT_NOTE = 'CREDIT_NOTE',
+  CORRECTIVE = 'CORRECTIVE', // BT-3: 384
+  SELF_INVOICE = 'SELF_INVOICE', // BT-3: 389
 }
 
 export enum FacturXProfile {
@@ -83,12 +85,13 @@ export interface InvoiceData {
   dueDate?: string;
   taxPointDate?: string;
   currency: string;
-  poNumber?: string;
-  buyerReference?: string;
-  contractNumber?: string;
-  deliveryNoteNumber?: string;
-  projectReference?: string;
-  deliveryDate?: string;
+  poNumber?: string; // BT-13
+  salesOrderReference?: string; // BT-14
+  buyerReference?: string; // BT-10
+  contractNumber?: string; // BT-12
+  deliveryNoteNumber?: string; // BT-16
+  projectReference?: string; // BT-11
+  deliveryDate?: string; // BT-72
   supplier: string;
   supplierAddress?: string;
   supplierVat?: string;
@@ -99,10 +102,14 @@ export interface InvoiceData {
   buyerVat?: string;
   buyerSiret?: string;
   buyerErpCode?: string;
+  buyerIban?: string; // BT-91
+  buyerBic?: string; // BT-86
   amountExclVat: number | null;
   totalVat?: number | null;
   amountInclVat: number | null;
-  prepaidAmount?: number;
+  amountDueForPayment?: number | null; // BT-115
+  prepaidAmount?: number; // BT-113
+  roundingAmount?: number; // BT-114
   globalDiscount?: number;
   globalCharge?: number;
   iban?: string;
@@ -110,12 +117,13 @@ export interface InvoiceData {
   paymentMethod?: string;
   paymentTerms?: string;
   paymentTermsText?: string; // BT-20
-  paymentMeansCode?: string;
+  paymentReference?: string; // BT-83
+  paymentMeansCode?: string; // BT-81
   invoiceNote?: string; // BT-22
   originalFilename: string;
   fileData?: string; 
   items?: InvoiceItem[];
-  vatBreakdowns?: VatBreakdown[]; // BG-23 (OBLIGATOIRE)
+  vatBreakdowns?: VatBreakdown[]; 
   erpStatus?: ErpStatus;
   erpReference?: string;
   isMasterMatched?: boolean;

@@ -1,5 +1,4 @@
 
-// Fixed: Removed non-existent UserActivity import
 import { InvoiceData, UserProfile, UserRole, Company, ProcessingLog } from '../types';
 
 const API_URL = window.location.hostname === 'localhost' 
@@ -14,18 +13,14 @@ export const dbService = {
       body: JSON.stringify({ username, password })
     });
     const data = await response.json();
-    if (!response.ok) {
-      throw new Error(data.error || "Une erreur est survenue lors de la connexion.");
-    }
+    if (!response.ok) throw new Error(data.error || "Une erreur est survenue lors de la connexion.");
     return data;
   },
 
   async getSessionProfile(username: string): Promise<UserProfile> {
     const response = await fetch(`${API_URL}/auth/session/${username}`);
     const data = await response.json();
-    if (!response.ok) {
-      throw new Error(data.error || "Impossible de récupérer la session.");
-    }
+    if (!response.ok) throw new Error(data.error || "Impossible de récupérer la session.");
     return data;
   },
 
@@ -36,18 +31,25 @@ export const dbService = {
       body: JSON.stringify({ username, password, securityQuestion, securityAnswer })
     });
     const data = await response.json();
-    if (!response.ok) {
-      throw new Error(data.error || "Échec de l'inscription.");
-    }
+    if (!response.ok) throw new Error(data.error || "Échec de l'inscription.");
     return data;
+  },
+
+  // Fix: Added missing resetPassword method to support password recovery workflow
+  async resetPassword(username: string, newPassword: string, answer: string): Promise<void> {
+    const response = await fetch(`${API_URL}/auth/reset-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, newPassword, answer })
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Échec de la réinitialisation.");
   },
 
   async getRecoveryInfo(username: string): Promise<{username: string, security_question: string}> {
     const response = await fetch(`${API_URL}/auth/recovery/${username}`);
     const data = await response.json();
-    if (!response.ok) {
-      throw new Error(data.error || "Utilisateur introuvable.");
-    }
+    if (!response.ok) throw new Error(data.error || "Utilisateur introuvable.");
     return data;
   },
 
@@ -62,10 +64,7 @@ export const dbService = {
   async getLogs(username: string): Promise<ProcessingLog[]> {
     const response = await fetch(`${API_URL}/logs/${username}`);
     const data = await response.json();
-    return data.map((l: any) => ({
-      ...l,
-      timestamp: new Date(l.timestamp)
-    }));
+    return data.map((l: any) => ({ ...l, timestamp: new Date(l.timestamp) }));
   },
 
   async saveLog(username: string, message: string, type: string): Promise<void> {
@@ -76,68 +75,17 @@ export const dbService = {
     });
   },
 
-  async updateUser(username: string, updates: { role: UserRole, companyId: string, isApproved: boolean }): Promise<void> {
-    const response = await fetch(`${API_URL}/admin/users/update`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, ...updates })
-    });
-    if (!response.ok) {
-        const err = await response.json();
-        throw new Error(err.error || "Impossible de mettre à jour l'utilisateur.");
-    }
-  },
-
-  async deleteUser(username: string): Promise<void> {
-    const response = await fetch(`${API_URL}/admin/users/${username}`, {
-      method: 'DELETE'
-    });
-    if (!response.ok) {
-        const err = await response.json();
-        throw new Error(err.error || "Impossible de supprimer l'utilisateur.");
-    }
-  },
-
-  async resetPassword(username: string, newPassword: string, answer: string): Promise<void> {
-    const response = await fetch(`${API_URL}/auth/reset-password`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, newPassword, answer })
-    });
-    if (!response.ok) {
-      const err = await response.json();
-      throw new Error(err.error || "Échec de la réinitialisation.");
-    }
-  },
-
-  async saveCompanyConfig(companyId: string, config: any): Promise<void> {
-    await fetch(`${API_URL}/company/config`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ companyId, config })
-    });
-  },
-
-  async getAllCompanies(): Promise<Company[]> {
-    const response = await fetch(`${API_URL}/admin/companies`);
-    return await response.json();
-  },
-
-  async createCompany(name: string): Promise<Company> {
-    const response = await fetch(`${API_URL}/admin/companies`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name })
-    });
-    return await response.json();
-  },
-
   async saveInvoice(invoice: InvoiceData): Promise<void> {
     await fetch(`${API_URL}/invoices`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(invoice)
     });
+  },
+
+  async getInvoices(companyId: string): Promise<InvoiceData[]> {
+    const response = await fetch(`${API_URL}/invoices?companyId=${companyId}`);
+    return await response.json();
   },
 
   async deleteInvoices(ids: string[]): Promise<void> {
@@ -156,14 +104,51 @@ export const dbService = {
     });
   },
 
-  async getInvoices(companyId: string): Promise<InvoiceData[]> {
-    const response = await fetch(`${API_URL}/invoices?companyId=${companyId}`);
-    return await response.json();
+  async saveCompanyConfig(companyId: string, config: any): Promise<void> {
+    await fetch(`${API_URL}/company/config`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ companyId, config })
+    });
   },
 
   async getAllUsers(companyId?: string): Promise<UserProfile[]> {
     const url = companyId ? `${API_URL}/admin/users?companyId=${companyId}` : `${API_URL}/admin/users`;
     const response = await fetch(url);
+    return await response.json();
+  },
+
+  // Fix: Added missing updateUser method for the administration dashboard
+  async updateUser(username: string, updates: { role: UserRole, companyId: string, isApproved: boolean }): Promise<void> {
+    const response = await fetch(`${API_URL}/admin/users/update`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, ...updates })
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Échec de la mise à jour de l'utilisateur.");
+  },
+
+  // Fix: Added missing deleteUser method for the administration dashboard
+  async deleteUser(username: string): Promise<void> {
+    const response = await fetch(`${API_URL}/admin/users/${username}`, {
+      method: 'DELETE'
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Échec de la suppression de l'utilisateur.");
+  },
+
+  async getAllCompanies(): Promise<Company[]> {
+    const response = await fetch(`${API_URL}/admin/companies`);
+    return await response.json();
+  },
+
+  async createCompany(name: string): Promise<Company> {
+    const response = await fetch(`${API_URL}/admin/companies`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name })
+    });
     return await response.json();
   }
 };
