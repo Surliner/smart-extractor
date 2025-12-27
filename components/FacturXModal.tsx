@@ -14,14 +14,6 @@ const VAT_CATEGORIES = [
   { code: 'G', label: 'Export' },
 ];
 
-const UNIT_CODES = [
-  { code: 'C62', label: 'Pièce (unité)' },
-  { code: 'HUR', label: 'Heure' },
-  { code: 'DAY', label: 'Jour' },
-  { code: 'KGM', label: 'Kilogramme' },
-  { code: 'LS', label: 'Forfait' },
-];
-
 const FormInput = ({ label, value, onChange, type = "text", placeholder, btId, required, multiline, className = "", themeColor = "indigo", badge, source }: any) => {
   const colorMap: Record<string, string> = {
     indigo: "focus-within:border-indigo-500 focus-within:ring-indigo-500/10 text-slate-900 bg-slate-50/50",
@@ -143,7 +135,6 @@ export const FacturXModal: React.FC<{
     const discount = data.globalDiscount || 0;
     const taxBasisTotal = lineTotalHT + charge - discount;
 
-    // Calcul de la ventilation par taux et catégorie (BG-23)
     const breakdownMap = new Map<string, VatBreakdown>();
 
     data.items.forEach(item => {
@@ -172,7 +163,6 @@ export const FacturXModal: React.FC<{
     const totalVAT = vatBreakdowns.reduce((sum, b) => sum + b.vatAmount, 0);
     const amountInclVat = taxBasisTotal + totalVAT;
 
-    // On évite les boucles infinies en ne mettant à jour que si les valeurs changent réellement
     if (Math.abs(taxBasisTotal - (data.amountExclVat || 0)) > 0.01 || 
         Math.abs(amountInclVat - (data.amountInclVat || 0)) > 0.01 ||
         JSON.stringify(vatBreakdowns) !== JSON.stringify(data.vatBreakdowns)) {
@@ -191,17 +181,27 @@ export const FacturXModal: React.FC<{
   const auditChecks = useMemo(() => [
       { id: 'BT-1', label: 'N° Facture', status: !!data.invoiceNumber, mandatory: true },
       { id: 'BT-2', label: 'Date Facture', status: !!data.invoiceDate, mandatory: true },
-      { id: 'BT-29', label: 'SIRET Vendeur', status: !!data.supplierSiret && data.supplierSiret.length >= 9, mandatory: true },
+      { id: 'BT-3', label: 'Type Document', status: !!data.invoiceType, mandatory: true },
+      { id: 'BT-5', label: 'Devise ISO', status: !!data.currency, mandatory: true },
+      { id: 'BT-9', label: 'Date Échéance', status: !!data.dueDate, mandatory: false },
+      { id: 'BT-20', label: 'Cond. Paiement', status: !!data.paymentTermsText, mandatory: false },
+      { id: 'BT-27', label: 'Nom Vendeur', status: !!data.supplier, mandatory: true },
+      { id: 'BT-29', label: 'SIRET Vendeur', status: !!data.supplierSiret && data.supplierSiret.replace(/\s/g, '').length === 14, mandatory: true },
+      { id: 'BT-31', label: 'TVA Vendeur', status: !!data.supplierVat && data.supplierVat.startsWith('FR'), mandatory: true },
+      { id: 'BT-44', label: 'Nom Acheteur', status: !!data.buyerName, mandatory: true },
+      { id: 'BT-47', label: 'SIRET Acheteur', status: !!data.buyerSiret && data.buyerSiret.replace(/\s/g, '').length === 14, mandatory: true },
+      { id: 'BT-48', label: 'TVA Acheteur', status: !!data.buyerVat, mandatory: false },
       { id: 'BT-84', label: 'IBAN Vendeur', status: !!data.iban && data.iban.length >= 14, mandatory: true },
+      { id: 'BT-109', label: 'Total HT', status: (data.amountExclVat || 0) > 0, mandatory: true },
+      { id: 'BT-112', label: 'Total TTC', status: (data.amountInclVat || 0) > 0, mandatory: true },
       { id: 'BG-23', label: 'Ventilation TVA', status: (data.vatBreakdowns?.length || 0) > 0, mandatory: true },
-      { id: 'BG-25', label: 'Lignes Extraites', status: (data.items?.length || 0) > 0, mandatory: true },
+      { id: 'BG-25', label: 'Lignes (BT-151)', status: (data.items?.length || 0) > 0 && data.items?.every(i => !!i.lineVatCategory), mandatory: true },
     ], [data]);
 
   const handleUpdateItem = (idx: number, field: keyof InvoiceItem, value: any) => {
     const newItems = [...(data.items || [])];
     const item = { ...newItems[idx], [field]: value };
     
-    // Recalcul de la ligne
     if (['grossPrice', 'discount', 'quantity', 'unitPrice'].includes(field)) {
       const q = parseFloat(String(item.quantity)) || 0;
       const p = parseFloat(String(item.unitPrice)) || 0;
@@ -223,10 +223,10 @@ export const FacturXModal: React.FC<{
             <div className="bg-indigo-600 p-2 rounded-xl text-white shadow-lg"><ShieldCheck className="w-5 h-5" /></div>
             <div>
               <div className="flex items-center space-x-2">
-                <h2 className="text-base font-black text-slate-900 uppercase">Audit RFE 2026</h2>
-                <span className="bg-emerald-100 text-emerald-600 text-[7px] font-black px-1.5 py-0.5 rounded-full tracking-widest uppercase">CII Comfort</span>
+                <h2 className="text-base font-black text-slate-900 uppercase">Audit RFE 2026 Compliant</h2>
+                <span className="bg-emerald-100 text-emerald-600 text-[7px] font-black px-1.5 py-0.5 rounded-full tracking-widest uppercase">Standard EN16931</span>
               </div>
-              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mt-1">Gouvernance Sémantique EN16931</p>
+              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mt-1">Gouvernance Sémantique CII Comfort</p>
             </div>
           </div>
           
@@ -235,8 +235,8 @@ export const FacturXModal: React.FC<{
               {showPdf ? 'Masquer PDF' : 'Voir PDF'}
             </button>
             <div className="bg-slate-50 p-1 rounded-xl flex border border-slate-200">
-                <button onClick={() => setActiveTab('form')} className={`px-4 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest ${activeTab === 'form' ? 'bg-white text-indigo-600 shadow-sm border border-slate-100' : 'text-slate-400'}`}>Formulaire</button>
-                <button onClick={() => setActiveTab('xml')} className={`px-4 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest ${activeTab === 'xml' ? 'bg-white text-indigo-600 shadow-sm border border-slate-100' : 'text-slate-400'}`}>XML CII</button>
+                <button onClick={() => setActiveTab('form')} className={`px-4 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest ${activeTab === 'form' ? 'bg-white text-indigo-600 shadow-sm border border-slate-100' : 'text-slate-400'}`}>Audit</button>
+                <button onClick={() => setActiveTab('xml')} className={`px-4 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest ${activeTab === 'xml' ? 'bg-white text-indigo-600 shadow-sm border border-slate-100' : 'text-slate-400'}`}>CII XML</button>
             </div>
             <button onClick={onClose} className="p-1.5 text-slate-400 hover:text-rose-500 rounded-lg transition-all"><X className="w-5 h-5" /></button>
           </div>
@@ -244,7 +244,7 @@ export const FacturXModal: React.FC<{
 
         <div className="flex-1 flex overflow-hidden bg-slate-50">
           {showPdf && pdfUrl && (
-            <div className="hidden lg:flex flex-[0_0_38%] flex-col bg-slate-100 border-r border-slate-200 relative animate-in slide-in-from-left duration-300">
+            <div className="hidden lg:flex flex-[0_0_35%] flex-col bg-slate-100 border-r border-slate-200 relative animate-in slide-in-from-left duration-300">
               <iframe src={pdfUrl} className="w-full h-full border-none" title="PDF Source" />
             </div>
           )}
@@ -259,7 +259,7 @@ export const FacturXModal: React.FC<{
                           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                             <FormInput label="N° Facture" value={data.invoiceNumber} onChange={(v:any)=>setData({...data, invoiceNumber:v})} btId="1" required themeColor="slate" />
                             <FormInput label="Date Facture" value={data.invoiceDate} onChange={(v:any)=>setData({...data, invoiceDate:v})} btId="2" required themeColor="slate" />
-                            <FormInput label="N° Commande" value={data.poNumber} onChange={(v:any)=>setData({...data, poNumber:v})} btId="13" themeColor="slate" />
+                            <FormInput label="Date Échéance" value={data.dueDate} onChange={(v:any)=>setData({...data, dueDate:v})} btId="9" themeColor="slate" />
                             <FormInput label="Devise" value={data.currency} onChange={(v:any)=>setData({...data, currency:v.toUpperCase()})} btId="5" themeColor="slate" />
                           </div>
                           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 mt-4">
@@ -268,13 +268,13 @@ export const FacturXModal: React.FC<{
                           </div>
                       </Group>
                       
-                      <Group title="Tiers Matchés" icon={CloudLightning} variant="purple" className="lg:col-span-4">
+                      <Group title="Partition & MasterData" icon={CloudLightning} variant="purple" className="lg:col-span-4">
                         <div className="space-y-3">
                            <div className="p-3 bg-white border border-slate-100 rounded-xl flex items-center space-x-3">
-                              <div className="p-1.5 bg-emerald-500 rounded-lg text-white"><Database className="w-4 h-4" /></div>
+                              <div className="p-1.5 bg-emerald-500 rounded-lg text-white shadow-sm"><Database className="w-4 h-4" /></div>
                               <div className="flex-1 min-w-0">
-                                 <p className="text-[9px] font-black uppercase text-slate-400 tracking-widest">Master Data VND</p>
-                                 <p className="text-[10px] font-black text-slate-900 truncate">{data.supplier}</p>
+                                 <p className="text-[9px] font-black uppercase text-slate-400 tracking-widest">Référentiel Vendeur</p>
+                                 <p className="text-[10px] font-black text-slate-900 truncate">{data.supplier || 'Non identifié'}</p>
                               </div>
                            </div>
                            <div className="grid grid-cols-2 gap-3">
@@ -292,7 +292,7 @@ export const FacturXModal: React.FC<{
                             <FormInput label="SIRET" value={data.supplierSiret} onChange={(v:any)=>setData({...data, supplierSiret:v})} btId="29" required themeColor="indigo" />
                             <FormInput label="TVA Intra" value={data.supplierVat} onChange={(v:any)=>setData({...data, supplierVat:v})} btId="31" themeColor="indigo" />
                           </div>
-                          <FormInput label="IBAN" value={data.iban} onChange={(v:any)=>setData({...data, iban:v.replace(/\s/g, "")})} btId="84" required themeColor="indigo" />
+                          <FormInput label="IBAN Vendeur" value={data.iban} onChange={(v:any)=>setData({...data, iban:v.replace(/\s/g, "")})} btId="84" required themeColor="indigo" />
                       </Group>
                       <Group title="Acheteur (BT-44)" icon={Receipt} variant="orange">
                           <FormInput label="Nom Client" value={data.buyerName} onChange={(v:any)=>setData({...data, buyerName:v})} btId="44" required className="mb-3" themeColor="orange" />
@@ -300,48 +300,50 @@ export const FacturXModal: React.FC<{
                             <FormInput label="SIRET Client" value={data.buyerSiret} onChange={(v:any)=>setData({...data, buyerSiret:v})} btId="47" required themeColor="orange" />
                             <FormInput label="TVA Client" value={data.buyerVat} onChange={(v:any)=>setData({...data, buyerVat:v})} btId="48" themeColor="orange" />
                           </div>
-                          <FormInput label="Adresse" value={data.buyerAddress} onChange={(v:any)=>setData({...data, buyerAddress:v})} btId="BG-8" multiline themeColor="orange" />
+                          <FormInput label="Adresse Facturation" value={data.buyerAddress} onChange={(v:any)=>setData({...data, buyerAddress:v})} btId="BG-8" multiline themeColor="orange" />
                       </Group>
                     </div>
 
                     <Group title="Détails des Lignes (BG-25)" icon={Package} variant="slate" fullHeight={false}>
-                      <div className="w-full rounded-xl border border-slate-200 overflow-x-auto bg-white custom-scrollbar max-h-[500px]">
-                        <table className="w-full text-[10px] border-collapse min-w-[1400px]">
-                          <thead className="bg-slate-50 text-[8px] font-black uppercase text-slate-500 border-b border-slate-200 sticky top-0 z-10">
-                            <tr>
-                              <th className="px-3 py-4 text-left w-24">Réf.</th>
-                              <th className="px-3 py-4 text-left w-96 min-w-[384px]">Désignation</th>
-                              <th className="px-3 py-4 text-right w-16">Qté</th>
-                              <th className="px-3 py-4 text-left w-32 bg-indigo-50/20">Cat. TVA (BT-151)</th>
-                              <th className="px-3 py-4 text-right w-24">P.U Brut</th>
-                              <th className="px-3 py-4 text-right w-24 bg-indigo-50/30">P.U Net</th>
-                              <th className="px-3 py-4 text-right w-16">TVA%</th>
-                              <th className="px-3 py-4 text-right w-32 bg-slate-100/50">Montant HT</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-slate-100">
-                            {(data.items || []).map((item, idx) => (
-                              <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
-                                <td className="p-1.5"><input value={item.articleId} onChange={e=>handleUpdateItem(idx, 'articleId', e.target.value)} className="w-full bg-transparent border border-transparent focus:border-indigo-200 rounded px-1.5 py-1 outline-none font-mono" /></td>
-                                <td className="p-1.5"><input value={item.description} onChange={e=>handleUpdateItem(idx, 'description', e.target.value)} className="w-full bg-transparent border border-transparent focus:border-indigo-200 rounded px-1.5 py-1 outline-none font-bold truncate" /></td>
-                                <td className="p-1.5"><input type="number" value={item.quantity || ''} onChange={e=>handleUpdateItem(idx, 'quantity', parseFloat(e.target.value))} className="w-full text-right bg-transparent border border-transparent focus:border-indigo-200 rounded px-1.5 py-1 outline-none font-black" /></td>
-                                <td className="p-1.5 bg-indigo-50/10">
-                                  <select 
-                                    value={item.lineVatCategory || 'S'} 
-                                    onChange={e=>handleUpdateItem(idx, 'lineVatCategory', e.target.value)} 
-                                    className="w-full bg-white border border-slate-200 rounded px-2 py-1 outline-none font-black text-[9px] appearance-none"
-                                  >
-                                    {VAT_CATEGORIES.map(c => <option key={c.code} value={c.code}>{c.label} ({c.code})</option>)}
-                                  </select>
-                                </td>
-                                <td className="p-1.5"><input type="number" value={item.grossPrice || ''} onChange={e=>handleUpdateItem(idx, 'grossPrice', parseFloat(e.target.value))} className="w-full text-right bg-transparent border border-transparent focus:border-indigo-200 rounded px-1.5 py-1 outline-none font-black" /></td>
-                                <td className="p-1.5 bg-indigo-50/10 text-right font-black text-indigo-600">{(item.unitPrice || 0).toFixed(4)}</td>
-                                <td className="p-1.5"><input type="number" value={item.taxRate || ''} onChange={e=>handleUpdateItem(idx, 'taxRate', parseFloat(e.target.value))} className="w-full text-right bg-transparent border border-transparent focus:border-indigo-200 rounded px-1.5 py-1 outline-none font-black" /></td>
-                                <td className="p-1.5 text-right font-black font-mono text-slate-700 bg-slate-50">{(item.amount || 0).toFixed(2)}</td>
+                      <div className="w-full rounded-xl border border-slate-200 bg-white overflow-hidden shadow-sm">
+                        <div className="overflow-x-auto custom-scrollbar">
+                          <table className="w-full text-[10px] border-collapse table-auto min-w-[1000px]">
+                            <thead className="bg-slate-50 text-[8px] font-black uppercase text-slate-500 border-b border-slate-200 sticky top-0 z-10">
+                              <tr>
+                                <th className="px-3 py-4 text-left w-[8%]">Réf.</th>
+                                <th className="px-3 py-4 text-left w-[35%]">Désignation (BT-129)</th>
+                                <th className="px-3 py-4 text-right w-[6%]">Qté</th>
+                                <th className="px-3 py-4 text-left w-[12%] bg-indigo-50/20">TVA (BT-151)</th>
+                                <th className="px-3 py-4 text-right w-[8%]">P.U Brut</th>
+                                <th className="px-3 py-4 text-right w-[10%] bg-indigo-50/30">P.U Net</th>
+                                <th className="px-3 py-4 text-right w-[6%]">TVA%</th>
+                                <th className="px-3 py-4 text-right w-[15%] bg-slate-100/50">Montant HT</th>
                               </tr>
-                            ))}
-                          </tbody>
-                        </table>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                              {(data.items || []).map((item, idx) => (
+                                <tr key={idx} className="hover:bg-slate-50/50 transition-colors group">
+                                  <td className="p-1.5"><input value={item.articleId} onChange={e=>handleUpdateItem(idx, 'articleId', e.target.value)} className="w-full bg-transparent border border-transparent focus:border-indigo-200 rounded px-1.5 py-1 outline-none font-mono text-[9px]" /></td>
+                                  <td className="p-1.5"><input value={item.description} onChange={e=>handleUpdateItem(idx, 'description', e.target.value)} className="w-full bg-transparent border border-transparent focus:border-indigo-200 rounded px-1.5 py-1 outline-none font-bold" /></td>
+                                  <td className="p-1.5"><input type="number" value={item.quantity || ''} onChange={e=>handleUpdateItem(idx, 'quantity', parseFloat(e.target.value))} className="w-full text-right bg-transparent border border-transparent focus:border-indigo-200 rounded px-1.5 py-1 outline-none font-black" /></td>
+                                  <td className="p-1.5 bg-indigo-50/10">
+                                    <select 
+                                      value={item.lineVatCategory || 'S'} 
+                                      onChange={e=>handleUpdateItem(idx, 'lineVatCategory', e.target.value)} 
+                                      className="w-full bg-white border border-slate-200 rounded px-2 py-1 outline-none font-black text-[9px] appearance-none cursor-pointer"
+                                    >
+                                      {VAT_CATEGORIES.map(c => <option key={c.code} value={c.code}>{c.label} ({c.code})</option>)}
+                                    </select>
+                                  </td>
+                                  <td className="p-1.5"><input type="number" value={item.grossPrice || ''} onChange={e=>handleUpdateItem(idx, 'grossPrice', parseFloat(e.target.value))} className="w-full text-right bg-transparent border border-transparent focus:border-indigo-200 rounded px-1.5 py-1 outline-none font-black" /></td>
+                                  <td className="p-1.5 bg-indigo-50/10 text-right font-black text-indigo-600">{(item.unitPrice || 0).toFixed(4)}</td>
+                                  <td className="p-1.5"><input type="number" value={item.taxRate || ''} onChange={e=>handleUpdateItem(idx, 'taxRate', parseFloat(e.target.value))} className="w-full text-right bg-transparent border border-transparent focus:border-indigo-200 rounded px-1.5 py-1 outline-none font-black" /></td>
+                                  <td className="p-1.5 text-right font-black font-mono text-slate-700 bg-slate-50">{(item.amount || 0).toFixed(2)}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
                       </div>
                     </Group>
 
@@ -360,20 +362,20 @@ export const FacturXModal: React.FC<{
                                    </div>
                                 </div>
                               ))}
-                              {(!data.vatBreakdowns || data.vatBreakdowns.length === 0) && <p className="text-[9px] text-slate-400 italic">Aucune donnée de TVA.</p>}
+                              {(!data.vatBreakdowns || data.vatBreakdowns.length === 0) && <p className="text-[9px] text-slate-400 italic font-bold">Calcul automatique au prochain audit...</p>}
                             </div>
                         </Group>
 
-                        <Group title="Ajustements Globaux" icon={Calculator} variant="slate">
+                        <Group title="Ajustements & Frais" icon={Calculator} variant="slate">
                             <div className="space-y-4">
                               <FormInput label="Remise Globale HT" value={data.globalDiscount} onChange={(v:any)=>setData({...data, globalDiscount: parseFloat(v) || 0})} btId="107" themeColor="slate" />
-                              <FormInput label="Frais Divers HT" value={data.globalCharge} onChange={(v:any)=>setData({...data, globalCharge: parseFloat(v) || 0})} btId="108" themeColor="slate" />
+                              <FormInput label="Frais Logistiques HT" value={data.globalCharge} onChange={(v:any)=>setData({...data, globalCharge: parseFloat(v) || 0})} btId="108" themeColor="slate" />
                             </div>
                         </Group>
                         
                         <div className="bg-slate-950 text-white p-8 rounded-[2rem] shadow-2xl border-b-4 border-indigo-600 flex flex-col justify-center space-y-4">
                            <div className="flex justify-between items-center text-[10px] font-black uppercase text-slate-500 tracking-widest">
-                             <span>Total HT (BT-109)</span>
+                             <span>Total HT Net (BT-109)</span>
                              <span className="font-mono text-xl">{(data.amountExclVat || 0).toFixed(2)}</span>
                            </div>
                            <div className="flex justify-between items-center text-[10px] font-black uppercase text-indigo-400 tracking-widest">
@@ -382,31 +384,32 @@ export const FacturXModal: React.FC<{
                            </div>
                            <div className="h-px bg-white/10 my-1"></div>
                            <div className="flex flex-col">
-                             <span className="text-[10px] font-black uppercase text-slate-500 tracking-[0.2em] mb-2">Total à Payer (BT-112)</span>
+                             <span className="text-[10px] font-black uppercase text-slate-500 tracking-[0.2em] mb-2">Total TTC à Payer (BT-112)</span>
                              <div className="flex items-baseline space-x-2">
                                <span className="text-4xl font-black font-mono tracking-tighter">{(data.amountInclVat || 0).toFixed(2)}</span>
-                               <span className="text-base opacity-40 font-black">{data.currency}</span>
+                               <span className="text-base opacity-40 font-black tracking-tight">{data.currency}</span>
                              </div>
                            </div>
                         </div>
                     </div>
                 </div>
 
-                <div className="w-[300px] bg-white border-l border-slate-200 h-full p-6 space-y-6 flex flex-col overflow-y-auto custom-scrollbar shrink-0">
+                <div className="w-[320px] bg-white border-l border-slate-200 h-full p-6 space-y-6 flex flex-col overflow-y-auto custom-scrollbar shrink-0">
                   <div className="flex items-center space-x-3">
-                    <div className="p-2 bg-slate-950 rounded-xl text-white shadow-lg"><ListChecks className="w-5 h-5" /></div>
+                    <div className="p-2 bg-slate-950 rounded-xl text-white shadow-lg shadow-slate-200"><ListChecks className="w-5 h-5" /></div>
                     <h4 className="text-[11px] font-black uppercase text-slate-900 tracking-tight">Checklist RFE 2026</h4>
                   </div>
-                  <div className="space-y-4">
+                  <div className="space-y-3">
                     {auditChecks.map((check) => (
-                      <div key={check.id} className={`px-4 py-3 rounded-2xl border flex items-start space-x-3 transition-all ${check.status ? 'bg-emerald-50 border-emerald-100' : 'bg-rose-50 border-rose-100 animate-pulse'}`}>
-                        <div className={`mt-0.5 p-1 rounded-md text-white ${check.status ? 'bg-emerald-500 shadow-sm' : 'bg-rose-500'}`}>
+                      <div key={check.id} className={`px-4 py-2.5 rounded-2xl border flex items-start space-x-3 transition-all ${check.status ? 'bg-emerald-50 border-emerald-100 opacity-80' : 'bg-rose-50 border-rose-100 shadow-sm'}`}>
+                        <div className={`mt-0.5 p-1 rounded-md text-white shadow-sm shrink-0 ${check.status ? 'bg-emerald-500' : 'bg-rose-500'}`}>
                           {check.status ? <BadgeCheck className="w-3.5 h-3.5" /> : <ShieldAlert className="w-3.5 h-3.5" />}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className={`text-[10px] font-black uppercase tracking-tight ${check.status ? 'text-emerald-800' : 'text-rose-800'}`}>{check.label}</p>
-                          <p className={`text-[8px] mt-0.5 font-bold uppercase ${check.status ? 'text-emerald-600/60' : 'text-rose-600/60'}`}>{check.id}</p>
+                          <p className={`text-[10px] font-black uppercase tracking-tight truncate ${check.status ? 'text-emerald-800' : 'text-rose-800'}`}>{check.label}</p>
+                          <p className={`text-[8px] font-bold uppercase ${check.status ? 'text-emerald-600/60' : 'text-rose-600/60'}`}>{check.id}</p>
                         </div>
+                        {check.mandatory && !check.status && <div className="text-[7px] font-black text-rose-600 uppercase bg-white border border-rose-200 px-1 rounded">REQUIS</div>}
                       </div>
                     ))}
                   </div>
@@ -421,9 +424,9 @@ export const FacturXModal: React.FC<{
         </div>
 
         <div className="px-10 py-4 border-t border-slate-200 flex justify-end items-center space-x-4 bg-white shrink-0">
-          <button onClick={onClose} className="text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-slate-600 transition-colors">Abandonner</button>
+          <button onClick={onClose} className="text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-slate-600 transition-colors">Retour</button>
           <button onClick={() => { onSave(data); onClose(); }} className="bg-slate-950 text-white px-12 py-4 rounded-[1.2rem] text-[10px] font-black uppercase tracking-[0.2em] shadow-2xl hover:bg-black transition-all flex items-center active:scale-95 border-b-2 border-slate-800">
-            <FileCheck className="w-5 h-5 mr-3" /> Valider Audit RFE
+            <FileCheck className="w-5 h-5 mr-3" /> Valider & Archiver Audit
           </button>
         </div>
       </div>
