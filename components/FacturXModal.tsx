@@ -204,9 +204,11 @@ export const FacturXModal: React.FC<{
       { id: 'BT-1', label: 'N° Facture', status: !!data.invoiceNumber, mandatory: true },
       { id: 'BT-2', label: 'Date Facture', status: !!data.invoiceDate, mandatory: true },
       { id: 'BT-27', label: 'Nom Fournisseur', status: !!data.supplier, mandatory: true },
-      { id: 'BT-29', label: 'SIRET Fournisseur', status: !!data.supplierSiret && data.supplierSiret.length >= 9, mandatory: true },
+      { id: 'BT-29', label: 'SIRET Fournisseur', status: !!data.supplierSiret && data.supplierSiret.replace(/\s/g, "").length >= 9, mandatory: true },
+      { id: 'BT-84', label: 'IBAN Fournisseur', status: !!data.iban && data.iban.replace(/\s/g, "").length >= 14, mandatory: true },
+      { id: 'BT-85', label: 'BIC / SWIFT', status: !!data.bic && data.bic.replace(/\s/g, "").length >= 8, mandatory: true },
       { id: 'BT-44', label: 'Nom Acheteur', status: !!data.buyerName, mandatory: true },
-      { id: 'BT-47', label: 'SIRET Acheteur', status: !!data.buyerSiret && data.buyerSiret.length >= 9, mandatory: true },
+      { id: 'BT-47', label: 'SIRET Acheteur', status: !!data.buyerSiret && data.buyerSiret.replace(/\s/g, "").length >= 9, mandatory: true },
       { id: 'BT-48', label: 'TVA Acheteur', status: !!data.buyerVat, mandatory: true },
       { id: 'BG-25', label: 'Lignes extraites', status: (data.items?.length || 0) > 0, mandatory: true },
       { id: 'ARITH', label: 'Cohérence Totaux', status: Math.abs((data.amountInclVat || 0) - ((data.amountExclVat || 0) + (data.totalVat || 0))) < 0.05, mandatory: true },
@@ -335,7 +337,7 @@ export const FacturXModal: React.FC<{
                           <thead className="bg-slate-50 text-[8px] font-black uppercase text-slate-500 border-b border-slate-200 sticky top-0 z-10">
                             <tr>
                               <th className="px-3 py-4 text-left w-24">Réf.</th>
-                              <th className="px-3 py-4 text-left">Désignation</th>
+                              <th className="px-3 py-4 text-left w-80 min-w-[320px]">Désignation</th>
                               <th className="px-3 py-4 text-right w-16">Qté</th>
                               <th className="px-3 py-4 text-left w-40 min-w-[150px] bg-indigo-50/20">Unité (BT-130)</th>
                               <th className="px-3 py-4 text-right w-24">P.U Brut</th>
@@ -349,7 +351,7 @@ export const FacturXModal: React.FC<{
                             {(data.items || []).map((item, idx) => (
                               <tr key={idx} className="hover:bg-slate-50/50 transition-colors group">
                                 <td className="p-1.5"><input value={item.articleId} onChange={e=>handleUpdateItem(idx, 'articleId', e.target.value)} className="w-full bg-transparent border border-transparent focus:border-indigo-200 rounded px-1.5 py-1 outline-none font-mono text-[9px]" /></td>
-                                <td className="p-1.5"><input value={item.description} onChange={e=>handleUpdateItem(idx, 'description', e.target.value)} className="w-full bg-transparent border border-transparent focus:border-indigo-200 rounded px-1.5 py-1 outline-none font-bold" /></td>
+                                <td className="p-1.5"><input value={item.description} onChange={e=>handleUpdateItem(idx, 'description', e.target.value)} className="w-full bg-transparent border border-transparent focus:border-indigo-200 rounded px-1.5 py-1 outline-none font-bold truncate" /></td>
                                 <td className="p-1.5"><input type="number" value={item.quantity || ''} onChange={e=>handleUpdateItem(idx, 'quantity', parseFloat(e.target.value))} className="w-full text-right bg-transparent border border-transparent focus:border-indigo-200 rounded px-1.5 py-1 outline-none font-black" /></td>
                                 <td className="p-1.5 bg-indigo-50/10">
                                     <div className="relative group/sel">
@@ -380,7 +382,7 @@ export const FacturXModal: React.FC<{
                             <div className="space-y-3">
                               <FormInput label="IBAN" value={data.iban} onChange={(v:any)=>setData({...data, iban:v.replace(/\s/g, ""), isMasterMatched: false})} btId="84" themeColor="slate" source={supplierMatch ? 'MASTER_DATA' : 'AI'} />
                               <div className="grid grid-cols-2 gap-3">
-                                <FormInput label="BIC" value={data.bic} onChange={(v:any)=>setData({...data, bic:v, isMasterMatched: false})} btId="85" themeColor="slate" source={supplierMatch ? 'MASTER_DATA' : 'AI'} />
+                                <FormInput label="BIC" value={data.bic} onChange={(v:any)=>setData({...data, bic:v.replace(/\s/g, ""), isMasterMatched: false})} btId="85" themeColor="slate" source={supplierMatch ? 'MASTER_DATA' : 'AI'} />
                                 <FormInput label="Date Échéance" value={data.dueDate} onChange={(v:any)=>setData({...data, dueDate:v})} btId="9" themeColor="slate" />
                               </div>
                             </div>
