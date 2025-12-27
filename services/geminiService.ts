@@ -64,7 +64,7 @@ export const extractInvoiceData = async (
         items: {
           type: Type.OBJECT,
           properties: {
-            vat_category: { type: Type.STRING }, // S, Z, E, AE
+            vat_category: { type: Type.STRING },
             vat_rate: { type: Type.NUMBER },
             vat_taxable_amount: { type: Type.NUMBER },
             vat_amount: { type: Type.NUMBER }
@@ -115,14 +115,15 @@ RÉPONSE: JSON STRICT UNIQUEMENT.`;
       contents: [{
         parts: [
           { inlineData: { mimeType, data: base64Data } },
-          { text: "Extraire les données structurées conformes RFE EN16931." }
+          { text: "Analyse cette facture et retourne le JSON conforme EN16931." }
         ]
       }],
       config: {
         systemInstruction,
         responseMimeType: "application/json",
         responseSchema: ultimateSchema,
-        temperature: 0
+        temperature: 0,
+        thinkingConfig: { thinkingBudget: 0 }
       },
     });
 

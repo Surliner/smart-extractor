@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { X, Save, CheckCircle, AlertTriangle, Download, Plus, Trash2, LayoutList, Truck, Receipt, Package, ShieldCheck, Globe, Briefcase, Landmark, Percent, Hash, Calendar as CalendarIcon, Coins, ChevronDown, Calculator, Info, FileCode, Eye, EyeOff, FileSearch, ExternalLink, Settings2, CloudLightning, Shield, Clock, CreditCard, StickyNote, Box, FileDown, FileCheck, Banknote, ListChecks, ShieldAlert, BadgeCheck, Database, ListTodo, Trash, Search, Zap } from 'lucide-react';
 import { InvoiceData, InvoiceItem, InvoiceType, LookupTable, OperationCategory, TaxPointType, FacturXProfile, PartnerMasterData, VatBreakdown } from '../types';
 import { generateFacturXXML } from '../services/facturXService';
@@ -11,6 +11,11 @@ const normalizeName = (name: string): string => {
     .replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, "")
     .replace(/\s{2,}/g, " ")
     .trim();
+};
+
+const cleanNumeric = (str: string | undefined | null): string => {
+  if (!str) return "";
+  return String(str).replace(/\D/g, "");
 };
 
 const findMatches = (name: string, masterData: PartnerMasterData[]): PartnerMasterData[] => {
@@ -76,7 +81,6 @@ const FormInput = ({ label, value, onChange, type = "text", placeholder, btId, r
         )}
       </div>
 
-      {/* Suggestions UI */}
       {suggestions && suggestions.length > 0 && (
         <div className="mt-1 flex flex-wrap gap-1 animate-in slide-in-from-top-1">
           <div className="flex items-center space-x-1 px-1.5 py-0.5 bg-indigo-50 text-indigo-600 rounded text-[7px] font-black uppercase border border-indigo-100">
@@ -143,7 +147,6 @@ export const FacturXModal: React.FC<{
   const [showPdf, setShowPdf] = useState(true);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
 
-  // States for probabilistic matching
   const [supplierSuggestions, setSupplierSuggestions] = useState<PartnerMasterData[]>([]);
   const [buyerSuggestions, setBuyerSuggestions] = useState<PartnerMasterData[]>([]);
 
@@ -166,48 +169,70 @@ export const FacturXModal: React.FC<{
     }
   }, [data.fileData]);
 
-  // Handle Automatic Matching for missing SIRETs
+  const handleApplyMasterSuggestion = useCallback((tier: PartnerMasterData, type: 'SUPPLIER' | 'BUYER') => {
+    setData(prev => {
+      if (type === 'SUPPLIER') {
+        return {
+          ...prev,
+          supplier: tier.name,
+          supplierSiret: tier.siret,
+          supplierVat: tier.vatNumber,
+          supplierErpCode: tier.erpCode, 
+          iban: tier.iban || prev.iban,
+          bic: tier.bic || prev.bic,
+          isMasterMatched: true
+        };
+      } else {
+        return {
+          ...prev,
+          buyerName: tier.name,
+          buyerSiret: tier.siret,
+          buyerVat: tier.vatNumber,
+          buyerErpCode: tier.erpCode, 
+          isBuyerMasterMatched: true
+        };
+      }
+    });
+    
+    if (type === 'SUPPLIER') setSupplierSuggestions([]);
+    else setBuyerSuggestions([]);
+  }, []);
+
+  // Correction Auto-Link : On compare les SIRETs nettoyés dès l'ouverture
   useEffect(() => {
     if (isOpen && masterData.length > 0) {
-      if (!data.supplierSiret || data.supplierSiret.length < 9) {
+      // 1. Rapprochement automatique par SIRET exact (Auto-Link)
+      const supplierSiretClean = cleanNumeric(data.supplierSiret);
+      if (supplierSiretClean && !data.isMasterMatched) {
+        const exactMatch = masterData.find(m => cleanNumeric(m.siret) === supplierSiretClean);
+        if (exactMatch) {
+          handleApplyMasterSuggestion(exactMatch, 'SUPPLIER');
+        }
+      }
+
+      const buyerSiretClean = cleanNumeric(data.buyerSiret);
+      if (buyerSiretClean && !data.isBuyerMasterMatched) {
+        const exactMatch = masterData.find(m => cleanNumeric(m.siret) === buyerSiretClean);
+        if (exactMatch) {
+          handleApplyMasterSuggestion(exactMatch, 'BUYER');
+        }
+      }
+
+      // 2. Suggestions s'il n'y a toujours pas de match par nom
+      if (!data.isMasterMatched) {
         setSupplierSuggestions(findMatches(data.supplier, masterData));
       } else {
         setSupplierSuggestions([]);
       }
 
-      if (!data.buyerSiret || data.buyerSiret.length < 9) {
+      if (!data.isBuyerMasterMatched) {
         setBuyerSuggestions(findMatches(data.buyerName, masterData));
       } else {
         setBuyerSuggestions([]);
       }
     }
-  }, [isOpen, data.supplier, data.buyerName, masterData]);
+  }, [isOpen, data.supplier, data.buyerName, data.supplierSiret, data.buyerSiret, data.isMasterMatched, data.isBuyerMasterMatched, masterData, handleApplyMasterSuggestion]);
 
-  const handleApplyMasterSuggestion = (tier: PartnerMasterData, type: 'SUPPLIER' | 'BUYER') => {
-    if (type === 'SUPPLIER') {
-      setData(prev => ({
-        ...prev,
-        supplier: tier.name,
-        supplierSiret: tier.siret,
-        supplierVat: tier.vatNumber,
-        iban: tier.iban || prev.iban,
-        bic: tier.bic || prev.bic,
-        isMasterMatched: true
-      }));
-      setSupplierSuggestions([]);
-    } else {
-      setData(prev => ({
-        ...prev,
-        buyerName: tier.name,
-        buyerSiret: tier.siret,
-        buyerVat: tier.vatNumber,
-        isBuyerMasterMatched: true
-      }));
-      setBuyerSuggestions([]);
-    }
-  };
-
-  // Recalcul dynamique des totaux et de la ventilation TVA (BG-23)
   useEffect(() => {
     if (!data.items) return;
 
@@ -268,12 +293,12 @@ export const FacturXModal: React.FC<{
       { id: 'BT-9', label: 'Date Échéance', status: !!data.dueDate, mandatory: false },
       { id: 'BT-20', label: 'Cond. Paiement', status: !!data.paymentTermsText, mandatory: false },
       { id: 'BT-27', label: 'Nom Vendeur', status: !!data.supplier, mandatory: true },
-      { id: 'BT-29', label: 'SIRET Vendeur', status: !!data.supplierSiret && data.supplierSiret.replace(/\s/g, '').length === 14, mandatory: true },
+      { id: 'BT-29', label: 'SIRET Vendeur', status: !!data.supplierSiret && cleanNumeric(data.supplierSiret).length === 14, mandatory: true },
       { id: 'BT-31', label: 'TVA Vendeur', status: !!data.supplierVat && data.supplierVat.startsWith('FR'), mandatory: true },
       { id: 'BT-44', label: 'Nom Acheteur', status: !!data.buyerName, mandatory: true },
-      { id: 'BT-47', label: 'SIRET Acheteur', status: !!data.buyerSiret && data.buyerSiret.replace(/\s/g, '').length === 14, mandatory: true },
+      { id: 'BT-47', label: 'SIRET Acheteur', status: !!data.buyerSiret && cleanNumeric(data.buyerSiret).length === 14, mandatory: true },
       { id: 'BT-48', label: 'TVA Acheteur', status: !!data.buyerVat, mandatory: false },
-      { id: 'BT-84', label: 'IBAN Vendeur', status: !!data.iban && data.iban.length >= 14, mandatory: true },
+      { id: 'BT-84', label: 'IBAN Vendeur', status: !!data.iban && cleanNumeric(data.iban).length >= 14, mandatory: true },
       { id: 'BT-85', label: 'BIC/SWIFT', status: !!data.bic && data.bic.length >= 8, mandatory: false },
       { id: 'BT-109', label: 'Total HT Net', status: (data.amountExclVat || 0) > 0, mandatory: true },
       { id: 'BT-110', label: 'Total TVA', status: (data.totalVat || 0) >= 0, mandatory: true },
@@ -382,8 +407,8 @@ export const FacturXModal: React.FC<{
                               </div>
                            </div>
                            <div className="grid grid-cols-2 gap-3">
-                              <FormInput label="Code ERP VND" value={data.supplierErpCode} onChange={(v:any)=>setData({...data, supplierErpCode:v})} themeColor="purple" />
-                              <FormInput label="Code ERP ACH" value={data.buyerErpCode} onChange={(v:any)=>setData({...data, buyerErpCode:v})} themeColor="purple" />
+                              <FormInput label="Code ERP VND" value={data.supplierErpCode} onChange={(v:any)=>setData({...data, supplierErpCode:v})} themeColor="purple" source={data.isMasterMatched ? 'MASTER_DATA' : undefined} />
+                              <FormInput label="Code ERP ACH" value={data.buyerErpCode} onChange={(v:any)=>setData({...data, buyerErpCode:v})} themeColor="purple" source={data.isBuyerMasterMatched ? 'MASTER_DATA' : undefined} />
                            </div>
                         </div>
                       </Group>
