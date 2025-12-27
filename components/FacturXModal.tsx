@@ -293,21 +293,23 @@ export const FacturXModal: React.FC<{
     }
   }, [isOpen, data.supplier, data.buyerName, data.supplierSiret, data.buyerSiret, data.isMasterMatched, data.isBuyerMasterMatched, masterData, handleApplyMasterSuggestion]);
 
-  // RECALCUL TOTALS ET VENTILATION TVA CONFORME EN16931
+  // RECALCUL TOTALS ET VENTILATION TVA CONFORME EN16931 + RFE 2026
   useEffect(() => {
     if (!data.items) return;
 
+    // Calcul de la somme brute des lignes (avant remise globale)
     const lineTotalHT = data.items.reduce((sum, item) => sum + (item.amount || 0), 0);
     const charge = data.globalCharge || 0;
     const discount = data.globalDiscount || 0;
-    const taxBasisTotal = lineTotalHT + charge - discount;
+    const netTotalHT = lineTotalHT + charge - discount;
 
-    // Calcul du facteur de prorata pour la remise/frais globaux
-    // Si Total Lignes = 100 et Net HT = 90, alors prorata = 0.9
-    const prorataFactor = lineTotalHT > 0 ? taxBasisTotal / lineTotalHT : 1;
+    // Calcul du ratio pour répartir les frais/remises globaux
+    // On travaille avec une précision augmentée pour minimiser les résidus d'arrondi
+    const prorataFactor = lineTotalHT > 0 ? netTotalHT / lineTotalHT : 1;
 
     const breakdownMap = new Map<string, VatBreakdown>();
-
+    
+    // Aggrégation par taux et catégorie
     data.items.forEach(item => {
       const rate = item.taxRate || 0;
       const cat = item.lineVatCategory || 'S';
@@ -324,9 +326,20 @@ export const FacturXModal: React.FC<{
       breakdownMap.set(key, existing);
     });
 
-    // Ajustement de la base imposable par catégorie et calcul de la TVA
-    const vatBreakdowns = Array.from(breakdownMap.values()).map(b => {
-      const adjustedBase = b.vatTaxableAmount * prorataFactor;
+    const breakdowns = Array.from(breakdownMap.values());
+    let currentSumAdjustedHT = 0;
+
+    const vatBreakdowns = breakdowns.map((b, idx) => {
+      let adjustedBase: number;
+      
+      // Technique du "Running Balance" pour le dernier élément afin de tomber pile sur le total net HT
+      if (idx === breakdowns.length - 1) {
+        adjustedBase = netTotalHT - currentSumAdjustedHT;
+      } else {
+        adjustedBase = parseFloat((b.vatTaxableAmount * prorataFactor).toFixed(2));
+        currentSumAdjustedHT += adjustedBase;
+      }
+
       return {
         ...b,
         vatTaxableAmount: parseFloat(adjustedBase.toFixed(2)),
@@ -335,14 +348,14 @@ export const FacturXModal: React.FC<{
     });
 
     const totalVAT = vatBreakdowns.reduce((sum, b) => sum + b.vatAmount, 0);
-    const amountInclVat = taxBasisTotal + totalVAT;
+    const amountInclVat = netTotalHT + totalVAT;
 
-    if (Math.abs(taxBasisTotal - (data.amountExclVat || 0)) > 0.001 || 
+    if (Math.abs(netTotalHT - (data.amountExclVat || 0)) > 0.001 || 
         Math.abs(amountInclVat - (data.amountInclVat || 0)) > 0.001 ||
         JSON.stringify(vatBreakdowns) !== JSON.stringify(data.vatBreakdowns)) {
       setData(prev => ({
         ...prev,
-        amountExclVat: parseFloat(taxBasisTotal.toFixed(2)),
+        amountExclVat: parseFloat(netTotalHT.toFixed(2)),
         totalVat: parseFloat(totalVAT.toFixed(2)),
         amountInclVat: parseFloat(amountInclVat.toFixed(2)),
         amountDueForPayment: parseFloat(amountInclVat.toFixed(2)),
@@ -375,7 +388,6 @@ export const FacturXModal: React.FC<{
     const newItems = [...(data.items || [])];
     const item = { ...newItems[idx], [field]: value };
     
-    // Si on change la clé d'UI de TVA (ex: S_10), on met à jour le code BT-151 et le taux BT-152
     if (field === 'lineVatCategory') {
       const config = VAT_CATEGORIES_CONFIG.find(c => c.id === value);
       if (config) {
@@ -388,13 +400,17 @@ export const FacturXModal: React.FC<{
     if (['grossPrice', 'unitPrice', 'quantity', 'discount', 'lineVatCategory', 'taxRate'].includes(field)) {
       const q = parseFloat(String(item.quantity)) || 0;
       
-      // Si modification du Brut, on recalcule le Net (s'il y a une remise de ligne, ici simplifiée à 0 par défaut)
+      // Si modification du Brut, on recalcule le Net
       if (field === 'grossPrice') {
         item.unitPrice = item.grossPrice; 
       }
       
-      const p = parseFloat(String(item.unitPrice)) || 0;
-      item.amount = parseFloat((q * p).toFixed(2));
+      // Sécurité : si Net est vide mais Brut existe, on prend le Brut
+      const finalUnitPrice = (item.unitPrice === null || item.unitPrice === undefined || isNaN(item.unitPrice)) 
+        ? (item.grossPrice || 0) 
+        : item.unitPrice;
+
+      item.amount = parseFloat((q * finalUnitPrice).toFixed(2));
     }
     
     newItems[idx] = item;
@@ -426,7 +442,6 @@ export const FacturXModal: React.FC<{
 
   if (!isOpen) return null;
 
-  // Calculer la clé UI pour l'affichage du select (S_20, AE, etc.)
   const getUiVatKey = (item: InvoiceItem) => {
       const rate = item.taxRate || 0;
       const code = item.lineVatCategory || 'S';
@@ -640,12 +655,12 @@ export const FacturXModal: React.FC<{
                                     />
                                   </td>
                                   <td className="p-1.5 bg-indigo-50/10">
-                                    {/* FIXED: Champ P.U Net désormais modifiable */}
                                     <input 
                                       type="number" 
                                       step="0.0001"
                                       value={item.unitPrice || ''} 
                                       onChange={e=>handleUpdateItem(idx, 'unitPrice', parseFloat(e.target.value))} 
+                                      placeholder={item.grossPrice ? String(item.grossPrice) : "0.00"}
                                       className="w-full text-right bg-transparent border border-transparent focus:border-indigo-200 rounded px-1.5 py-1 outline-none font-black text-indigo-600" 
                                     />
                                   </td>
@@ -681,7 +696,7 @@ export const FacturXModal: React.FC<{
                               {data.vatBreakdowns?.map((v, i) => (
                                 <div key={i} className="flex items-center justify-between p-3 bg-emerald-50 rounded-xl border border-emerald-100 animate-in zoom-in-95">
                                    <div className="flex flex-col">
-                                     <span className="text-[8px] font-black uppercase text-emerald-600">Base HT ({v.vatCategory} - {v.vatRate}%)</span>
+                                     <span className="text-[8px] font-black uppercase text-emerald-600">Base HT après remise ({v.vatCategory} - {v.vatRate}%)</span>
                                      <span className="text-[10px] font-black text-emerald-900">{v.vatTaxableAmount.toLocaleString()} €</span>
                                    </div>
                                    <div className="flex flex-col items-end">
