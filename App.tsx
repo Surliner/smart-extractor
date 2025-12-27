@@ -104,7 +104,7 @@ const App: React.FC = () => {
         await dbService.saveInvoice(inv);
         await dbService.updateUserStats(userProfile.username, result.usage.totalTokens);
         setAllInvoices(prev => [inv, ...prev]);
-        addLog(`Facture ${inv.invoiceNumber} extraite`, 'success');
+        addLog(`Facture ${inv.invoiceNumber} extraite (${result.usage.totalTokens} tokens)`, 'success');
       } catch (err: any) { addLog(`Erreur : ${file.name} - ${err.message}`, 'error'); }
       finally { setProcessProgress(prev => ({ ...prev, current: prev.current + 1 })); }
     }
@@ -137,7 +137,6 @@ const App: React.FC = () => {
         xmlContent = generateFacturXXML(selectedInvoices[0], true);
       }
       
-      // Téléchargement forcé en UTF-8 avec BOM (\ufeff) pour éviter les erreurs d'encodage type "mojibake"
       const blob = new Blob(['\ufeff', xmlContent], { type: 'text/xml;charset=utf-8' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
