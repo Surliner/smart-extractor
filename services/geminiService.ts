@@ -5,9 +5,7 @@ import { InvoiceData, InvoiceItem, InvoiceType, ExtractionMode, ExtractionResult
 const parseInvoiceDate = (dateStr: string): string => {
   if (!dateStr) return "";
   const clean = dateStr.trim();
-  // Format YYYYMMDD to DD/MM/YYYY
   if (/^\d{8}$/.test(clean)) return `${clean.substring(6, 8)}/${clean.substring(4, 6)}/${clean.substring(0, 4)}`;
-  // Format YYYY-MM-DD to DD/MM/YYYY
   if (/^\d{4}-\d{2}-\d{2}$/.test(clean)) {
     const [y, m, d] = clean.split('-');
     return `${d}/${m}/${y}`;
@@ -36,70 +34,69 @@ export const extractInvoiceData = async (
 ): Promise<ExtractionResult> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
+  // On enrichit le schéma avec des descriptions pour guider l'IA sans alourdir la systemInstruction
   const schema = {
     type: Type.OBJECT,
     properties: {
-      specification_id: { type: Type.STRING }, // BT-24
-      invoice_type: { type: Type.STRING, enum: ["INVOICE", "CREDIT_NOTE"] },
-      invoice_number: { type: Type.STRING },
-      invoice_date: { type: Type.STRING },
-      due_date: { type: Type.STRING },
-      tax_point_date: { type: Type.STRING },
-      currency: { type: Type.STRING },
-      po_number: { type: Type.STRING },
-      buyer_reference: { type: Type.STRING },
-      contract_number: { type: Type.STRING },
-      delivery_note_number: { type: Type.STRING },
+      specification_id: { type: Type.STRING, description: "BT-24: urn:cen.eu:en16931:2017#compliant#urn:factur-x.eu:1p0:comfort" },
+      invoice_type: { type: Type.STRING, enum: ["INVOICE", "CREDIT_NOTE"], description: "BT-3: INVOICE (380) ou CREDIT_NOTE (381)" },
+      invoice_number: { type: Type.STRING, description: "BT-1: Numéro de facture unique" },
+      invoice_date: { type: Type.STRING, description: "BT-2: Date d'émission (YYYY-MM-DD)" },
+      due_date: { type: Type.STRING, description: "BT-9: Date d'échéance" },
+      tax_point_date: { type: Type.STRING, description: "BT-7: Date de livraison/prestation" },
+      currency: { type: Type.STRING, description: "BT-5: Devise ISO (ex: EUR)" },
+      po_number: { type: Type.STRING, description: "BT-13: Numéro de commande" },
+      buyer_reference: { type: Type.STRING, description: "BT-10: Référence acheteur" },
       
       logistics: {
         type: Type.OBJECT,
         properties: {
-          deliver_to_name: { type: Type.STRING },
-          delivery_date: { type: Type.STRING },
-          deliver_to_address: { type: Type.STRING }
+          deliver_to_name: { type: Type.STRING, description: "BT-70: Nom du lieu de livraison" },
+          delivery_date: { type: Type.STRING, description: "BT-72: Date de livraison effective" },
+          deliver_to_address: { type: Type.STRING, description: "BG-15: Adresse complète du lieu de livraison" }
         }
       },
 
       billing_period: {
         type: Type.OBJECT,
         properties: {
-          start_date: { type: Type.STRING },
-          end_date: { type: Type.STRING }
+          start_date: { type: Type.STRING, description: "BT-73: Début de période de facturation" },
+          end_date: { type: Type.STRING, description: "BT-74: Fin de période de facturation" }
         }
       },
 
-      supplier_name: { type: Type.STRING },
-      supplier_vat: { type: Type.STRING },
-      supplier_siret: { type: Type.STRING },
-      supplier_address: { type: Type.STRING },
-      buyer_name: { type: Type.STRING },
-      buyer_vat: { type: Type.STRING },
-      buyer_siret: { type: Type.STRING },
-      buyer_address: { type: Type.STRING },
+      supplier_name: { type: Type.STRING, description: "BT-27: Raison sociale du vendeur" },
+      supplier_vat: { type: Type.STRING, description: "BT-31: TVA Intra du vendeur (ex: FR...)" },
+      supplier_siret: { type: Type.STRING, description: "BT-29: SIRET (14 chiffres) du vendeur" },
+      supplier_address: { type: Type.STRING, description: "BG-5: Adresse complète du vendeur" },
       
-      payment_means_code: { type: Type.STRING },
-      payment_terms_text: { type: Type.STRING },
-      invoice_note: { type: Type.STRING },
-      iban: { type: Type.STRING },
-      bic: { type: Type.STRING },
+      buyer_name: { type: Type.STRING, description: "BT-44: Raison sociale de l'acheteur" },
+      buyer_vat: { type: Type.STRING, description: "BT-48: TVA Intra de l'acheteur" },
+      buyer_siret: { type: Type.STRING, description: "BT-47: SIRET de l'acheteur" },
+      buyer_address: { type: Type.STRING, description: "BG-8: Adresse complète de l'acheteur" },
       
-      amount_excl_vat: { type: Type.NUMBER },
-      global_discount: { type: Type.NUMBER },
-      global_charge: { type: Type.NUMBER },
-      total_vat_amount: { type: Type.NUMBER },
-      amount_incl_vat: { type: Type.NUMBER },
-      prepaid_amount: { type: Type.NUMBER },
-      amount_due: { type: Type.NUMBER },
+      payment_means_code: { type: Type.STRING, description: "BT-81: Code mode de paiement (30=Virement, 48=Carte, 59=Prélèvement)" },
+      payment_terms_text: { type: Type.STRING, description: "BT-20: Conditions de paiement" },
+      iban: { type: Type.STRING, description: "BT-84: IBAN du vendeur" },
+      bic: { type: Type.STRING, description: "BT-85: BIC du vendeur" },
+      
+      amount_excl_vat: { type: Type.NUMBER, description: "BT-109: Total HT" },
+      global_discount: { type: Type.NUMBER, description: "BT-107: Remises totales" },
+      global_charge: { type: Type.NUMBER, description: "BT-108: Frais totaux" },
+      total_vat_amount: { type: Type.NUMBER, description: "BT-110: Montant total TVA" },
+      amount_incl_vat: { type: Type.NUMBER, description: "BT-112: Total TTC" },
+      prepaid_amount: { type: Type.NUMBER, description: "BT-113: Montant déjà payé" },
+      amount_due: { type: Type.NUMBER, description: "BT-115: Net à payer" },
       
       vat_breakdowns: {
         type: Type.ARRAY,
         items: {
           type: Type.OBJECT,
           properties: {
-            vat_category: { type: Type.STRING },
-            vat_rate: { type: Type.NUMBER },
-            vat_taxable_amount: { type: Type.NUMBER },
-            vat_amount: { type: Type.NUMBER }
+            vat_category: { type: Type.STRING, description: "BT-118: S, AE, E, Z" },
+            vat_rate: { type: Type.NUMBER, description: "BT-119: Taux TVA" },
+            vat_taxable_amount: { type: Type.NUMBER, description: "BT-116: Base HT" },
+            vat_amount: { type: Type.NUMBER, description: "BT-117: Montant TVA" }
           },
           required: ["vat_category", "vat_rate", "vat_taxable_amount", "vat_amount"]
         }
@@ -109,16 +106,16 @@ export const extractInvoiceData = async (
         items: {
           type: Type.OBJECT,
           properties: {
-            article_id: { type: Type.STRING },
-            description: { type: Type.STRING },
-            quantity: { type: Type.NUMBER },
-            unit_of_measure: { type: Type.STRING },
-            unit_price: { type: Type.NUMBER },
-            gross_price: { type: Type.NUMBER },
-            tax_rate: { type: Type.NUMBER },
-            line_vat_category: { type: Type.STRING },
-            amount: { type: Type.NUMBER },
-            origin_country: { type: Type.STRING }
+            article_id: { type: Type.STRING, description: "BT-128" },
+            description: { type: Type.STRING, description: "BT-129" },
+            quantity: { type: Type.NUMBER, description: "BT-131" },
+            unit_of_measure: { type: Type.STRING, description: "BT-130 (ex: C62, HUR)" },
+            unit_price: { type: Type.NUMBER, description: "BT-146: Prix net" },
+            gross_price: { type: Type.NUMBER, description: "BT-148: Prix brut" },
+            tax_rate: { type: Type.NUMBER, description: "BT-152: Taux TVA ligne" },
+            line_vat_category: { type: Type.STRING, description: "BT-151: S, AE, E, Z" },
+            amount: { type: Type.NUMBER, description: "BT-131: Total ligne HT" },
+            origin_country: { type: Type.STRING, description: "BT-159: Pays d'origine" }
           }
         }
       }
@@ -126,25 +123,11 @@ export const extractInvoiceData = async (
     required: ["supplier_name", "invoice_number", "amount_incl_vat", "vat_breakdowns"],
   };
 
-  const systemInstruction = `EXTRACTEUR RFE EN16931 (FACTUR-X COMFORT).
-Extraire TOUTES les données sémantiques BT-xxx avec une précision comptable absolue.
-
-IDENTIFICATION FISCALE (OBLIGATOIRE) :
-1. VENDEUR (Seller) : Localise le SIRET (BT-29, 14 chiffres) et la TVA Intra (BT-31, format FR+11 chiffres). Regarde dans l'en-tête ou le pied de page.
-2. ACHETEUR (Buyer) : Localise le SIRET (BT-47) et la TVA Intra (BT-48) du destinataire dans le bloc "Facturé à".
-3. RÈGLE : Ne jamais confondre les identifiants de l'émetteur et du récepteur.
-
-COORDONNÉES BANCAIRES (PRIORITÉ HAUTE) :
-- IBAN (BT-84) : Extraire impérativement l'IBAN du vendeur (format FR76...).
-- BIC (BT-85) : Extraire le code SWIFT/BIC associé.
-
-PRÉCISIONS COMMERCIALES & LOGISTIQUES :
-- LOGISTIQUE : Nom (BT-70) et adresse (BG-15) du lieu de livraison effectif.
-- PÉRIODE : Dates de début (BT-73) et de fin (BT-74) de facturation.
-- LIGNES : Prix unitaire Brut (BT-148), pays d'origine de l'article (BT-159).
-- PAIEMENT : Mode de règlement BT-81 (30=Virement, 48=Carte, 59=Prélèvement).
-
-REPONDRE EXCLUSIVEMENT EN JSON SANS COMMENTAIRE.`;
+  const systemInstruction = `Extract invoice data as valid JSON according to the schema. 
+- Omit null or empty fields to save tokens.
+- Ensure total precision for SIRET (14 digits) and VAT IDs (FR+11).
+- Strictly no trailing commas in arrays or objects.
+- Response must be pure JSON only.`;
 
   try {
     const response = await ai.models.generateContent({
@@ -152,14 +135,15 @@ REPONDRE EXCLUSIVEMENT EN JSON SANS COMMENTAIRE.`;
       contents: [{
         parts: [
           { inlineData: { mimeType, data: base64Data } },
-          { text: "Analyser le document et extraire les données Factur-X conformes au standard EN16931." }
+          { text: "Extract data based on the provided schema for EN16931 compliance." }
         ]
       }],
       config: {
         systemInstruction,
         responseMimeType: "application/json",
         responseSchema: schema,
-        temperature: 0
+        temperature: 0,
+        thinkingConfig: { thinkingBudget: 0 } // Vitesse maximale pour extraction structurée
       },
     });
 
