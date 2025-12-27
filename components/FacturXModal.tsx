@@ -5,7 +5,6 @@ import { InvoiceData, InvoiceItem, InvoiceType, LookupTable, OperationCategory, 
 import { generateFacturXXML } from '../services/facturXService';
 
 // --- Constants ---
-const STANDARD_VAT_RATE = 20.0;
 const VAT_CATEGORIES = [
   { code: 'S', label: 'Standard' },
   { code: 'Z', label: 'Zéro' },
@@ -183,6 +182,7 @@ export const FacturXModal: React.FC<{
       { id: 'BT-2', label: 'Date Facture', status: !!data.invoiceDate, mandatory: true },
       { id: 'BT-3', label: 'Type Document', status: !!data.invoiceType, mandatory: true },
       { id: 'BT-5', label: 'Devise ISO', status: !!data.currency, mandatory: true },
+      { id: 'BT-7', label: 'Point de Taxe', status: !!data.taxPointDate, mandatory: false },
       { id: 'BT-9', label: 'Date Échéance', status: !!data.dueDate, mandatory: false },
       { id: 'BT-20', label: 'Cond. Paiement', status: !!data.paymentTermsText, mandatory: false },
       { id: 'BT-27', label: 'Nom Vendeur', status: !!data.supplier, mandatory: true },
@@ -192,7 +192,9 @@ export const FacturXModal: React.FC<{
       { id: 'BT-47', label: 'SIRET Acheteur', status: !!data.buyerSiret && data.buyerSiret.replace(/\s/g, '').length === 14, mandatory: true },
       { id: 'BT-48', label: 'TVA Acheteur', status: !!data.buyerVat, mandatory: false },
       { id: 'BT-84', label: 'IBAN Vendeur', status: !!data.iban && data.iban.length >= 14, mandatory: true },
-      { id: 'BT-109', label: 'Total HT', status: (data.amountExclVat || 0) > 0, mandatory: true },
+      { id: 'BT-85', label: 'BIC/SWIFT', status: !!data.bic && data.bic.length >= 8, mandatory: false },
+      { id: 'BT-109', label: 'Total HT Net', status: (data.amountExclVat || 0) > 0, mandatory: true },
+      { id: 'BT-110', label: 'Total TVA', status: (data.totalVat || 0) >= 0, mandatory: true },
       { id: 'BT-112', label: 'Total TTC', status: (data.amountInclVat || 0) > 0, mandatory: true },
       { id: 'BG-23', label: 'Ventilation TVA', status: (data.vatBreakdowns?.length || 0) > 0, mandatory: true },
       { id: 'BG-25', label: 'Lignes (BT-151)', status: (data.items?.length || 0) > 0 && data.items?.every(i => !!i.lineVatCategory), mandatory: true },
@@ -256,10 +258,11 @@ export const FacturXModal: React.FC<{
                     
                     <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
                       <Group title="Identité Document" icon={LayoutList} variant="slate" className="lg:col-span-8">
-                          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                          <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
                             <FormInput label="N° Facture" value={data.invoiceNumber} onChange={(v:any)=>setData({...data, invoiceNumber:v})} btId="1" required themeColor="slate" />
                             <FormInput label="Date Facture" value={data.invoiceDate} onChange={(v:any)=>setData({...data, invoiceDate:v})} btId="2" required themeColor="slate" />
                             <FormInput label="Date Échéance" value={data.dueDate} onChange={(v:any)=>setData({...data, dueDate:v})} btId="9" themeColor="slate" />
+                            <FormInput label="Point de Taxe" value={data.taxPointDate} onChange={(v:any)=>setData({...data, taxPointDate:v})} btId="7" themeColor="slate" />
                             <FormInput label="Devise" value={data.currency} onChange={(v:any)=>setData({...data, currency:v.toUpperCase()})} btId="5" themeColor="slate" />
                           </div>
                           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 mt-4">
@@ -292,7 +295,10 @@ export const FacturXModal: React.FC<{
                             <FormInput label="SIRET" value={data.supplierSiret} onChange={(v:any)=>setData({...data, supplierSiret:v})} btId="29" required themeColor="indigo" />
                             <FormInput label="TVA Intra" value={data.supplierVat} onChange={(v:any)=>setData({...data, supplierVat:v})} btId="31" themeColor="indigo" />
                           </div>
-                          <FormInput label="IBAN Vendeur" value={data.iban} onChange={(v:any)=>setData({...data, iban:v.replace(/\s/g, "")})} btId="84" required themeColor="indigo" />
+                          <div className="grid grid-cols-2 gap-3">
+                            <FormInput label="IBAN Vendeur" value={data.iban} onChange={(v:any)=>setData({...data, iban:v.replace(/\s/g, "")})} btId="84" required themeColor="indigo" />
+                            <FormInput label="BIC/SWIFT" value={data.bic} onChange={(v:any)=>setData({...data, bic:v.replace(/\s/g, "")})} btId="85" themeColor="indigo" />
+                          </div>
                       </Group>
                       <Group title="Acheteur (BT-44)" icon={Receipt} variant="orange">
                           <FormInput label="Nom Client" value={data.buyerName} onChange={(v:any)=>setData({...data, buyerName:v})} btId="44" required className="mb-3" themeColor="orange" />
