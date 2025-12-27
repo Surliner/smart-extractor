@@ -1,5 +1,5 @@
 
-import { InvoiceData, InvoiceItem, InvoiceType, FacturXProfile } from '../types';
+import { InvoiceData, InvoiceItem, InvoiceType, FacturXProfile, VatBreakdown } from '../types';
 
 const PROFILE_URIS = {
   [FacturXProfile.MINIMUM]: 'urn:factur-x.eu:1p0:minimum',
@@ -25,10 +25,6 @@ const formatToUDT = (dateStr: string | undefined): string => {
   return clean.replace(/[^0-9]/g, '').substring(0, 8);
 };
 
-/**
- * Échappement rigoureux pour XML UTF-8.
- * Empêche les caractères spéciaux de briser la structure et assure la compatibilité.
- */
 const esc = (str: string | undefined | null): string => {
   if (!str) return '';
   return String(str)
@@ -69,23 +65,38 @@ export const generateFacturXXML = (invoice: InvoiceData, includeHeader: boolean 
   const taxTotal = (invoice.totalVat || 0);
   const grandTotal = (invoice.amountInclVat || 0);
 
-  const taxRates = new Map<string, { basis: number, tax: number }>();
-  (invoice.items || []).forEach(item => {
-    const rate = (item.taxRate || 20.0).toFixed(2);
-    const current = taxRates.get(rate) || { basis: 0, tax: 0 };
-    current.basis += (item.amount || 0);
-    current.tax += ((item.amount || 0) * (item.taxRate || 0) / 100);
-    taxRates.set(rate, current);
-  });
-
-  const taxSegments = Array.from(taxRates.entries()).map(([rate, vals]) => `
+  // Ventilation TVA (BG-23)
+  // On privilégie les données extraites explicitement par l'IA si présentes
+  let taxSegments = '';
+  if (invoice.vatBreakdowns && invoice.vatBreakdowns.length > 0) {
+    taxSegments = invoice.vatBreakdowns.map(v => `
+      <ram:ApplicableTradeTax>
+        <ram:CalculatedAmount>${(v.vatAmount || 0).toFixed(2)}</ram:CalculatedAmount>
+        <ram:TypeCode>VAT</ram:TypeCode>
+        ${v.exemptionReason ? `<ram:ExemptionReason>${esc(v.exemptionReason)}</ram:ExemptionReason>` : ''}
+        <ram:BasisAmount>${(v.vatTaxableAmount || 0).toFixed(2)}</ram:BasisAmount>
+        <ram:CategoryCode>${esc(v.vatCategory || 'S')}</ram:CategoryCode>
+        <ram:RateApplicablePercent>${(v.vatRate || 0).toFixed(2)}</ram:RateApplicablePercent>
+      </ram:ApplicableTradeTax>`).join('');
+  } else {
+    // Fallback dynamique si vatBreakdowns est absent (recalcul par taux)
+    const taxRates = new Map<string, { basis: number, tax: number, cat: string }>();
+    (invoice.items || []).forEach(item => {
+      const rate = (item.taxRate || 20.0).toFixed(2);
+      const current = taxRates.get(rate) || { basis: 0, tax: 0, cat: item.lineVatCategory || 'S' };
+      current.basis += (item.amount || 0);
+      current.tax += ((item.amount || 0) * (item.taxRate || 0) / 100);
+      taxRates.set(rate, current);
+    });
+    taxSegments = Array.from(taxRates.entries()).map(([rate, vals]) => `
       <ram:ApplicableTradeTax>
         <ram:CalculatedAmount>${vals.tax.toFixed(2)}</ram:CalculatedAmount>
         <ram:TypeCode>VAT</ram:TypeCode>
         <ram:BasisAmount>${vals.basis.toFixed(2)}</ram:BasisAmount>
-        <ram:CategoryCode>S</ram:CategoryCode>
+        <ram:CategoryCode>${vals.cat}</ram:CategoryCode>
         <ram:RateApplicablePercent>${rate}</ram:RateApplicablePercent>
       </ram:ApplicableTradeTax>`).join('');
+  }
 
   const xmlBody = `<rsm:CrossIndustryInvoice 
   xmlns:udt="urn:un:unece:uncefact:data:standard:UnqualifiedDataType:100" 
@@ -103,6 +114,7 @@ export const generateFacturXXML = (invoice: InvoiceData, includeHeader: boolean 
     <ram:IssueDateTime>
       <udt:DateTimeString format="102">${issueDateUDT}</udt:DateTimeString>
     </ram:IssueDateTime>
+    ${invoice.invoiceNote ? `<ram:IncludedNote><ram:Content>${esc(invoice.invoiceNote)}</ram:Content></ram:IncludedNote>` : ''}
   </rsm:ExchangedDocument>
   <rsm:SupplyChainTradeTransaction>
     ${(invoice.items || []).map((item, index) => `
@@ -114,8 +126,12 @@ export const generateFacturXXML = (invoice: InvoiceData, includeHeader: boolean 
       </ram:SpecifiedTradeProduct>
       <ram:SpecifiedLineTradeAgreement>
         <ram:NetPriceProductTradePrice>
-          <ram:ChargeAmount>${(item.unitPrice || 0).toFixed(2)}</ram:ChargeAmount>
+          <ram:ChargeAmount>${(item.unitPrice || 0).toFixed(4)}</ram:ChargeAmount>
         </ram:NetPriceProductTradePrice>
+        ${item.grossPrice ? `
+        <ram:GrossPriceProductTradePrice>
+          <ram:ChargeAmount>${(item.grossPrice || 0).toFixed(4)}</ram:ChargeAmount>
+        </ram:GrossPriceProductTradePrice>` : ''}
       </ram:SpecifiedLineTradeAgreement>
       <ram:SpecifiedLineTradeDelivery>
         <ram:BilledQuantity unitCode="${item.unitOfMeasure || 'C62'}">${(item.quantity || 0).toFixed(2)}</ram:BilledQuantity>
@@ -123,7 +139,7 @@ export const generateFacturXXML = (invoice: InvoiceData, includeHeader: boolean 
       <ram:SpecifiedLineTradeSettlement>
         <ram:ApplicableTradeTax>
           <ram:TypeCode>VAT</ram:TypeCode>
-          <ram:CategoryCode>S</ram:CategoryCode>
+          <ram:CategoryCode>${item.lineVatCategory || 'S'}</ram:CategoryCode>
           <ram:RateApplicablePercent>${(item.taxRate || 20.0).toFixed(2)}</ram:RateApplicablePercent>
         </ram:ApplicableTradeTax>
         <ram:SpecifiedTradeSettlementLineMonetarySummation>
@@ -179,9 +195,10 @@ export const generateFacturXXML = (invoice: InvoiceData, includeHeader: boolean 
         <ram:GrandTotalAmount>${grandTotal.toFixed(2)}</ram:GrandTotalAmount>
         <ram:DuePayableAmount>${grandTotal.toFixed(2)}</ram:DuePayableAmount>
       </ram:SpecifiedTradeSettlementHeaderMonetarySummation>
-      ${dueDateUDT ? `
+      ${invoice.paymentTermsText || dueDateUDT ? `
       <ram:SpecifiedTradePaymentTerms>
-        <ram:DueDateTime><udt:DateTimeString format="102">${dueDateUDT}</udt:DateTimeString></ram:DueDateTime>
+        ${invoice.paymentTermsText ? `<ram:Description>${esc(invoice.paymentTermsText)}</ram:Description>` : ''}
+        ${dueDateUDT ? `<ram:DueDateTime><udt:DateTimeString format="102">${dueDateUDT}</udt:DateTimeString></ram:DueDateTime>` : ''}
       </ram:SpecifiedTradePaymentTerms>` : ''}
     </ram:ApplicableHeaderTradeSettlement>
   </rsm:SupplyChainTradeTransaction>

@@ -1,5 +1,6 @@
+
 import { GoogleGenAI, Type } from "@google/genai";
-import { InvoiceData, InvoiceItem, InvoiceType, ExtractionMode, ExtractionResult, OperationCategory, TaxPointType } from "../types";
+import { InvoiceData, InvoiceItem, InvoiceType, ExtractionMode, ExtractionResult, OperationCategory, TaxPointType, VatBreakdown } from "../types";
 
 const parseInvoiceDate = (dateStr: string): string => {
   if (!dateStr) return "";
@@ -31,7 +32,6 @@ export const extractInvoiceData = async (
   companyId: string,
   withItems: boolean = false
 ): Promise<ExtractionResult> => {
-  // Instanciation à l'appel pour garantir l'utilisation de la clé la plus récente
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
   const ultimateSchema = {
@@ -69,9 +69,22 @@ export const extractInvoiceData = async (
       bic: { type: Type.STRING },
       payment_method: { type: Type.STRING },
       payment_means_code: { type: Type.STRING },
-      payment_terms: { type: Type.STRING },
-      payment_reference: { type: Type.STRING },
-      notes: { type: Type.STRING },
+      payment_terms_text: { type: Type.STRING },
+      invoice_note: { type: Type.STRING },
+      vat_breakdowns: {
+        type: Type.ARRAY,
+        items: {
+          type: Type.OBJECT,
+          properties: {
+            vat_category: { type: Type.STRING },
+            vat_rate: { type: Type.NUMBER },
+            vat_taxable_amount: { type: Type.NUMBER },
+            vat_amount: { type: Type.NUMBER },
+            exemption_reason: { type: Type.STRING }
+          },
+          required: ["vat_category", "vat_rate", "vat_taxable_amount", "vat_amount"]
+        }
+      },
       line_items: {
         type: Type.ARRAY,
         items: {
@@ -82,25 +95,37 @@ export const extractInvoiceData = async (
             quantity: { type: Type.NUMBER },
             unit_of_measure: { type: Type.STRING },
             gross_price: { type: Type.NUMBER },
-            discount_amount: { type: Type.NUMBER },
+            discount_rate: { type: Type.NUMBER },
+            line_allowance_amount: { type: Type.NUMBER },
+            line_charge_amount: { type: Type.NUMBER },
             unit_price: { type: Type.NUMBER },
             tax_rate: { type: Type.NUMBER },
+            line_vat_category: { type: Type.STRING },
             amount: { type: Type.NUMBER }
           }
         }
       }
     },
-    required: ["supplier_name", "invoice_number", "amount_incl_vat"],
+    required: ["supplier_name", "invoice_number", "amount_incl_vat", "vat_breakdowns"],
   };
 
-  const systemInstruction = `EXTRACTEUR RFE EN16931 STRICT. 
-OBJET: Extraction structurée Factur-X pour plateformes agréées (PDP).
-RÈGLES:
-1. IDENTITÉ: Extraire SIRET (14 chiffres) et TVA (FR+11 chiffres).
-2. DATES: Format ISO YYYY-MM-DD.
-3. BANCAIRE: IBAN et BIC de l'émetteur.
-4. LIGNES: (GrossPrice - Discount) * Quantity = Amount.
-5. ARITHMÉTIQUE: Total HT = Somme(Lignes) + Frais - Remises.
+  const systemInstruction = `EXTRACTEUR RFE EN16931 STRICT (FAC-X 2026).
+OBJET: Extraction pour plateformes agréées (PDP).
+
+CHAMPS CRITIQUES:
+1. VENTILATION TVA (BG-23): Créer un array 'vat_breakdowns' PAR TAUX. 
+   - vat_category (BT-118): S=Standard, Z=Zéro, E=Exo, AE=Autoliquid.
+   - vat_taxable_amount (BT-116): Base HT du taux.
+   - vat_amount (BT-117): Base * Taux.
+2. LIGNES (BG-25): line_vat_category (BT-151) obligatoire par ligne.
+3. IDENTIFIANTS: SIRET 14 chiffres, TVA FR+11.
+4. BANCAIRE: IBAN Vendeur (BT-84) format FR.
+
+RÈGLES MATHÉMATIQUES:
+- Somme line_items.amount = amount_excl_vat.
+- amount_excl_vat + total_vat_amount = amount_incl_vat.
+- vat_taxable_amount somme lignes = base HT taux.
+
 RÉPONSE: JSON STRICT UNIQUEMENT.`;
 
   try {
@@ -109,7 +134,7 @@ RÉPONSE: JSON STRICT UNIQUEMENT.`;
       contents: [{
         parts: [
           { inlineData: { mimeType, data: base64Data } },
-          { text: "Extraire les données structurées EN16931." }
+          { text: "Extraire les données structurées conformes RFE EN16931." }
         ]
       }],
       config: {
@@ -120,7 +145,6 @@ RÉPONSE: JSON STRICT UNIQUEMENT.`;
       },
     });
 
-    // Utilisation de .text (propriété getter)
     const rawData = JSON.parse(response.text || "{}");
     const usage = response.usageMetadata || { totalTokenCount: 0 };
 
@@ -130,10 +154,21 @@ RÉPONSE: JSON STRICT UNIQUEMENT.`;
       quantity: parseQuantity(item.quantity),
       unitOfMeasure: item.unit_of_measure || "C62",
       grossPrice: item.gross_price || null,
-      discount: item.discount_amount || null,
+      discount: item.discount_rate || null,
+      lineAllowanceAmount: item.line_allowance_amount || null,
+      lineChargeAmount: item.line_charge_amount || null,
       unitPrice: item.unit_price || null,
       taxRate: item.tax_rate || 20.0,
+      lineVatCategory: item.line_vat_category || "S",
       amount: item.amount || null,
+    }));
+
+    const vatBreakdowns: VatBreakdown[] = (rawData.vat_breakdowns || []).map((v: any) => ({
+      vatCategory: v.vat_category || "S",
+      vatRate: v.vat_rate || 20.0,
+      vatTaxableAmount: v.vat_taxable_amount || 0,
+      vatAmount: v.vat_amount || 0,
+      exemptionReason: v.exemption_reason || ""
     }));
 
     const invoiceData: InvoiceData = {
@@ -163,9 +198,12 @@ RÉPONSE: JSON STRICT UNIQUEMENT.`;
       currency: rawData.currency || "EUR",
       iban: rawData.iban?.replace(/\s/g, "") || "",
       bic: rawData.bic || "",
+      paymentTermsText: rawData.payment_terms_text || "",
+      invoiceNote: rawData.invoice_note || "",
       originalFilename: filename,
       fileData: base64Data,
       items: withItems ? items : undefined,
+      vatBreakdowns: vatBreakdowns,
     };
 
     return { 
@@ -177,7 +215,7 @@ RÉPONSE: JSON STRICT UNIQUEMENT.`;
       } 
     };
   } catch (error) {
-    console.error("Gemini Error:", error);
+    console.error("Gemini RFE Extraction Error:", error);
     throw error;
   }
 };

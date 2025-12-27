@@ -1,41 +1,42 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { Settings, X, Database, Search, UploadCloud, Plus, Trash2, ChevronLeft, ChevronRight, BarChart3, Users, Zap, ShieldCheck, Download, Save, FileSpreadsheet, FileJson, Layers, CloudLightning, BookOpen, Info, CreditCard, Landmark, Percent } from 'lucide-react';
+import { Settings, X, Database, Search, UploadCloud, Plus, Trash2, ChevronLeft, ChevronRight, BarChart3, Users, Zap, ShieldCheck, Download, Save, FileSpreadsheet, FileJson, Layers, CloudLightning, BookOpen, Info, CreditCard, Landmark, Percent, ListTodo, AlertTriangle } from 'lucide-react';
 import { ErpConfig, LookupTable, ExportTemplate, PartnerMasterData, XmlMappingProfile } from '../types';
 
 const MD_PAGE_SIZE = 15;
 
 const FIELD_GROUPS = [
   { name: 'Identité Document', fields: [
-    { id: 'invoiceType', label: 'Type Document' },
+    { id: 'invoiceType', label: 'Type Document (BT-3)' },
     { id: 'invoiceNumber', label: 'N° Facture (BT-1)' },
     { id: 'invoiceDate', label: 'Date Facture (BT-2)' },
     { id: 'dueDate', label: 'Date Échéance (BT-9)' },
     { id: 'taxPointDate', label: 'Point de Taxe (BT-7)' },
     { id: 'currency', label: 'Devise ISO (BT-5)' },
     { id: 'businessProcessId', label: 'Profil Standard (BT-24)' },
+    { id: 'invoiceNote', label: 'Notes Facture (BT-22)' },
     { id: 'extractionMode', label: 'Mode IA' },
     { id: 'direction', label: 'Sens Flux' }
   ]},
   { name: 'Vendeur (Seller)', fields: [
     { id: 'supplier', label: 'Nom Vendeur (BT-27)' },
-    { id: 'supplierSiret', label: 'SIRET Vendeur (BT-29)' },
-    { id: 'supplierVat', label: 'TVA Vendeur (BT-31)' },
+    { id: 'supplierSiret', label: 'SIRET Vendeur (BT-29) ⚠️' },
+    { id: 'supplierVat', label: 'TVA Vendeur (BT-31) ⚠️' },
     { id: 'supplierErpCode', label: 'Code ERP Vendeur' },
     { id: 'supplierAddress', label: 'Adresse Vendeur (BG-5)' },
-    { id: 'iban', label: 'IBAN Vendeur (BT-84)' },
+    { id: 'iban', label: 'IBAN Vendeur (BT-84) ⚠️' },
     { id: 'bic', label: 'BIC/SWIFT Vendeur (BT-85)' }
   ]},
   { name: 'Acheteur (Buyer)', fields: [
     { id: 'buyerName', label: 'Nom Acheteur (BT-44)' },
-    { id: 'buyerSiret', label: 'SIRET Acheteur (BT-47)' },
-    { id: 'buyerVat', label: 'TVA Acheteur (BT-48)' },
+    { id: 'buyerSiret', label: 'SIRET Acheteur (BT-47) ⚠️' },
+    { id: 'buyerVat', label: 'TVA Acheteur (BT-48) ⚠️' },
     { id: 'buyerErpCode', label: 'Code ERP Acheteur' },
     { id: 'buyerAddress', label: 'Adresse Acheteur (BG-8)' }
   ]},
   { name: 'Références & Logistique', fields: [
     { id: 'poNumber', label: 'N° Commande (BT-13)' },
-    { id: 'buyerReference', label: 'Réf. Acheteur (BT-10)' },
+    { id: 'buyerReference', label: 'Réf. Acheteur (BT-10) ⚠️' },
     { id: 'contractNumber', label: 'N° Contrat (BT-12)' },
     { id: 'deliveryNoteNumber', label: 'N° Bon Livraison (BT-16)' },
     { id: 'projectReference', label: 'Réf. Projet (BT-11)' },
@@ -49,7 +50,15 @@ const FIELD_GROUPS = [
     { id: 'globalDiscount', label: 'Remises Totales (BT-107)' },
     { id: 'globalCharge', label: 'Frais Totaux (BT-108)' },
     { id: 'paymentMethod', label: 'Mode Paiement' },
-    { id: 'paymentMeansCode', label: 'Code UN/CEFACT (BT-81)' }
+    { id: 'paymentMeansCode', label: 'Code UN/CEFACT (BT-81)' },
+    { id: 'paymentTermsText', label: 'Conditions Paiement (BT-20)' }
+  ]},
+  { name: '⚠️ Ventilation TVA (BG-23) OBLIGATOIRE', fields: [
+    { id: 'vatBreakdowns', label: 'Détail TVA (Array JSON)' },
+    { id: 'vatCategory', label: 'Catégorie TVA (BT-118)' },
+    { id: 'vatRate', label: 'Taux % (BT-119)' },
+    { id: 'vatTaxableAmount', label: 'Base HT (BT-116)' },
+    { id: 'vatAmount', label: 'Montant TVA (BT-117)' }
   ]},
   { name: 'Détail des Lignes (BG-25)', fields: [
     { id: 'articleId', label: 'Ligne: Réf. Article (BT-128)' },
@@ -58,9 +67,12 @@ const FIELD_GROUPS = [
     { id: 'unitOfMeasure', label: 'Ligne: Unité (BT-130)' },
     { id: 'unitPrice', label: 'Ligne: P.U. Net (BT-146)' },
     { id: 'grossPrice', label: 'Ligne: P.U. Brut (BT-149)' },
-    { id: 'discount', label: 'Ligne: Remise (BT-147)' },
+    { id: 'discount', label: 'Ligne: Remise % (BT-147)' },
+    { id: 'lineAllowanceAmount', label: 'Ligne: Remise € (BT-136)' },
+    { id: 'lineChargeAmount', label: 'Ligne: Frais € (BT-141)' },
     { id: 'taxRate', label: 'Ligne: Taux TVA % (BT-152)' },
-    { id: 'amount', label: 'Ligne: Montant Ligne HT (BT-131)' }
+    { id: 'lineVatCategory', label: 'Ligne: Catégorie TVA (BT-151) ⚠️' },
+    { id: 'amount', label: 'Ligne: Montant HT (BT-131)' }
   ]}
 ];
 
@@ -74,6 +86,7 @@ const GLOSSARY_DATA = [
       { bt: 'BT-9', label: 'Payment Due Date', desc: 'Date à laquelle le paiement est exigible.' },
       { bt: 'BT-5', label: 'Currency Code', desc: 'Code devise ISO 4217 (ex: EUR).' },
       { bt: 'BT-10', label: 'Buyer Reference', desc: 'Référence fournie par l\'acheteur pour son suivi interne.' },
+      { bt: 'BT-22', label: 'Invoice Note', desc: 'Commentaire ou mention légale additionnelle.' },
       { bt: 'BT-24', label: 'Business Process ID', desc: 'Identifiant du processus métier standardisé.' }
     ]
   },
@@ -99,10 +112,21 @@ const GLOSSARY_DATA = [
   {
     category: "Règlement (Payment)",
     items: [
+      { bt: 'BT-20', label: 'Payment Terms', desc: 'Conditions de règlement textuelles.' },
       { bt: 'BT-81', label: 'Payment Means Code', desc: 'Code du mode de paiement (30=Virement, 48=Carte, etc.).' },
       { bt: 'BT-83', label: 'Payment Reference', desc: 'Libellé à utiliser lors du virement (ex: N° Facture).' },
       { bt: 'BT-84', label: 'IBAN', desc: 'Identifiant de compte bancaire international.' },
       { bt: 'BT-85', label: 'BIC/SWIFT', desc: 'Code d\'identification de la banque.' }
+    ]
+  },
+  {
+    category: "⚠️ Ventilation TVA (BG-23) - Obligatoire",
+    items: [
+      { bt: 'BT-116', label: 'VAT Taxable Amount', desc: 'Base HT pour un taux donné. Somme des lignes à ce taux.' },
+      { bt: 'BT-117', label: 'VAT Amount', desc: 'Montant TVA calculé = Base × Taux. Requis pour chaque taux.' },
+      { bt: 'BT-118', label: 'VAT Category Code', desc: 'S=Standard, Z=Zéro, E=Exonéré, AE=Autoliquidation, G=Export.' },
+      { bt: 'BT-119', label: 'VAT Rate %', desc: 'Taux TVA: 20.00, 10.00, 5.50, 2.10, 0.00. Deux décimales.' },
+      { bt: 'BT-120', label: 'Exemption Reason', desc: 'Texte justificatif si exonération (ex: Art.293B CGI).' }
     ]
   },
   {
@@ -124,9 +148,11 @@ const GLOSSARY_DATA = [
       { bt: 'BT-126', label: 'Line ID', desc: 'Identifiant de la ligne (1, 2, 3...).' },
       { bt: 'BT-129', label: 'Item Name', desc: 'Désignation de l\'article ou service.' },
       { bt: 'BT-131', label: 'Quantity', desc: 'Quantité facturée pour la ligne.' },
+      { bt: 'BT-136', label: 'Line Allowance', desc: 'Montant remise appliquée sur la ligne en €.' },
+      { bt: 'BT-141', label: 'Line Charge', desc: 'Montant frais ajoutés sur la ligne en €.' },
       { bt: 'BT-146', label: 'Net Price', desc: 'Prix unitaire net de remise.' },
       { bt: 'BT-149', label: 'Gross Price', desc: 'Prix unitaire brut avant remise.' },
-      { bt: 'BT-151', label: 'VAT Category', desc: 'Code catégorie TVA (S=Standard, Z=Zéro...).' },
+      { bt: 'BT-151', label: 'VAT Category', desc: 'Code catégorie TVA ligne (S, Z, E, AE). OBLIGATOIRE.' },
       { bt: 'BT-152', label: 'VAT Rate', desc: 'Taux de TVA applicable en pourcentage.' }
     ]
   }
@@ -235,11 +261,11 @@ export const ConfigurationModal: React.FC<ConfigurationModalProps> = ({
                 <div className="grid grid-cols-3 gap-8">
                   <StatCard icon={Users} label="Tiers en Base" value={localMasterData.length.toLocaleString()} color="indigo" />
                   <StatCard icon={ShieldCheck} label="Conformité RFE" value="100%" color="emerald" />
-                  <StatCard icon={Zap} label="Mode" value="Flash-Opt" color="purple" />
+                  <StatCard icon={Zap} label="Mode" value="RFE-Compliant" color="purple" />
                 </div>
                 <div className="bg-slate-900 rounded-[2.5rem] p-10 text-white shadow-inner">
-                  <h4 className="text-lg font-black uppercase mb-4 tracking-tighter">Performance & RFE Readiness</h4>
-                  <p className="text-xs text-slate-400 leading-relaxed font-medium">Pipeline optimisé pour <b>Render</b>. Prompt Gemini 3 Flash compressé. Support complet de la norme EN16931 pour l'archivage légal et l'extraction PDP agréée.</p>
+                  <h4 className="text-lg font-black uppercase mb-4 tracking-tighter">Performance & RFE Readiness 2026</h4>
+                  <p className="text-xs text-slate-400 leading-relaxed font-medium">Pipeline optimisé pour l'extraction EN16931. Support complet de la ventilation TVA (BG-23) et des identifiants sémantiques BT de la réforme fiscale française.</p>
                 </div>
               </div>
             )}
@@ -300,7 +326,7 @@ export const ConfigurationModal: React.FC<ConfigurationModalProps> = ({
                       <div className="space-y-2"><label className="text-[9px] font-black uppercase text-slate-400 ml-1">Séparateur</label><select value={tpl.separator} onChange={e=>setLocalTemplates(prev=>prev.map(t=>t.id===tpl.id?{...t, separator:e.target.value as any}:t))} className="w-full px-6 py-3 rounded-xl border border-slate-200 outline-none font-bold text-xs"><option value="semicolon">Point-virgule (;)</option><option value="comma">Virgule (,)</option><option value="tab">Tabulation</option></select></div>
                     </div>
                     <div className="bg-white p-6 rounded-2xl space-y-3">
-                      <p className="text-[10px] font-black uppercase text-slate-400 mb-3">Mappage Colonnes (BT-IDs RFE)</p>
+                      <p className="text-[10px] font-black uppercase text-slate-400 mb-3">Mappage Colonnes (BT-IDs RFE 2026)</p>
                       {tpl.columns.map((col, idx) => (
                         <div key={idx} className="flex space-x-3">
                            <input placeholder="Entête CSV" value={col.header} onChange={e=>setLocalTemplates(prev=>prev.map(t=>t.id===tpl.id?{...t, columns: t.columns.map((c, i)=>i===idx?{...c, header:e.target.value}:c)}:t))} className="flex-1 px-4 py-2 bg-slate-50 border border-slate-100 rounded-lg text-xs font-bold" />

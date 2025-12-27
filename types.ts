@@ -1,12 +1,24 @@
+
+export interface VatBreakdown {
+  vatCategory: string; // BT-118
+  vatRate: number;    // BT-119
+  vatTaxableAmount: number; // BT-116
+  vatAmount: number;   // BT-117
+  exemptionReason?: string; // BT-120
+}
+
 export interface InvoiceItem {
   articleId: string;
   description: string;
   quantity: number | null;
   unitOfMeasure?: string;
   grossPrice?: number | null;
-  discount?: number | null;
+  discount?: number | null; // BT-147 (Rate)
+  lineAllowanceAmount?: number | null; // BT-136
+  lineChargeAmount?: number | null;    // BT-141
   unitPrice: number | null;
   taxRate?: number | null;
+  lineVatCategory?: string; // BT-151
   amount: number | null;
 }
 
@@ -36,7 +48,6 @@ export interface Company {
   name: string;
   createdAt: string;
   config?: any;
-  // Statistiques agrégées (calculées par le serveur)
   userCount?: number;
   totalTokens?: number;
   invoiceCount?: number;
@@ -110,11 +121,14 @@ export interface InvoiceData {
   bic?: string;
   paymentMethod?: string;
   paymentTerms?: string;
+  paymentTermsText?: string; // BT-20
   paymentMeansCode?: string;
   notes?: string;
+  invoiceNote?: string; // BT-22
   originalFilename: string;
   fileData?: string; 
   items?: InvoiceItem[];
+  vatBreakdowns?: VatBreakdown[]; // BG-23
   erpStatus?: ErpStatus;
   erpReference?: string;
   isMasterMatched?: boolean;
