@@ -38,30 +38,16 @@ const esc = (str: string | undefined | null): string => {
 
 const cleanID = (str: string | undefined | null): string => str ? str.replace(/\s/g, '') : '';
 
-/**
- * parseAddress amélioré pour gérer les BP (Boîtes Postales)
- * "BP 21016 26000 VALENCE" -> Line1: "BP 21016", PC: "26000", City: "VALENCE"
- */
 const parseAddress = (addressStr: string | undefined) => {
   if (!addressStr) return { line: '', postcode: '', city: '' };
-  
-  // On cherche un code postal (5 chiffres) qui n'est pas précédé par "BP" ou "CS" directement
-  // Ou plus simplement, on cherche le dernier bloc de 5 chiffres qui ressemble à un code postal
   const matches = [...addressStr.matchAll(/(\d{5})/g)];
   if (matches.length > 0) {
-    // On prend le dernier match de 5 chiffres (souvent le CP après le numéro de BP)
     const lastMatch = matches[matches.length - 1];
     const postcode = lastMatch[1];
     const index = lastMatch.index!;
-    
     const line = addressStr.substring(0, index).trim().replace(/,$/, '');
     const city = addressStr.substring(index + 5).trim().replace(/^,/, '').trim();
-    
-    return { 
-      line: line || addressStr, 
-      postcode: postcode, 
-      city: city.toUpperCase() || 'INCONNU' 
-    };
+    return { line: line || addressStr, postcode, city: city.toUpperCase() || 'INCONNU' };
   }
   return { line: addressStr, postcode: '', city: '' };
 };
@@ -78,16 +64,18 @@ export const generateFacturXXML = (invoice: InvoiceData, includeHeader: boolean 
   const buyerAddr = parseAddress(invoice.buyerAddress);
   const shipAddr = parseAddress(invoice.logistics?.deliverToAddress);
 
-  // Totaux calculés
   const lineTotalHT = (invoice.items || []).reduce((sum, item) => sum + (item.amount || 0), 0);
   const charge = invoice.globalCharge || 0;
   const discount = invoice.globalDiscount || 0;
-  const taxBasisTotal = lineTotalHT + charge - discount;
+  const taxBasisTotal = parseFloat((lineTotalHT + charge - discount).toFixed(2));
   const taxTotal = (invoice.totalVat || 0);
-  const grandTotal = taxBasisTotal + taxTotal;
+  const grandTotal = parseFloat((taxBasisTotal + taxTotal).toFixed(2));
 
-  // Génération des segments de taxe (BG-23)
-  // CRITIQUE : Doit utiliser les bases NETTES (après remise globale) calculées dans le modal
+  // Détection des articles gratuits pour note automatique
+  const freeItems = (invoice.items || []).filter(it => (it.unitPrice || 0) === 0);
+  const autoNotes = freeItems.map(it => `Article ${it.description} offert (remise 100%)`).join(' | ');
+  const finalNote = invoice.invoiceNote ? `${invoice.invoiceNote}${autoNotes ? ' | ' + autoNotes : ''}` : autoNotes;
+
   let taxSegments = '';
   if (invoice.vatBreakdowns && invoice.vatBreakdowns.length > 0) {
     taxSegments = invoice.vatBreakdowns.map(v => `
@@ -99,17 +87,6 @@ export const generateFacturXXML = (invoice: InvoiceData, includeHeader: boolean 
         <ram:CategoryCode>${esc(v.vatCategory || 'S')}</ram:CategoryCode>
         <ram:RateApplicablePercent>${(v.vatRate || 0).toFixed(2)}</ram:RateApplicablePercent>
       </ram:ApplicableTradeTax>`).join('');
-  } else {
-    // Fallback si pas de ventilation fournie (devrait être évité par le modal)
-    const rate = 20.0; 
-    taxSegments = `
-      <ram:ApplicableTradeTax>
-        <ram:CalculatedAmount>${(taxBasisTotal * rate / 100).toFixed(2)}</ram:CalculatedAmount>
-        <ram:TypeCode>VAT</ram:TypeCode>
-        <ram:BasisAmount>${taxBasisTotal.toFixed(2)}</ram:BasisAmount>
-        <ram:CategoryCode>S</ram:CategoryCode>
-        <ram:RateApplicablePercent>${rate.toFixed(2)}</ram:RateApplicablePercent>
-      </ram:ApplicableTradeTax>`;
   }
 
   const xmlBody = `<rsm:CrossIndustryInvoice 
@@ -128,7 +105,7 @@ export const generateFacturXXML = (invoice: InvoiceData, includeHeader: boolean 
     <ram:IssueDateTime>
       <udt:DateTimeString format="102">${issueDateUDT}</udt:DateTimeString>
     </ram:IssueDateTime>
-    ${invoice.invoiceNote ? `<ram:IncludedNote><ram:Content>${esc(invoice.invoiceNote)}</ram:Content></ram:IncludedNote>` : ''}
+    ${finalNote ? `<ram:IncludedNote><ram:Content>${esc(finalNote)}</ram:Content></ram:IncludedNote>` : ''}
   </rsm:ExchangedDocument>
   <rsm:SupplyChainTradeTransaction>
     ${(invoice.items || []).map((item, index) => `
@@ -141,15 +118,15 @@ export const generateFacturXXML = (invoice: InvoiceData, includeHeader: boolean 
       </ram:SpecifiedTradeProduct>
       <ram:SpecifiedLineTradeAgreement>
         <ram:NetPriceProductTradePrice>
-          <ram:ChargeAmount>${(item.unitPrice || 0).toFixed(4)}</ram:ChargeAmount>
+          <ram:ChargeAmount>${(item.unitPrice || 0).toFixed(2)}</ram:ChargeAmount>
         </ram:NetPriceProductTradePrice>
         ${item.grossPrice ? `
         <ram:GrossPriceProductTradePrice>
-          <ram:ChargeAmount>${(item.grossPrice || 0).toFixed(4)}</ram:ChargeAmount>
+          <ram:ChargeAmount>${(item.grossPrice || 0).toFixed(2)}</ram:ChargeAmount>
         </ram:GrossPriceProductTradePrice>` : ''}
       </ram:SpecifiedLineTradeAgreement>
       <ram:SpecifiedLineTradeDelivery>
-        <ram:BilledQuantity unitCode="${item.unitOfMeasure || 'C62'}">${(item.quantity || 0).toFixed(4)}</ram:BilledQuantity>
+        <ram:BilledQuantity unitCode="${item.unitOfMeasure || 'C62'}">${(item.quantity || 0).toFixed(2)}</ram:BilledQuantity>
       </ram:SpecifiedLineTradeDelivery>
       <ram:SpecifiedLineTradeSettlement>
         <ram:ApplicableTradeTax>
@@ -221,7 +198,7 @@ export const generateFacturXXML = (invoice: InvoiceData, includeHeader: boolean 
       </ram:BillingSpecifiedPeriod>` : ''}
       <ram:InvoiceCurrencyCode>${esc(invoice.currency) || 'EUR'}</ram:InvoiceCurrencyCode>
       <ram:SpecifiedTradeSettlementPaymentMeans>
-        <ram:TypeCode>${esc(invoice.paymentMeansCode || '30')}</ram:TypeCode>
+        <ram:TypeCode>${invoice.paymentMeansCode === '49' ? '59' : esc(invoice.paymentMeansCode || '30')}</ram:TypeCode>
         <ram:PayeePartyCreditorFinancialAccount>
           <ram:IBANID>${cleanID(invoice.iban)}</ram:IBANID>
           <ram:AccountName>${esc(invoice.supplier)}</ram:AccountName>

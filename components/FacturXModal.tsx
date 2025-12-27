@@ -45,7 +45,7 @@ const PAYMENT_MEANS = [
   { code: '30', label: 'Virement bancaire' },
   { code: '10', label: 'Espèces' },
   { code: '48', label: 'Carte bancaire' },
-  { code: '49', label: 'Prélèvement' },
+  { code: '59', label: 'SEPA Direct Debit (Prélèvement)' },
   { code: '20', label: 'Chèque' },
   { code: '1', label: 'Autre / Non défini' },
 ];
@@ -213,6 +213,10 @@ export const FacturXModal: React.FC<{
   const [supplierSuggestions, setSupplierSuggestions] = useState<PartnerMasterData[]>([]);
   const [buyerSuggestions, setBuyerSuggestions] = useState<PartnerMasterData[]>([]);
 
+  // Bridge states for smooth decimal entry (handling both comma and dot)
+  const [discountStr, setDiscountStr] = useState(invoice.globalDiscount?.toString() || '0');
+  const [chargeStr, setChargeStr] = useState(invoice.globalCharge?.toString() || '0');
+
   useEffect(() => {
     if (data.fileData) {
       try {
@@ -297,19 +301,15 @@ export const FacturXModal: React.FC<{
   useEffect(() => {
     if (!data.items) return;
 
-    // Calcul de la somme brute des lignes (avant remise globale)
     const lineTotalHT = data.items.reduce((sum, item) => sum + (item.amount || 0), 0);
-    const charge = data.globalCharge || 0;
-    const discount = data.globalDiscount || 0;
-    const netTotalHT = lineTotalHT + charge - discount;
+    // Convert sanitized strings to numeric values for calculation
+    const charge = parseFloat(chargeStr.replace(',', '.')) || 0;
+    const discount = parseFloat(discountStr.replace(',', '.')) || 0;
+    const netTotalHT = parseFloat((lineTotalHT + charge - discount).toFixed(2));
 
-    // Calcul du ratio pour répartir les frais/remises globaux
-    // On travaille avec une précision augmentée pour minimiser les résidus d'arrondi
     const prorataFactor = lineTotalHT > 0 ? netTotalHT / lineTotalHT : 1;
-
     const breakdownMap = new Map<string, VatBreakdown>();
     
-    // Aggrégation par taux et catégorie
     data.items.forEach(item => {
       const rate = item.taxRate || 0;
       const cat = item.lineVatCategory || 'S';
@@ -331,38 +331,40 @@ export const FacturXModal: React.FC<{
 
     const vatBreakdowns = breakdowns.map((b, idx) => {
       let adjustedBase: number;
-      
-      // Technique du "Running Balance" pour le dernier élément afin de tomber pile sur le total net HT
       if (idx === breakdowns.length - 1) {
-        adjustedBase = netTotalHT - currentSumAdjustedHT;
+        // Last segment gets the remainder to ensure exact match with netTotalHT
+        adjustedBase = parseFloat((netTotalHT - currentSumAdjustedHT).toFixed(2));
       } else {
         adjustedBase = parseFloat((b.vatTaxableAmount * prorataFactor).toFixed(2));
-        currentSumAdjustedHT += adjustedBase;
+        currentSumAdjustedHT = parseFloat((currentSumAdjustedHT + adjustedBase).toFixed(2));
       }
 
       return {
         ...b,
-        vatTaxableAmount: parseFloat(adjustedBase.toFixed(2)),
+        vatTaxableAmount: adjustedBase,
         vatAmount: parseFloat((adjustedBase * (b.vatRate / 100)).toFixed(2))
       };
     });
 
-    const totalVAT = vatBreakdowns.reduce((sum, b) => sum + b.vatAmount, 0);
-    const amountInclVat = netTotalHT + totalVAT;
+    const totalVAT = parseFloat(vatBreakdowns.reduce((sum, b) => sum + b.vatAmount, 0).toFixed(2));
+    const amountInclVat = parseFloat((netTotalHT + totalVAT).toFixed(2));
 
+    // Stability check before updating state to avoid infinite loops
     if (Math.abs(netTotalHT - (data.amountExclVat || 0)) > 0.001 || 
         Math.abs(amountInclVat - (data.amountInclVat || 0)) > 0.001 ||
         JSON.stringify(vatBreakdowns) !== JSON.stringify(data.vatBreakdowns)) {
       setData(prev => ({
         ...prev,
-        amountExclVat: parseFloat(netTotalHT.toFixed(2)),
-        totalVat: parseFloat(totalVAT.toFixed(2)),
-        amountInclVat: parseFloat(amountInclVat.toFixed(2)),
-        amountDueForPayment: parseFloat(amountInclVat.toFixed(2)),
+        globalCharge: charge,
+        globalDiscount: discount,
+        amountExclVat: netTotalHT,
+        totalVat: totalVAT,
+        amountInclVat: amountInclVat,
+        amountDueForPayment: amountInclVat,
         vatBreakdowns
       }));
     }
-  }, [data.items, data.globalCharge, data.globalDiscount]);
+  }, [data.items, discountStr, chargeStr]);
 
   const xml = useMemo(() => generateFacturXXML(data), [data]);
 
@@ -396,20 +398,12 @@ export const FacturXModal: React.FC<{
       }
     }
 
-    // Gestion croisée des prix unitaires (Brut / Net / Quantité)
     if (['grossPrice', 'unitPrice', 'quantity', 'discount', 'lineVatCategory', 'taxRate'].includes(field)) {
       const q = parseFloat(String(item.quantity)) || 0;
-      
-      // Si modification du Brut, on recalcule le Net
-      if (field === 'grossPrice') {
-        item.unitPrice = item.grossPrice; 
-      }
-      
-      // Sécurité : si Net est vide mais Brut existe, on prend le Brut
+      if (field === 'grossPrice') { item.unitPrice = item.grossPrice; }
       const finalUnitPrice = (item.unitPrice === null || item.unitPrice === undefined || isNaN(item.unitPrice)) 
         ? (item.grossPrice || 0) 
         : item.unitPrice;
-
       item.amount = parseFloat((q * finalUnitPrice).toFixed(2));
     }
     
@@ -712,8 +706,8 @@ export const FacturXModal: React.FC<{
 
                         <Group title="Ajustements & Frais" icon={Calculator} variant="slate">
                             <div className="space-y-4">
-                              <FormInput label="Remise Globale HT" value={data.globalDiscount} onChange={(v:any)=>setData({...data, globalDiscount: parseFloat(v) || 0})} btId="107" themeColor="slate" />
-                              <FormInput label="Frais Logistiques HT" value={data.globalCharge} onChange={(v:any)=>setData({...data, globalCharge: parseFloat(v) || 0})} btId="108" themeColor="slate" />
+                              <FormInput label="Remise Globale HT" value={discountStr} onChange={(v:string)=>setDiscountStr(v)} btId="107" themeColor="slate" placeholder="0.00" />
+                              <FormInput label="Frais Logistiques HT" value={chargeStr} onChange={(v:string)=>setChargeStr(v)} btId="108" themeColor="slate" placeholder="0.00" />
                             </div>
                         </Group>
                         
