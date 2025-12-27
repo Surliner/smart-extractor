@@ -28,7 +28,6 @@ const findMatches = (name: string, masterData: PartnerMasterData[]): PartnerMast
 };
 
 // --- Constants Standards ---
-// VAT_CATEGORIES_CONFIG définit les options UI avec leur mapping technique (BT-151 + Taux par défaut)
 const VAT_CATEGORIES_CONFIG = [
   { id: 'S_20', code: 'S', label: 'TVA Standard (20%)', defaultRate: 20 },
   { id: 'S_10', code: 'S', label: 'TVA Intermédiaire (10%)', defaultRate: 10 },
@@ -294,7 +293,7 @@ export const FacturXModal: React.FC<{
     }
   }, [isOpen, data.supplier, data.buyerName, data.supplierSiret, data.buyerSiret, data.isMasterMatched, data.isBuyerMasterMatched, masterData, handleApplyMasterSuggestion]);
 
-  // RECALCUL TOTALS ET VENTILATION TVA
+  // RECALCUL TOTALS ET VENTILATION TVA CONFORME EN16931
   useEffect(() => {
     if (!data.items) return;
 
@@ -302,6 +301,10 @@ export const FacturXModal: React.FC<{
     const charge = data.globalCharge || 0;
     const discount = data.globalDiscount || 0;
     const taxBasisTotal = lineTotalHT + charge - discount;
+
+    // Calcul du facteur de prorata pour la remise/frais globaux
+    // Si Total Lignes = 100 et Net HT = 90, alors prorata = 0.9
+    const prorataFactor = lineTotalHT > 0 ? taxBasisTotal / lineTotalHT : 1;
 
     const breakdownMap = new Map<string, VatBreakdown>();
 
@@ -318,15 +321,18 @@ export const FacturXModal: React.FC<{
       };
 
       existing.vatTaxableAmount += (item.amount || 0);
-      existing.vatAmount += ((item.amount || 0) * rate / 100);
       breakdownMap.set(key, existing);
     });
 
-    const vatBreakdowns = Array.from(breakdownMap.values()).map(b => ({
-      ...b,
-      vatTaxableAmount: parseFloat(b.vatTaxableAmount.toFixed(2)),
-      vatAmount: parseFloat(b.vatAmount.toFixed(2))
-    }));
+    // Ajustement de la base imposable par catégorie et calcul de la TVA
+    const vatBreakdowns = Array.from(breakdownMap.values()).map(b => {
+      const adjustedBase = b.vatTaxableAmount * prorataFactor;
+      return {
+        ...b,
+        vatTaxableAmount: parseFloat(adjustedBase.toFixed(2)),
+        vatAmount: parseFloat((adjustedBase * (b.vatRate / 100)).toFixed(2))
+      };
+    });
 
     const totalVAT = vatBreakdowns.reduce((sum, b) => sum + b.vatAmount, 0);
     const amountInclVat = taxBasisTotal + totalVAT;
@@ -378,8 +384,15 @@ export const FacturXModal: React.FC<{
       }
     }
 
-    if (['quantity', 'unitPrice', 'lineVatCategory', 'taxRate'].includes(field)) {
+    // Gestion croisée des prix unitaires (Brut / Net / Quantité)
+    if (['grossPrice', 'unitPrice', 'quantity', 'discount', 'lineVatCategory', 'taxRate'].includes(field)) {
       const q = parseFloat(String(item.quantity)) || 0;
+      
+      // Si modification du Brut, on recalcule le Net (s'il y a une remise de ligne, ici simplifiée à 0 par défaut)
+      if (field === 'grossPrice') {
+        item.unitPrice = item.grossPrice; 
+      }
+      
       const p = parseFloat(String(item.unitPrice)) || 0;
       item.amount = parseFloat((q * p).toFixed(2));
     }
@@ -626,8 +639,15 @@ export const FacturXModal: React.FC<{
                                       className="w-full text-right bg-transparent border border-transparent focus:border-indigo-200 rounded px-1.5 py-1 outline-none font-black" 
                                     />
                                   </td>
-                                  <td className="p-1.5 bg-indigo-50/10 text-right font-black text-indigo-600">
-                                    {(item.unitPrice || 0).toFixed(4)}
+                                  <td className="p-1.5 bg-indigo-50/10">
+                                    {/* FIXED: Champ P.U Net désormais modifiable */}
+                                    <input 
+                                      type="number" 
+                                      step="0.0001"
+                                      value={item.unitPrice || ''} 
+                                      onChange={e=>handleUpdateItem(idx, 'unitPrice', parseFloat(e.target.value))} 
+                                      className="w-full text-right bg-transparent border border-transparent focus:border-indigo-200 rounded px-1.5 py-1 outline-none font-black text-indigo-600" 
+                                    />
                                   </td>
                                   <td className="p-1.5 text-right font-black font-mono text-slate-700 bg-slate-50">
                                     {(item.amount || 0).toFixed(2)}
