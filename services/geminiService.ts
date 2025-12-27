@@ -41,16 +41,9 @@ export const extractInvoiceData = async (
       invoice_number: { type: Type.STRING },
       invoice_date: { type: Type.STRING },
       due_date: { type: Type.STRING },
-      tax_point_date: { type: Type.STRING },
       currency: { type: Type.STRING },
       po_number: { type: Type.STRING },
       buyer_reference: { type: Type.STRING },
-      contract_number: { type: Type.STRING },
-      delivery_note_number: { type: Type.STRING },
-      project_reference: { type: Type.STRING },
-      delivery_date: { type: Type.STRING },
-      receiving_advice_number: { type: Type.STRING },
-      business_process_id: { type: Type.STRING },
       supplier_name: { type: Type.STRING },
       supplier_vat: { type: Type.STRING },
       supplier_siret: { type: Type.STRING },
@@ -59,28 +52,22 @@ export const extractInvoiceData = async (
       buyer_vat: { type: Type.STRING },
       buyer_siret: { type: Type.STRING },
       buyer_address: { type: Type.STRING },
+      payment_terms_text: { type: Type.STRING },
+      invoice_note: { type: Type.STRING },
+      iban: { type: Type.STRING },
+      bic: { type: Type.STRING },
       amount_excl_vat: { type: Type.NUMBER },
       total_vat_amount: { type: Type.NUMBER },
       amount_incl_vat: { type: Type.NUMBER },
-      prepaid_amount: { type: Type.NUMBER },
-      global_discount: { type: Type.NUMBER },
-      global_charge: { type: Type.NUMBER },
-      iban: { type: Type.STRING },
-      bic: { type: Type.STRING },
-      payment_method: { type: Type.STRING },
-      payment_means_code: { type: Type.STRING },
-      payment_terms_text: { type: Type.STRING },
-      invoice_note: { type: Type.STRING },
       vat_breakdowns: {
         type: Type.ARRAY,
         items: {
           type: Type.OBJECT,
           properties: {
-            vat_category: { type: Type.STRING },
+            vat_category: { type: Type.STRING }, // S, Z, E, AE
             vat_rate: { type: Type.NUMBER },
             vat_taxable_amount: { type: Type.NUMBER },
-            vat_amount: { type: Type.NUMBER },
-            exemption_reason: { type: Type.STRING }
+            vat_amount: { type: Type.NUMBER }
           },
           required: ["vat_category", "vat_rate", "vat_taxable_amount", "vat_amount"]
         }
@@ -96,8 +83,6 @@ export const extractInvoiceData = async (
             unit_of_measure: { type: Type.STRING },
             gross_price: { type: Type.NUMBER },
             discount_rate: { type: Type.NUMBER },
-            line_allowance_amount: { type: Type.NUMBER },
-            line_charge_amount: { type: Type.NUMBER },
             unit_price: { type: Type.NUMBER },
             tax_rate: { type: Type.NUMBER },
             line_vat_category: { type: Type.STRING },
@@ -120,11 +105,7 @@ CHAMPS CRITIQUES:
 2. LIGNES (BG-25): line_vat_category (BT-151) obligatoire par ligne.
 3. IDENTIFIANTS: SIRET 14 chiffres, TVA FR+11.
 4. BANCAIRE: IBAN Vendeur (BT-84) format FR.
-
-RÈGLES MATHÉMATIQUES:
-- Somme line_items.amount = amount_excl_vat.
-- amount_excl_vat + total_vat_amount = amount_incl_vat.
-- vat_taxable_amount somme lignes = base HT taux.
+5. NOTES & PAIEMENT: invoice_note (BT-22) et payment_terms_text (BT-20).
 
 RÉPONSE: JSON STRICT UNIQUEMENT.`;
 
@@ -155,8 +136,6 @@ RÉPONSE: JSON STRICT UNIQUEMENT.`;
       unitOfMeasure: item.unit_of_measure || "C62",
       grossPrice: item.gross_price || null,
       discount: item.discount_rate || null,
-      lineAllowanceAmount: item.line_allowance_amount || null,
-      lineChargeAmount: item.line_charge_amount || null,
       unitPrice: item.unit_price || null,
       taxRate: item.tax_rate || 20.0,
       lineVatCategory: item.line_vat_category || "S",
@@ -167,8 +146,7 @@ RÉPONSE: JSON STRICT UNIQUEMENT.`;
       vatCategory: v.vat_category || "S",
       vatRate: v.vat_rate || 20.0,
       vatTaxableAmount: v.vat_taxable_amount || 0,
-      vatAmount: v.vat_amount || 0,
-      exemptionReason: v.exemption_reason || ""
+      vatAmount: v.vat_amount || 0
     }));
 
     const invoiceData: InvoiceData = {
@@ -177,9 +155,6 @@ RÉPONSE: JSON STRICT UNIQUEMENT.`;
       extractionMode: 'ULTIMATE',
       direction: direction,
       invoiceType: rawData.invoice_type === 'CREDIT_NOTE' ? InvoiceType.CREDIT_NOTE : InvoiceType.INVOICE,
-      operationCategory: (rawData.operation_category || 'GOODS') as OperationCategory,
-      taxPointType: (rawData.tax_point_type || 'DEBIT') as TaxPointType,
-      businessProcessId: rawData.business_process_id || "urn:factur-x.eu:1p0:comfort",
       supplier: rawData.supplier_name || "",
       supplierAddress: rawData.supplier_address || "",
       supplierVat: rawData.supplier_vat || "",
@@ -194,7 +169,6 @@ RÉPONSE: JSON STRICT UNIQUEMENT.`;
       amountExclVat: rawData.amount_excl_vat || null,
       totalVat: rawData.total_vat_amount || null,
       amountInclVat: rawData.amount_incl_vat || null,
-      prepaidAmount: rawData.prepaid_amount || 0,
       currency: rawData.currency || "EUR",
       iban: rawData.iban?.replace(/\s/g, "") || "",
       bic: rawData.bic || "",

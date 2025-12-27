@@ -1,6 +1,6 @@
 
 export interface VatBreakdown {
-  vatCategory: string; // BT-118
+  vatCategory: string; // BT-118 (S, Z, E, AE, etc.)
   vatRate: number;    // BT-119
   vatTaxableAmount: number; // BT-116
   vatAmount: number;   // BT-117
@@ -13,12 +13,12 @@ export interface InvoiceItem {
   quantity: number | null;
   unitOfMeasure?: string;
   grossPrice?: number | null;
-  discount?: number | null; // BT-147 (Rate)
-  lineAllowanceAmount?: number | null; // BT-136
-  lineChargeAmount?: number | null;    // BT-141
+  discount?: number | null; // BT-147 (Rate %)
+  lineAllowanceAmount?: number | null; // BT-136 (€)
+  lineChargeAmount?: number | null;    // BT-141 (€)
   unitPrice: number | null;
   taxRate?: number | null;
-  lineVatCategory?: string; // BT-151
+  lineVatCategory?: string; // BT-151 (OBLIGATOIRE RFE)
   amount: number | null;
 }
 
@@ -65,14 +65,6 @@ export interface PartnerMasterData {
   accountingGroup?: string;
 }
 
-export interface SageX3Config {
-  endpoint: string;
-  folder: string;
-  user: string;
-  pass: string;
-  poolAlias?: string;
-}
-
 export interface InvoiceData {
   id: string;
   companyId: string;
@@ -96,11 +88,7 @@ export interface InvoiceData {
   contractNumber?: string;
   deliveryNoteNumber?: string;
   projectReference?: string;
-  receivingAdviceNumber?: string;
-  paymentReference?: string;
   deliveryDate?: string;
-  billingPeriodStart?: string;
-  billingPeriodEnd?: string;
   supplier: string;
   supplierAddress?: string;
   supplierVat?: string;
@@ -123,12 +111,11 @@ export interface InvoiceData {
   paymentTerms?: string;
   paymentTermsText?: string; // BT-20
   paymentMeansCode?: string;
-  notes?: string;
   invoiceNote?: string; // BT-22
   originalFilename: string;
   fileData?: string; 
   items?: InvoiceItem[];
-  vatBreakdowns?: VatBreakdown[]; // BG-23
+  vatBreakdowns?: VatBreakdown[]; // BG-23 (OBLIGATOIRE)
   erpStatus?: ErpStatus;
   erpReference?: string;
   isMasterMatched?: boolean;
@@ -168,32 +155,19 @@ export interface XmlMappingProfile {
 
 export type UserRole = 'SUPER_ADMIN' | 'ADMIN' | 'USER';
 
-export interface UserActivity {
-  id: string;
-  timestamp: string;
-  action: string;
-  details?: string;
-}
-
 export interface UserProfile {
   username: string;
   companyId: string;
-  companyName?: string;
-  companyConfig?: any;
-  password?: string;
   role: UserRole;
   isApproved: boolean;
   createdAt: string;
+  companyName?: string;
+  companyConfig?: any;
   stats: {
     extractRequests: number;
     totalTokens: number;
     lastActive: string;
-    lastLogin?: string;
   };
-  loginHistory: string[];
-  activityLog: UserActivity[];
-  securityQuestion?: string;
-  securityAnswer?: string;
 }
 
 export interface LookupTable {
@@ -206,7 +180,6 @@ export interface ErpConfig {
   apiUrl: string;
   apiKey: string;
   enabled: boolean;
-  sageConfig?: SageX3Config;
 }
 
 export interface ExtractionResult {

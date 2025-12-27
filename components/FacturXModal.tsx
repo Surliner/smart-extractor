@@ -1,22 +1,25 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { X, Save, CheckCircle, AlertTriangle, Download, Plus, Trash2, LayoutList, Truck, Receipt, Package, ShieldCheck, Globe, Briefcase, Landmark, Percent, Hash, Calendar as CalendarIcon, Coins, ChevronDown, Calculator, Info, FileCode, Eye, EyeOff, FileSearch, ExternalLink, Settings2, CloudLightning, Shield, Clock, CreditCard, StickyNote, Box, FileDown, FileCheck, Banknote, ListChecks, ShieldAlert, BadgeCheck, Database, ListTodo } from 'lucide-react';
-import { InvoiceData, InvoiceItem, InvoiceType, LookupTable, OperationCategory, TaxPointType, FacturXProfile, PartnerMasterData } from '../types';
+import { InvoiceData, InvoiceItem, InvoiceType, LookupTable, OperationCategory, TaxPointType, FacturXProfile, PartnerMasterData, VatBreakdown } from '../types';
 import { generateFacturXXML } from '../services/facturXService';
 
 // --- Constants ---
 const STANDARD_VAT_RATE = 20.0;
+const VAT_CATEGORIES = [
+  { code: 'S', label: 'Standard' },
+  { code: 'Z', label: 'Zéro' },
+  { code: 'E', label: 'Exonéré' },
+  { code: 'AE', label: 'Autoliquidation' },
+  { code: 'G', label: 'Export' },
+];
+
 const UNIT_CODES = [
   { code: 'C62', label: 'Pièce (unité)' },
   { code: 'HUR', label: 'Heure' },
   { code: 'DAY', label: 'Jour' },
   { code: 'KGM', label: 'Kilogramme' },
-  { code: 'LTR', label: 'Litre' },
-  { code: 'MTK', label: 'Mètre carré' },
-  { code: 'MTQ', label: 'Mètre cube' },
-  { code: 'MTR', label: 'Mètre linéaire' },
-  { code: 'TNE', label: 'Tonne' },
-  { code: 'LS', label: 'Forfait (Lump sum)' },
+  { code: 'LS', label: 'Forfait' },
 ];
 
 const FormInput = ({ label, value, onChange, type = "text", placeholder, btId, required, multiline, className = "", themeColor = "indigo", badge, source }: any) => {
@@ -106,9 +109,6 @@ export const FacturXModal: React.FC<{
   const [data, setData] = useState<InvoiceData>(() => ({ 
     ...invoice, 
     items: (invoice.items || []).map(it => ({ ...it, unitOfMeasure: it.unitOfMeasure || 'C62', lineVatCategory: it.lineVatCategory || 'S' })),
-    operationCategory: invoice.operationCategory || 'GOODS',
-    taxPointType: invoice.taxPointType || 'DEBIT',
-    facturXProfile: invoice.facturXProfile || FacturXProfile.COMFORT,
     vatBreakdowns: invoice.vatBreakdowns || []
   }));
   const [activeTab, setActiveTab] = useState<'form' | 'xml'>('form');
@@ -134,79 +134,54 @@ export const FacturXModal: React.FC<{
     }
   }, [data.fileData]);
 
-  // Matching Master Data
-  const supplierMatch = useMemo(() => {
-    if (!data.supplierSiret) return null;
-    const siretClean = data.supplierSiret.replace(/\s/g, "");
-    return masterData.find(m => m.siret.replace(/\s/g, "") === siretClean);
-  }, [data.supplierSiret, masterData]);
-
-  const buyerMatch = useMemo(() => {
-    if (!data.buyerSiret) return null;
-    const siretClean = data.buyerSiret.replace(/\s/g, "");
-    return masterData.find(m => m.siret.replace(/\s/g, "") === siretClean);
-  }, [data.buyerSiret, masterData]);
-
+  // Recalcul dynamique des totaux et de la ventilation TVA (BG-23)
   useEffect(() => {
-    let hasChanges = false;
-    const updates: Partial<InvoiceData> = {};
+    if (!data.items) return;
 
-    if (supplierMatch && !data.isMasterMatched) {
-      updates.supplier = supplierMatch.name;
-      updates.supplierErpCode = supplierMatch.erpCode;
-      updates.supplierVat = supplierMatch.vatNumber || data.supplierVat;
-      updates.iban = supplierMatch.iban || data.iban;
-      updates.bic = supplierMatch.bic || data.bic;
-      updates.isMasterMatched = true;
-      hasChanges = true;
-    }
+    const lineTotalHT = data.items.reduce((sum, item) => sum + (item.amount || 0), 0);
+    const charge = data.globalCharge || 0;
+    const discount = data.globalDiscount || 0;
+    const taxBasisTotal = lineTotalHT + charge - discount;
 
-    if (buyerMatch && !data.isBuyerMasterMatched) {
-      updates.buyerName = buyerMatch.name;
-      updates.buyerErpCode = buyerMatch.erpCode;
-      updates.buyerVat = buyerMatch.vatNumber || data.buyerVat;
-      updates.isBuyerMasterMatched = true;
-      hasChanges = true;
-    }
+    // Calcul de la ventilation par taux et catégorie (BG-23)
+    const breakdownMap = new Map<string, VatBreakdown>();
 
-    if (hasChanges) {
-      setData(prev => ({ ...prev, ...updates }));
-    }
-  }, [supplierMatch, buyerMatch, data.isMasterMatched, data.isBuyerMasterMatched]);
+    data.items.forEach(item => {
+      const rate = item.taxRate || 0;
+      const cat = item.lineVatCategory || 'S';
+      const key = `${rate}-${cat}`;
 
-  // Recalcul des totaux et ventilation TVA
-  useEffect(() => {
-    if (data.items) {
-      const lineTotalHT = data.items.reduce((sum, item) => sum + (item.amount || 0), 0);
-      const charge = data.globalCharge || 0;
-      const discount = data.globalDiscount || 0;
-      const taxBasisTotal = lineTotalHT + charge - discount;
-      
-      const taxRates = new Map<string, { basis: number, tax: number, cat: string }>();
-      data.items.forEach(item => {
-          const rate = (item.taxRate || STANDARD_VAT_RATE).toFixed(2);
-          const current = taxRates.get(rate) || { basis: 0, tax: 0, cat: item.lineVatCategory || 'S' };
-          current.basis += (item.amount || 0);
-          current.tax += ((item.amount || 0) * (item.taxRate || 0) / 100);
-          taxRates.set(rate, current);
-      });
+      const existing = breakdownMap.get(key) || {
+        vatCategory: cat,
+        vatRate: rate,
+        vatTaxableAmount: 0,
+        vatAmount: 0
+      };
 
-      const totalVAT = Array.from(taxRates.values()).reduce((s, v) => s + v.tax, 0);
-      const totalTTC = taxBasisTotal + totalVAT;
+      existing.vatTaxableAmount += (item.amount || 0);
+      existing.vatAmount += ((item.amount || 0) * rate / 100);
+      breakdownMap.set(key, existing);
+    });
 
-      const newBreakdowns = Array.from(taxRates.entries()).map(([rate, vals]) => ({
-          vatCategory: vals.cat,
-          vatRate: parseFloat(rate),
-          vatTaxableAmount: parseFloat(vals.basis.toFixed(2)),
-          vatAmount: parseFloat(vals.tax.toFixed(2))
-      }));
+    const vatBreakdowns = Array.from(breakdownMap.values()).map(b => ({
+      ...b,
+      vatTaxableAmount: parseFloat(b.vatTaxableAmount.toFixed(2)),
+      vatAmount: parseFloat(b.vatAmount.toFixed(2))
+    }));
 
+    const totalVAT = vatBreakdowns.reduce((sum, b) => sum + b.vatAmount, 0);
+    const amountInclVat = taxBasisTotal + totalVAT;
+
+    // On évite les boucles infinies en ne mettant à jour que si les valeurs changent réellement
+    if (Math.abs(taxBasisTotal - (data.amountExclVat || 0)) > 0.01 || 
+        Math.abs(amountInclVat - (data.amountInclVat || 0)) > 0.01 ||
+        JSON.stringify(vatBreakdowns) !== JSON.stringify(data.vatBreakdowns)) {
       setData(prev => ({
-          ...prev,
-          amountExclVat: parseFloat(taxBasisTotal.toFixed(2)),
-          totalVat: parseFloat(totalVAT.toFixed(2)),
-          amountInclVat: parseFloat(totalTTC.toFixed(2)),
-          vatBreakdowns: newBreakdowns
+        ...prev,
+        amountExclVat: parseFloat(taxBasisTotal.toFixed(2)),
+        totalVat: parseFloat(totalVAT.toFixed(2)),
+        amountInclVat: parseFloat(amountInclVat.toFixed(2)),
+        vatBreakdowns
       }));
     }
   }, [data.items, data.globalCharge, data.globalDiscount]);
@@ -216,29 +191,23 @@ export const FacturXModal: React.FC<{
   const auditChecks = useMemo(() => [
       { id: 'BT-1', label: 'N° Facture', status: !!data.invoiceNumber, mandatory: true },
       { id: 'BT-2', label: 'Date Facture', status: !!data.invoiceDate, mandatory: true },
-      { id: 'BT-27', label: 'Nom Fournisseur', status: !!data.supplier, mandatory: true },
-      { id: 'BT-29', label: 'SIRET Fournisseur', status: !!data.supplierSiret && data.supplierSiret.replace(/\s/g, "").length >= 9, mandatory: true },
-      { id: 'BT-84', label: 'IBAN Fournisseur', status: !!data.iban && data.iban.replace(/\s/g, "").length >= 14, mandatory: true },
-      { id: 'BT-44', label: 'Nom Acheteur', status: !!data.buyerName, mandatory: true },
-      { id: 'BT-47', label: 'SIRET Acheteur', status: !!data.buyerSiret && data.buyerSiret.replace(/\s/g, "").length >= 9, mandatory: true },
+      { id: 'BT-29', label: 'SIRET Vendeur', status: !!data.supplierSiret && data.supplierSiret.length >= 9, mandatory: true },
+      { id: 'BT-84', label: 'IBAN Vendeur', status: !!data.iban && data.iban.length >= 14, mandatory: true },
       { id: 'BG-23', label: 'Ventilation TVA', status: (data.vatBreakdowns?.length || 0) > 0, mandatory: true },
-      { id: 'BG-25', label: 'Lignes extraites', status: (data.items?.length || 0) > 0, mandatory: true },
+      { id: 'BG-25', label: 'Lignes Extraites', status: (data.items?.length || 0) > 0, mandatory: true },
     ], [data]);
 
   const handleUpdateItem = (idx: number, field: keyof InvoiceItem, value: any) => {
     const newItems = [...(data.items || [])];
     const item = { ...newItems[idx], [field]: value };
-    if (['grossPrice', 'discount', 'quantity'].includes(field)) {
-        const gross = parseFloat(String(item.grossPrice)) || 0;
-        const discRate = parseFloat(String(item.discount)) || 0;
-        const q = parseFloat(String(item.quantity)) || 0;
-        item.unitPrice = parseFloat((gross * (1 - discRate / 100)).toFixed(4));
-        item.amount = parseFloat((q * (item.unitPrice || 0)).toFixed(2));
-    } else if (field === 'unitPrice') {
-        const q = parseFloat(String(item.quantity)) || 0;
-        const p = parseFloat(String(value)) || 0;
-        item.amount = parseFloat((q * p).toFixed(2));
+    
+    // Recalcul de la ligne
+    if (['grossPrice', 'discount', 'quantity', 'unitPrice'].includes(field)) {
+      const q = parseFloat(String(item.quantity)) || 0;
+      const p = parseFloat(String(item.unitPrice)) || 0;
+      item.amount = parseFloat((q * p).toFixed(2));
     }
+    
     newItems[idx] = item;
     setData({ ...data, items: newItems });
   };
@@ -254,22 +223,22 @@ export const FacturXModal: React.FC<{
             <div className="bg-indigo-600 p-2 rounded-xl text-white shadow-lg"><ShieldCheck className="w-5 h-5" /></div>
             <div>
               <div className="flex items-center space-x-2">
-                <h2 className="text-base font-black text-slate-900 uppercase">Video Coding Audit RFE 2026</h2>
-                {isAdmin && <span className="bg-indigo-600 text-white text-[7px] font-black px-1.5 py-0.5 rounded-full flex items-center tracking-widest"><Shield className="w-2 h-2 mr-1" /> ADMIN MODE</span>}
+                <h2 className="text-base font-black text-slate-900 uppercase">Audit RFE 2026</h2>
+                <span className="bg-emerald-100 text-emerald-600 text-[7px] font-black px-1.5 py-0.5 rounded-full tracking-widest uppercase">CII Comfort</span>
               </div>
-              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mt-1">SaaS Connected Extractor — EN16931 Compliant</p>
+              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mt-1">Gouvernance Sémantique EN16931</p>
             </div>
           </div>
           
           <div className="flex items-center space-x-3">
-            <button onClick={() => setShowPdf(!showPdf)} className={`px-4 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest border ${showPdf ? 'bg-indigo-50 text-indigo-600 border-indigo-100' : 'bg-white text-slate-500 border-slate-200'}`}>
+            <button onClick={() => setShowPdf(!showPdf)} className={`px-4 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest border transition-all ${showPdf ? 'bg-indigo-50 text-indigo-600 border-indigo-100' : 'bg-white text-slate-500 border-slate-200'}`}>
               {showPdf ? 'Masquer PDF' : 'Voir PDF'}
             </button>
             <div className="bg-slate-50 p-1 rounded-xl flex border border-slate-200">
-                <button onClick={() => setActiveTab('form')} className={`px-4 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest ${activeTab === 'form' ? 'bg-white text-indigo-600 shadow-sm border border-slate-100' : 'text-slate-400'}`}>Audit</button>
-                <button onClick={() => setActiveTab('xml')} className={`px-4 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest ${activeTab === 'xml' ? 'bg-white text-indigo-600 shadow-sm border border-slate-100' : 'text-slate-400'}`}>XML</button>
+                <button onClick={() => setActiveTab('form')} className={`px-4 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest ${activeTab === 'form' ? 'bg-white text-indigo-600 shadow-sm border border-slate-100' : 'text-slate-400'}`}>Formulaire</button>
+                <button onClick={() => setActiveTab('xml')} className={`px-4 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest ${activeTab === 'xml' ? 'bg-white text-indigo-600 shadow-sm border border-slate-100' : 'text-slate-400'}`}>XML CII</button>
             </div>
-            <button onClick={onClose} className="p-1.5 text-slate-400 hover:text-rose-500 rounded-lg hover:bg-rose-50 transition-all"><X className="w-5 h-5" /></button>
+            <button onClick={onClose} className="p-1.5 text-slate-400 hover:text-rose-500 rounded-lg transition-all"><X className="w-5 h-5" /></button>
           </div>
         </div>
 
@@ -284,12 +253,13 @@ export const FacturXModal: React.FC<{
             {activeTab === 'form' ? (
               <div className="flex h-full overflow-hidden">
                 <div className="flex-1 p-5 space-y-5 overflow-y-auto custom-scrollbar">
+                    
                     <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-                      <Group title="Références & Audit RFE" icon={LayoutList} variant="slate" className="lg:col-span-8">
+                      <Group title="Identité Document" icon={LayoutList} variant="slate" className="lg:col-span-8">
                           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                             <FormInput label="N° Facture" value={data.invoiceNumber} onChange={(v:any)=>setData({...data, invoiceNumber:v})} btId="1" required themeColor="slate" />
                             <FormInput label="Date Facture" value={data.invoiceDate} onChange={(v:any)=>setData({...data, invoiceDate:v})} btId="2" required themeColor="slate" />
-                            <FormInput label="N° Commande (PO)" value={data.poNumber} onChange={(v:any)=>setData({...data, poNumber:v})} btId="13" themeColor="slate" />
+                            <FormInput label="N° Commande" value={data.poNumber} onChange={(v:any)=>setData({...data, poNumber:v})} btId="13" themeColor="slate" />
                             <FormInput label="Devise" value={data.currency} onChange={(v:any)=>setData({...data, currency:v.toUpperCase()})} btId="5" themeColor="slate" />
                           </div>
                           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 mt-4">
@@ -297,73 +267,74 @@ export const FacturXModal: React.FC<{
                             <FormInput label="Conditions Paiement" value={data.paymentTermsText} onChange={(v:any)=>setData({...data, paymentTermsText:v})} btId="20" multiline themeColor="slate" />
                           </div>
                       </Group>
-                      <Group title="Master Data Hub" icon={CloudLightning} variant="purple" className="lg:col-span-4" actions={(supplierMatch || buyerMatch) && <div className="flex items-center space-x-2"><BadgeCheck className="w-4 h-4 text-emerald-500" /><span className="text-[7px] font-black uppercase text-emerald-600">Synced</span></div>}>
+                      
+                      <Group title="Tiers Matchés" icon={CloudLightning} variant="purple" className="lg:col-span-4">
                         <div className="space-y-3">
-                          <div className={`p-3 rounded-xl border flex items-center space-x-3 transition-all ${(supplierMatch || buyerMatch) ? 'bg-emerald-50 border-emerald-500 shadow-sm' : 'bg-slate-50 border-slate-100'}`}>
-                             <div className={`p-1 rounded-md transition-colors ${(supplierMatch || buyerMatch) ? 'bg-emerald-500 text-white' : 'bg-slate-300 text-slate-500'}`}><Database className="w-4 h-4" /></div>
-                             <p className={`text-[9px] font-black uppercase ${(supplierMatch || buyerMatch) ? 'text-emerald-700' : 'text-slate-500'}`}>
-                               {(supplierMatch && buyerMatch) ? 'Match VND & ACH OK' : supplierMatch ? 'Match Vendeur OK' : buyerMatch ? 'Match Acheteur OK' : 'Identification Tiers...'}
-                             </p>
-                          </div>
-                          <div className="grid grid-cols-2 gap-3">
-                            <FormInput label="Code ERP VND" value={data.supplierErpCode} onChange={(v:any)=>setData({...data, supplierErpCode:v, isMasterMatched: false})} themeColor="purple" source={supplierMatch ? 'MASTER_DATA' : 'AI'} />
-                            <FormInput label="Code ERP ACH" value={data.buyerErpCode} onChange={(v:any)=>setData({...data, buyerErpCode:v, isBuyerMasterMatched: false})} themeColor="purple" source={buyerMatch ? 'MASTER_DATA' : 'AI'} />
-                          </div>
+                           <div className="p-3 bg-white border border-slate-100 rounded-xl flex items-center space-x-3">
+                              <div className="p-1.5 bg-emerald-500 rounded-lg text-white"><Database className="w-4 h-4" /></div>
+                              <div className="flex-1 min-w-0">
+                                 <p className="text-[9px] font-black uppercase text-slate-400 tracking-widest">Master Data VND</p>
+                                 <p className="text-[10px] font-black text-slate-900 truncate">{data.supplier}</p>
+                              </div>
+                           </div>
+                           <div className="grid grid-cols-2 gap-3">
+                              <FormInput label="Code ERP VND" value={data.supplierErpCode} onChange={(v:any)=>setData({...data, supplierErpCode:v})} themeColor="purple" />
+                              <FormInput label="Code ERP ACH" value={data.buyerErpCode} onChange={(v:any)=>setData({...data, buyerErpCode:v})} themeColor="purple" />
+                           </div>
                         </div>
                       </Group>
                     </div>
 
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-                      <Group title="Fournisseur (BT-27)" icon={Truck} variant="indigo">
-                          <FormInput label="Raison Sociale" value={data.supplier} onChange={(v:any)=>setData({...data, supplier:v, isMasterMatched: false})} btId="27" required className="mb-3" themeColor="indigo" source={supplierMatch ? 'MASTER_DATA' : 'AI'} />
+                      <Group title="Vendeur (BT-27)" icon={Truck} variant="indigo">
+                          <FormInput label="Raison Sociale" value={data.supplier} onChange={(v:any)=>setData({...data, supplier:v})} btId="27" required className="mb-3" themeColor="indigo" />
                           <div className="grid grid-cols-2 gap-3 mb-3">
-                            <FormInput label="SIRET" value={data.supplierSiret} onChange={(v:any)=>setData({...data, supplierSiret:v, isMasterMatched: false})} btId="29" required themeColor="indigo" />
-                            <FormInput label="TVA Intracom." value={data.supplierVat} onChange={(v:any)=>setData({...data, supplierVat:v, isMasterMatched: false})} btId="31" themeColor="indigo" source={supplierMatch ? 'MASTER_DATA' : 'AI'} />
+                            <FormInput label="SIRET" value={data.supplierSiret} onChange={(v:any)=>setData({...data, supplierSiret:v})} btId="29" required themeColor="indigo" />
+                            <FormInput label="TVA Intra" value={data.supplierVat} onChange={(v:any)=>setData({...data, supplierVat:v})} btId="31" themeColor="indigo" />
                           </div>
-                          <FormInput label="Adresse Siège" value={data.supplierAddress} onChange={(v:any)=>setData({...data, supplierAddress:v})} btId="BG-5" multiline themeColor="indigo" />
+                          <FormInput label="IBAN" value={data.iban} onChange={(v:any)=>setData({...data, iban:v.replace(/\s/g, "")})} btId="84" required themeColor="indigo" />
                       </Group>
                       <Group title="Acheteur (BT-44)" icon={Receipt} variant="orange">
-                          <FormInput label="Nom Client" value={data.buyerName} onChange={(v:any)=>setData({...data, buyerName:v, isBuyerMasterMatched: false})} btId="44" required className="mb-3" themeColor="orange" source={buyerMatch ? 'MASTER_DATA' : 'AI'} />
+                          <FormInput label="Nom Client" value={data.buyerName} onChange={(v:any)=>setData({...data, buyerName:v})} btId="44" required className="mb-3" themeColor="orange" />
                           <div className="grid grid-cols-2 gap-3 mb-3">
-                            <FormInput label="SIRET Client" value={data.buyerSiret} onChange={(v:any)=>setData({...data, buyerSiret:v, isBuyerMasterMatched: false})} btId="47" required themeColor="orange" />
-                            <FormInput label="TVA Client" value={data.buyerVat} onChange={(v:any)=>setData({...data, buyerVat:v, isBuyerMasterMatched: false})} btId="48" themeColor="orange" source={buyerMatch ? 'MASTER_DATA' : 'AI'} />
+                            <FormInput label="SIRET Client" value={data.buyerSiret} onChange={(v:any)=>setData({...data, buyerSiret:v})} btId="47" required themeColor="orange" />
+                            <FormInput label="TVA Client" value={data.buyerVat} onChange={(v:any)=>setData({...data, buyerVat:v})} btId="48" themeColor="orange" />
                           </div>
-                          <FormInput label="Adresse Facturation" value={data.buyerAddress} onChange={(v:any)=>setData({...data, buyerAddress:v})} btId="BG-8" multiline themeColor="orange" />
+                          <FormInput label="Adresse" value={data.buyerAddress} onChange={(v:any)=>setData({...data, buyerAddress:v})} btId="BG-8" multiline themeColor="orange" />
                       </Group>
                     </div>
 
-                    <Group title="Lignes Extraites (BG-25)" icon={Package} variant="slate" className="w-full" fullHeight={false}>
+                    <Group title="Détails des Lignes (BG-25)" icon={Package} variant="slate" fullHeight={false}>
                       <div className="w-full rounded-xl border border-slate-200 overflow-x-auto bg-white custom-scrollbar max-h-[500px]">
                         <table className="w-full text-[10px] border-collapse min-w-[1400px]">
                           <thead className="bg-slate-50 text-[8px] font-black uppercase text-slate-500 border-b border-slate-200 sticky top-0 z-10">
                             <tr>
                               <th className="px-3 py-4 text-left w-24">Réf.</th>
-                              <th className="px-3 py-4 text-left w-80 min-w-[320px]">Désignation</th>
+                              <th className="px-3 py-4 text-left w-96 min-w-[384px]">Désignation</th>
                               <th className="px-3 py-4 text-right w-16">Qté</th>
-                              <th className="px-3 py-4 text-left w-24 bg-indigo-50/20">Cat. TVA</th>
+                              <th className="px-3 py-4 text-left w-32 bg-indigo-50/20">Cat. TVA (BT-151)</th>
                               <th className="px-3 py-4 text-right w-24">P.U Brut</th>
-                              <th className="px-3 py-4 text-right w-20">Remise%</th>
                               <th className="px-3 py-4 text-right w-24 bg-indigo-50/30">P.U Net</th>
                               <th className="px-3 py-4 text-right w-16">TVA%</th>
-                              <th className="px-3 py-4 text-right w-28 bg-slate-100/50">Montant HT</th>
+                              <th className="px-3 py-4 text-right w-32 bg-slate-100/50">Montant HT</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100">
                             {(data.items || []).map((item, idx) => (
-                              <tr key={idx} className="hover:bg-slate-50/50 transition-colors group">
-                                <td className="p-1.5"><input value={item.articleId} onChange={e=>handleUpdateItem(idx, 'articleId', e.target.value)} className="w-full bg-transparent border border-transparent focus:border-indigo-200 rounded px-1.5 py-1 outline-none font-mono text-[9px]" /></td>
+                              <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
+                                <td className="p-1.5"><input value={item.articleId} onChange={e=>handleUpdateItem(idx, 'articleId', e.target.value)} className="w-full bg-transparent border border-transparent focus:border-indigo-200 rounded px-1.5 py-1 outline-none font-mono" /></td>
                                 <td className="p-1.5"><input value={item.description} onChange={e=>handleUpdateItem(idx, 'description', e.target.value)} className="w-full bg-transparent border border-transparent focus:border-indigo-200 rounded px-1.5 py-1 outline-none font-bold truncate" /></td>
                                 <td className="p-1.5"><input type="number" value={item.quantity || ''} onChange={e=>handleUpdateItem(idx, 'quantity', parseFloat(e.target.value))} className="w-full text-right bg-transparent border border-transparent focus:border-indigo-200 rounded px-1.5 py-1 outline-none font-black" /></td>
                                 <td className="p-1.5 bg-indigo-50/10">
-                                  <select value={item.lineVatCategory || 'S'} onChange={e=>handleUpdateItem(idx, 'lineVatCategory', e.target.value)} className="w-full bg-white border border-slate-200 rounded px-2 py-1 outline-none font-black text-[9px] appearance-none cursor-pointer">
-                                    <option value="S">Standard (S)</option>
-                                    <option value="Z">Zéro (Z)</option>
-                                    <option value="E">Exonéré (E)</option>
-                                    <option value="AE">Autoliquid. (AE)</option>
+                                  <select 
+                                    value={item.lineVatCategory || 'S'} 
+                                    onChange={e=>handleUpdateItem(idx, 'lineVatCategory', e.target.value)} 
+                                    className="w-full bg-white border border-slate-200 rounded px-2 py-1 outline-none font-black text-[9px] appearance-none"
+                                  >
+                                    {VAT_CATEGORIES.map(c => <option key={c.code} value={c.code}>{c.label} ({c.code})</option>)}
                                   </select>
                                 </td>
                                 <td className="p-1.5"><input type="number" value={item.grossPrice || ''} onChange={e=>handleUpdateItem(idx, 'grossPrice', parseFloat(e.target.value))} className="w-full text-right bg-transparent border border-transparent focus:border-indigo-200 rounded px-1.5 py-1 outline-none font-black" /></td>
-                                <td className="p-1.5"><input type="number" value={item.discount || ''} onChange={e=>handleUpdateItem(idx, 'discount', parseFloat(e.target.value))} className="w-full text-right bg-transparent border border-transparent focus:border-indigo-200 rounded px-1.5 py-1 outline-none font-black text-rose-500" /></td>
                                 <td className="p-1.5 bg-indigo-50/10 text-right font-black text-indigo-600">{(item.unitPrice || 0).toFixed(4)}</td>
                                 <td className="p-1.5"><input type="number" value={item.taxRate || ''} onChange={e=>handleUpdateItem(idx, 'taxRate', parseFloat(e.target.value))} className="w-full text-right bg-transparent border border-transparent focus:border-indigo-200 rounded px-1.5 py-1 outline-none font-black" /></td>
                                 <td className="p-1.5 text-right font-black font-mono text-slate-700 bg-slate-50">{(item.amount || 0).toFixed(2)}</td>
@@ -378,30 +349,31 @@ export const FacturXModal: React.FC<{
                         <Group title="Ventilation TVA (BG-23)" icon={Percent} variant="emerald">
                             <div className="space-y-3">
                               {data.vatBreakdowns?.map((v, i) => (
-                                <div key={i} className="flex items-center justify-between p-2 bg-emerald-50 rounded-xl border border-emerald-100">
+                                <div key={i} className="flex items-center justify-between p-3 bg-emerald-50 rounded-xl border border-emerald-100 animate-in zoom-in-95">
                                    <div className="flex flex-col">
-                                     <span className="text-[8px] font-black uppercase text-emerald-600">Base HT ({v.vatCategory})</span>
-                                     <span className="text-[10px] font-black text-emerald-900">{v.vatTaxableAmount.toFixed(2)} €</span>
+                                     <span className="text-[8px] font-black uppercase text-emerald-600">Base HT ({v.vatCategory} - {v.vatRate}%)</span>
+                                     <span className="text-[10px] font-black text-emerald-900">{v.vatTaxableAmount.toLocaleString()} €</span>
                                    </div>
                                    <div className="flex flex-col items-end">
-                                     <span className="text-[8px] font-black uppercase text-emerald-600">TVA {v.vatRate}%</span>
-                                     <span className="text-[10px] font-black text-emerald-900">{v.vatAmount.toFixed(2)} €</span>
+                                     <span className="text-[8px] font-black uppercase text-emerald-600">Montant TVA</span>
+                                     <span className="text-[10px] font-black text-emerald-900">{v.vatAmount.toLocaleString()} €</span>
                                    </div>
                                 </div>
                               ))}
-                              {(!data.vatBreakdowns || data.vatBreakdowns.length === 0) && <p className="text-[9px] font-bold text-slate-400 italic">Aucune ventilation détectée.</p>}
+                              {(!data.vatBreakdowns || data.vatBreakdowns.length === 0) && <p className="text-[9px] text-slate-400 italic">Aucune donnée de TVA.</p>}
                             </div>
                         </Group>
-                        <Group title="Bancaire (BG-16)" icon={Landmark} variant="slate">
-                            <div className="space-y-3">
-                              <FormInput label="IBAN Vendeur" value={data.iban} onChange={(v:any)=>setData({...data, iban:v.replace(/\s/g, ""), isMasterMatched: false})} btId="84" themeColor="slate" source={supplierMatch ? 'MASTER_DATA' : 'AI'} />
-                              <FormInput label="BIC" value={data.bic} onChange={(v:any)=>setData({...data, bic:v.replace(/\s/g, ""), isMasterMatched: false})} btId="85" themeColor="slate" source={supplierMatch ? 'MASTER_DATA' : 'AI'} />
+
+                        <Group title="Ajustements Globaux" icon={Calculator} variant="slate">
+                            <div className="space-y-4">
+                              <FormInput label="Remise Globale HT" value={data.globalDiscount} onChange={(v:any)=>setData({...data, globalDiscount: parseFloat(v) || 0})} btId="107" themeColor="slate" />
+                              <FormInput label="Frais Divers HT" value={data.globalCharge} onChange={(v:any)=>setData({...data, globalCharge: parseFloat(v) || 0})} btId="108" themeColor="slate" />
                             </div>
                         </Group>
                         
                         <div className="bg-slate-950 text-white p-8 rounded-[2rem] shadow-2xl border-b-4 border-indigo-600 flex flex-col justify-center space-y-4">
                            <div className="flex justify-between items-center text-[10px] font-black uppercase text-slate-500 tracking-widest">
-                             <span>Total HT Net (BT-109)</span>
+                             <span>Total HT (BT-109)</span>
                              <span className="font-mono text-xl">{(data.amountExclVat || 0).toFixed(2)}</span>
                            </div>
                            <div className="flex justify-between items-center text-[10px] font-black uppercase text-indigo-400 tracking-widest">
@@ -410,7 +382,7 @@ export const FacturXModal: React.FC<{
                            </div>
                            <div className="h-px bg-white/10 my-1"></div>
                            <div className="flex flex-col">
-                             <span className="text-[10px] font-black uppercase text-slate-500 tracking-[0.2em] mb-2">Total à Payer TTC (BT-112)</span>
+                             <span className="text-[10px] font-black uppercase text-slate-500 tracking-[0.2em] mb-2">Total à Payer (BT-112)</span>
                              <div className="flex items-baseline space-x-2">
                                <span className="text-4xl font-black font-mono tracking-tighter">{(data.amountInclVat || 0).toFixed(2)}</span>
                                <span className="text-base opacity-40 font-black">{data.currency}</span>
@@ -420,7 +392,7 @@ export const FacturXModal: React.FC<{
                     </div>
                 </div>
 
-                <div className="w-[300px] bg-white border-l border-slate-200 h-full p-6 space-y-6 flex flex-col overflow-y-auto custom-scrollbar">
+                <div className="w-[300px] bg-white border-l border-slate-200 h-full p-6 space-y-6 flex flex-col overflow-y-auto custom-scrollbar shrink-0">
                   <div className="flex items-center space-x-3">
                     <div className="p-2 bg-slate-950 rounded-xl text-white shadow-lg"><ListChecks className="w-5 h-5" /></div>
                     <h4 className="text-[11px] font-black uppercase text-slate-900 tracking-tight">Checklist RFE 2026</h4>
@@ -449,9 +421,9 @@ export const FacturXModal: React.FC<{
         </div>
 
         <div className="px-10 py-4 border-t border-slate-200 flex justify-end items-center space-x-4 bg-white shrink-0">
-          <button onClick={onClose} className="text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-slate-600 transition-colors">Fermer</button>
+          <button onClick={onClose} className="text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-slate-600 transition-colors">Abandonner</button>
           <button onClick={() => { onSave(data); onClose(); }} className="bg-slate-950 text-white px-12 py-4 rounded-[1.2rem] text-[10px] font-black uppercase tracking-[0.2em] shadow-2xl hover:bg-black transition-all flex items-center active:scale-95 border-b-2 border-slate-800">
-            <FileCheck className="w-5 h-5 mr-3" /> Valider Audit & Sauvegarder
+            <FileCheck className="w-5 h-5 mr-3" /> Valider Audit RFE
           </button>
         </div>
       </div>

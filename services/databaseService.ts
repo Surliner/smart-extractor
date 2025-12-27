@@ -1,5 +1,6 @@
 
-import { InvoiceData, UserProfile, UserActivity, UserRole, Company, ProcessingLog } from '../types';
+// Fixed: Removed non-existent UserActivity import
+import { InvoiceData, UserProfile, UserRole, Company, ProcessingLog } from '../types';
 
 const API_URL = window.location.hostname === 'localhost' 
   ? 'http://localhost:3000/api' 
