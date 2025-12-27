@@ -28,12 +28,18 @@ const findMatches = (name: string, masterData: PartnerMasterData[]): PartnerMast
 };
 
 // --- Constants Standards ---
-const VAT_CATEGORIES = [
-  { code: 'S', label: 'Standard (20%)', defaultRate: 20 },
-  { code: 'Z', label: 'Zéro (0%)', defaultRate: 0 },
-  { code: 'E', label: 'Exonéré (0%)', defaultRate: 0 },
-  { code: 'AE', label: 'Autoliquidation (0%)', defaultRate: 0 },
-  { code: 'G', label: 'Export (0%)', defaultRate: 0 },
+// VAT_CATEGORIES_CONFIG définit les options UI avec leur mapping technique (BT-151 + Taux par défaut)
+const VAT_CATEGORIES_CONFIG = [
+  { id: 'S_20', code: 'S', label: 'TVA Standard (20%)', defaultRate: 20 },
+  { id: 'S_10', code: 'S', label: 'TVA Intermédiaire (10%)', defaultRate: 10 },
+  { id: 'S_5.5', code: 'S', label: 'TVA Réduite (5.5%)', defaultRate: 5.5 },
+  { id: 'S_2.1', code: 'S', label: 'TVA Particulière (2.1%)', defaultRate: 2.1 },
+  { id: 'AE', code: 'AE', label: 'Autoliquidation (Art. 283-2 CGI)', defaultRate: 0 },
+  { id: 'E', code: 'E', label: 'Exonéré (Art. 261 CGI / Franchise)', defaultRate: 0 },
+  { id: 'K', code: 'K', label: 'Livraison Intra-UE (Art. 262 ter I)', defaultRate: 0 },
+  { id: 'G', code: 'G', label: 'Exportation hors UE (Art. 262 I)', defaultRate: 0 },
+  { id: 'Z', code: 'Z', label: 'Exportation taux zéro', defaultRate: 0 },
+  { id: 'O', code: 'O', label: 'Hors champ TVA', defaultRate: 0 },
 ];
 
 const PAYMENT_MEANS = [
@@ -325,7 +331,6 @@ export const FacturXModal: React.FC<{
     const totalVAT = vatBreakdowns.reduce((sum, b) => sum + b.vatAmount, 0);
     const amountInclVat = taxBasisTotal + totalVAT;
 
-    // Mise à jour uniquement si les valeurs ont changé pour éviter les boucles infinies
     if (Math.abs(taxBasisTotal - (data.amountExclVat || 0)) > 0.001 || 
         Math.abs(amountInclVat - (data.amountInclVat || 0)) > 0.001 ||
         JSON.stringify(vatBreakdowns) !== JSON.stringify(data.vatBreakdowns)) {
@@ -364,15 +369,15 @@ export const FacturXModal: React.FC<{
     const newItems = [...(data.items || [])];
     const item = { ...newItems[idx], [field]: value };
     
-    // LOGIQUE LIAISON CATEGORIE -> TAUX
+    // Si on change la clé d'UI de TVA (ex: S_10), on met à jour le code BT-151 et le taux BT-152
     if (field === 'lineVatCategory') {
-      const category = VAT_CATEGORIES.find(c => c.code === value);
-      if (category) {
-        item.taxRate = category.defaultRate;
+      const config = VAT_CATEGORIES_CONFIG.find(c => c.id === value);
+      if (config) {
+        item.lineVatCategory = config.code;
+        item.taxRate = config.defaultRate;
       }
     }
 
-    // RECALCUL MONTANT LIGNE
     if (['quantity', 'unitPrice', 'lineVatCategory', 'taxRate'].includes(field)) {
       const q = parseFloat(String(item.quantity)) || 0;
       const p = parseFloat(String(item.unitPrice)) || 0;
@@ -407,6 +412,14 @@ export const FacturXModal: React.FC<{
   };
 
   if (!isOpen) return null;
+
+  // Calculer la clé UI pour l'affichage du select (S_20, AE, etc.)
+  const getUiVatKey = (item: InvoiceItem) => {
+      const rate = item.taxRate || 0;
+      const code = item.lineVatCategory || 'S';
+      const match = VAT_CATEGORIES_CONFIG.find(c => c.code === code && (code !== 'S' || c.defaultRate === rate));
+      return match ? match.id : code;
+  };
 
   return (
     <div className="fixed inset-0 bg-slate-950/90 backdrop-blur-sm flex items-center justify-center z-[100] p-3 lg:p-4">
@@ -555,7 +568,7 @@ export const FacturXModal: React.FC<{
                                 <th className="px-3 py-4 text-left w-[25%]">Désignation (BT-129)</th>
                                 <th className="px-3 py-4 text-right w-[6%]">Qté</th>
                                 <th className="px-3 py-4 text-left w-[12%] bg-indigo-50/20">Unité (BT-130)</th>
-                                <th className="px-3 py-4 text-left w-[10%] bg-indigo-50/10">TVA (BT-151)</th>
+                                <th className="px-3 py-4 text-left w-[14%] bg-indigo-50/10">TVA (BT-151)</th>
                                 <th className="px-3 py-4 text-right w-[8%]">P.U Brut</th>
                                 <th className="px-3 py-4 text-right w-[10%] bg-indigo-50/30">P.U Net</th>
                                 <th className="px-3 py-4 text-right w-[12%] bg-slate-100/50">Montant HT</th>
@@ -598,11 +611,11 @@ export const FacturXModal: React.FC<{
                                   </td>
                                   <td className="p-1.5 bg-indigo-50/5">
                                     <select 
-                                      value={item.lineVatCategory || 'S'} 
+                                      value={getUiVatKey(item)} 
                                       onChange={e=>handleUpdateItem(idx, 'lineVatCategory', e.target.value)} 
                                       className="w-full bg-white border border-slate-200 rounded px-2 py-1 outline-none font-black text-[9px] appearance-none cursor-pointer"
                                     >
-                                      {VAT_CATEGORIES.map(c => <option key={c.code} value={c.code}>{c.label}</option>)}
+                                      {VAT_CATEGORIES_CONFIG.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
                                     </select>
                                   </td>
                                   <td className="p-1.5">
@@ -719,7 +732,6 @@ export const FacturXModal: React.FC<{
         </div>
 
         <div className="px-10 py-4 border-t border-slate-200 flex justify-end items-center space-x-4 bg-white shrink-0">
-          {/* Fixed: Changed onClose to onClick to fix type error */}
           <button onClick={onClose} className="text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-slate-600 transition-colors">Retour</button>
           <button onClick={() => { onSave(data); onClose(); }} className="bg-slate-950 text-white px-12 py-4 rounded-[1.2rem] text-[10px] font-black uppercase tracking-[0.2em] shadow-2xl hover:bg-black transition-all flex items-center active:scale-95 border-b-2 border-slate-800">
             <FileCheck className="w-5 h-5 mr-3" /> Valider & Archiver Audit
