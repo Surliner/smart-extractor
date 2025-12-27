@@ -38,15 +38,30 @@ const esc = (str: string | undefined | null): string => {
 
 const cleanID = (str: string | undefined | null): string => str ? str.replace(/\s/g, '') : '';
 
+/**
+ * parseAddress amélioré pour gérer les BP (Boîtes Postales)
+ * "BP 21016 26000 VALENCE" -> Line1: "BP 21016", PC: "26000", City: "VALENCE"
+ */
 const parseAddress = (addressStr: string | undefined) => {
   if (!addressStr) return { line: '', postcode: '', city: '' };
-  const postcodeMatch = addressStr.match(/(\d{5})/);
-  if (postcodeMatch) {
-    const postcode = postcodeMatch[1];
-    const index = postcodeMatch.index!;
+  
+  // On cherche un code postal (5 chiffres) qui n'est pas précédé par "BP" ou "CS" directement
+  // Ou plus simplement, on cherche le dernier bloc de 5 chiffres qui ressemble à un code postal
+  const matches = [...addressStr.matchAll(/(\d{5})/g)];
+  if (matches.length > 0) {
+    // On prend le dernier match de 5 chiffres (souvent le CP après le numéro de BP)
+    const lastMatch = matches[matches.length - 1];
+    const postcode = lastMatch[1];
+    const index = lastMatch.index!;
+    
     const line = addressStr.substring(0, index).trim().replace(/,$/, '');
     const city = addressStr.substring(index + 5).trim().replace(/^,/, '').trim();
-    return { line: line || addressStr, postcode: postcode, city: city.toUpperCase() || 'INCONNU' };
+    
+    return { 
+      line: line || addressStr, 
+      postcode: postcode, 
+      city: city.toUpperCase() || 'INCONNU' 
+    };
   }
   return { line: addressStr, postcode: '', city: '' };
 };
@@ -61,10 +76,9 @@ export const generateFacturXXML = (invoice: InvoiceData, includeHeader: boolean 
 
   const sellerAddr = parseAddress(invoice.supplierAddress);
   const buyerAddr = parseAddress(invoice.buyerAddress);
-  
-  // Logistics parse
   const shipAddr = parseAddress(invoice.logistics?.deliverToAddress);
 
+  // Totaux calculés
   const lineTotalHT = (invoice.items || []).reduce((sum, item) => sum + (item.amount || 0), 0);
   const charge = invoice.globalCharge || 0;
   const discount = invoice.globalDiscount || 0;
@@ -72,6 +86,8 @@ export const generateFacturXXML = (invoice: InvoiceData, includeHeader: boolean 
   const taxTotal = (invoice.totalVat || 0);
   const grandTotal = taxBasisTotal + taxTotal;
 
+  // Génération des segments de taxe (BG-23)
+  // CRITIQUE : Doit utiliser les bases NETTES (après remise globale) calculées dans le modal
   let taxSegments = '';
   if (invoice.vatBreakdowns && invoice.vatBreakdowns.length > 0) {
     taxSegments = invoice.vatBreakdowns.map(v => `
@@ -84,22 +100,16 @@ export const generateFacturXXML = (invoice: InvoiceData, includeHeader: boolean 
         <ram:RateApplicablePercent>${(v.vatRate || 0).toFixed(2)}</ram:RateApplicablePercent>
       </ram:ApplicableTradeTax>`).join('');
   } else {
-    const taxRates = new Map<string, { basis: number, tax: number, cat: string }>();
-    (invoice.items || []).forEach(item => {
-      const rate = (item.taxRate || 20.0).toFixed(2);
-      const current = taxRates.get(rate) || { basis: 0, tax: 0, cat: item.lineVatCategory || 'S' };
-      current.basis += (item.amount || 0);
-      current.tax += ((item.amount || 0) * (item.taxRate || 0) / 100);
-      taxRates.set(rate, current);
-    });
-    taxSegments = Array.from(taxRates.entries()).map(([rate, vals]) => `
+    // Fallback si pas de ventilation fournie (devrait être évité par le modal)
+    const rate = 20.0; 
+    taxSegments = `
       <ram:ApplicableTradeTax>
-        <ram:CalculatedAmount>${vals.tax.toFixed(2)}</ram:CalculatedAmount>
+        <ram:CalculatedAmount>${(taxBasisTotal * rate / 100).toFixed(2)}</ram:CalculatedAmount>
         <ram:TypeCode>VAT</ram:TypeCode>
-        <ram:BasisAmount>${vals.basis.toFixed(2)}</ram:BasisAmount>
-        <ram:CategoryCode>${vals.cat}</ram:CategoryCode>
-        <ram:RateApplicablePercent>${rate}</ram:RateApplicablePercent>
-      </ram:ApplicableTradeTax>`).join('');
+        <ram:BasisAmount>${taxBasisTotal.toFixed(2)}</ram:BasisAmount>
+        <ram:CategoryCode>S</ram:CategoryCode>
+        <ram:RateApplicablePercent>${rate.toFixed(2)}</ram:RateApplicablePercent>
+      </ram:ApplicableTradeTax>`;
   }
 
   const xmlBody = `<rsm:CrossIndustryInvoice 

@@ -498,7 +498,8 @@ export const FacturXModal: React.FC<{
                             <FormInput label="Point de Taxe" value={data.taxPointDate} onChange={(v:any)=>setData({...data, taxPointDate:v})} btId="7" themeColor="slate" />
                             <FormInput label="Devise" value={data.currency} onChange={(v:any)=>setData({...data, currency:v.toUpperCase()})} btId="5" themeColor="slate" />
                           </div>
-                          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 mt-4">
+                          <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 mt-4">
+                            <FormInput label="Réf. Acheteur (BT-10)" value={data.buyerReference} onChange={(v:any)=>setData({...data, buyerReference:v})} btId="10" themeColor="slate" placeholder="Code client ou référence analytique" />
                             <FormInput label="Notes Facture" value={data.invoiceNote} onChange={(v:any)=>setData({...data, invoiceNote:v})} btId="22" multiline themeColor="slate" />
                             <FormInput label="Conditions Paiement" value={data.paymentTermsText} onChange={(v:any)=>setData({...data, paymentTermsText:v})} btId="20" multiline themeColor="slate" />
                           </div>
@@ -696,11 +697,11 @@ export const FacturXModal: React.FC<{
                               {data.vatBreakdowns?.map((v, i) => (
                                 <div key={i} className="flex items-center justify-between p-3 bg-emerald-50 rounded-xl border border-emerald-100 animate-in zoom-in-95">
                                    <div className="flex flex-col">
-                                     <span className="text-[8px] font-black uppercase text-emerald-600">Base HT après remise ({v.vatCategory} - {v.vatRate}%)</span>
+                                     <span className="text-[8px] font-black uppercase text-emerald-600">Base HT après remise (BT-116)</span>
                                      <span className="text-[10px] font-black text-emerald-900">{v.vatTaxableAmount.toLocaleString()} €</span>
                                    </div>
                                    <div className="flex flex-col items-end">
-                                     <span className="text-[8px] font-black uppercase text-emerald-600">Montant TVA</span>
+                                     <span className="text-[8px] font-black uppercase text-emerald-600">Montant TVA (BT-117)</span>
                                      <span className="text-[10px] font-black text-emerald-900">{v.vatAmount.toLocaleString()} €</span>
                                    </div>
                                 </div>
