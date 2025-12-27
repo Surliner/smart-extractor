@@ -51,22 +51,20 @@ export const extractInvoiceData = async (
       contract_number: { type: Type.STRING },
       delivery_note_number: { type: Type.STRING },
       
-      // Nouveau Bloc Logistique (BG-13/15)
       logistics: {
         type: Type.OBJECT,
         properties: {
-          deliver_to_name: { type: Type.STRING }, // BT-70
-          delivery_date: { type: Type.STRING },    // BT-72
-          deliver_to_address: { type: Type.STRING } // BG-15
+          deliver_to_name: { type: Type.STRING },
+          delivery_date: { type: Type.STRING },
+          deliver_to_address: { type: Type.STRING }
         }
       },
 
-      // Nouveau Bloc Période (BG-14)
       billing_period: {
         type: Type.OBJECT,
         properties: {
-          start_date: { type: Type.STRING }, // BT-73
-          end_date: { type: Type.STRING }    // BT-74
+          start_date: { type: Type.STRING },
+          end_date: { type: Type.STRING }
         }
       },
 
@@ -79,7 +77,7 @@ export const extractInvoiceData = async (
       buyer_siret: { type: Type.STRING },
       buyer_address: { type: Type.STRING },
       
-      payment_means_code: { type: Type.STRING }, // BT-81 (Numeric)
+      payment_means_code: { type: Type.STRING },
       payment_terms_text: { type: Type.STRING },
       invoice_note: { type: Type.STRING },
       iban: { type: Type.STRING },
@@ -116,11 +114,11 @@ export const extractInvoiceData = async (
             quantity: { type: Type.NUMBER },
             unit_of_measure: { type: Type.STRING },
             unit_price: { type: Type.NUMBER },
-            gross_price: { type: Type.NUMBER }, // BT-148
+            gross_price: { type: Type.NUMBER },
             tax_rate: { type: Type.NUMBER },
             line_vat_category: { type: Type.STRING },
             amount: { type: Type.NUMBER },
-            origin_country: { type: Type.STRING } // BT-159
+            origin_country: { type: Type.STRING }
           }
         }
       }
@@ -129,16 +127,24 @@ export const extractInvoiceData = async (
   };
 
   const systemInstruction = `EXTRACTEUR RFE EN16931 (FACTUR-X COMFORT).
-Extraire toutes les données sémantiques BT-xxx du document.
+Extraire TOUTES les données sémantiques BT-xxx avec une précision comptable absolue.
 
-PRECISIONS COMMERCIALES (BG-13, 14, 15) :
-1. LOGISTIQUE : Extraire deliver_to_name (BT-70) et deliver_to_address (BG-15) si différents de l'acheteur.
-2. PERIODE : Extraire start_date (BT-73) et end_date (BT-74) si présentes (ex: abonnement, services).
-3. PRIX LIGNES : Extraire gross_price (BT-148) avant toute remise de ligne.
-4. ORIGINE : Extraire origin_country (BT-159) pour chaque article si mentionné.
-5. PAIEMENT : Extraire le code numérique BT-81 (ex: 30=Virement, 48=Carte).
+IDENTIFICATION FISCALE (OBLIGATOIRE) :
+1. VENDEUR (Seller) : Localise le SIRET (BT-29, 14 chiffres) et la TVA Intra (BT-31, format FR+11 chiffres). Regarde dans l'en-tête ou le pied de page.
+2. ACHETEUR (Buyer) : Localise le SIRET (BT-47) et la TVA Intra (BT-48) du destinataire dans le bloc "Facturé à".
+3. RÈGLE : Ne jamais confondre les identifiants de l'émetteur et du récepteur.
 
-REPONDRE UNIQUEMENT EN JSON.`;
+COORDONNÉES BANCAIRES (PRIORITÉ HAUTE) :
+- IBAN (BT-84) : Extraire impérativement l'IBAN du vendeur (format FR76...).
+- BIC (BT-85) : Extraire le code SWIFT/BIC associé.
+
+PRÉCISIONS COMMERCIALES & LOGISTIQUES :
+- LOGISTIQUE : Nom (BT-70) et adresse (BG-15) du lieu de livraison effectif.
+- PÉRIODE : Dates de début (BT-73) et de fin (BT-74) de facturation.
+- LIGNES : Prix unitaire Brut (BT-148), pays d'origine de l'article (BT-159).
+- PAIEMENT : Mode de règlement BT-81 (30=Virement, 48=Carte, 59=Prélèvement).
+
+REPONDRE EXCLUSIVEMENT EN JSON SANS COMMENTAIRE.`;
 
   try {
     const response = await ai.models.generateContent({
@@ -146,7 +152,7 @@ REPONDRE UNIQUEMENT EN JSON.`;
       contents: [{
         parts: [
           { inlineData: { mimeType, data: base64Data } },
-          { text: "Analyse cette facture et retourne le JSON complet conforme EN16931 avec détails logistiques." }
+          { text: "Analyser le document et extraire les données Factur-X conformes au standard EN16931." }
         ]
       }],
       config: {
@@ -220,16 +226,16 @@ REPONDRE UNIQUEMENT EN JSON.`;
 
       supplier: raw.supplier_name || "",
       supplierAddress: raw.supplier_address || "",
-      supplierVat: raw.supplier_vat || "",
+      supplierVat: raw.supplier_vat?.replace(/\s/g, "").toUpperCase() || "",
       supplierSiret: raw.supplier_siret?.replace(/\s/g, "") || "",
       
       buyerName: raw.buyer_name || "",
       buyerAddress: raw.buyer_address || "",
-      buyerVat: raw.buyer_vat || "",
+      buyerVat: raw.buyer_vat?.replace(/\s/g, "").toUpperCase() || "",
       buyerSiret: raw.buyer_siret?.replace(/\s/g, "") || "",
       
-      iban: raw.iban?.replace(/\s/g, "") || "",
-      bic: raw.bic?.replace(/\s/g, "") || "",
+      iban: raw.iban?.replace(/\s/g, "").toUpperCase() || "",
+      bic: raw.bic?.replace(/\s/g, "").toUpperCase() || "",
       paymentMeansCode: raw.payment_means_code || "",
       paymentTermsText: raw.payment_terms_text || "",
 
