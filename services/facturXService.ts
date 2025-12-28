@@ -71,9 +71,9 @@ export const generateFacturXXML = (invoice: InvoiceData, includeHeader: boolean 
   const taxTotal = (invoice.totalVat || 0);
   const grandTotal = parseFloat((taxBasisTotal + taxTotal).toFixed(2));
 
-  // Détection des articles gratuits pour note automatique
+  // Gestion de la note header (BT-22)
   const freeItems = (invoice.items || []).filter(it => (it.unitPrice || 0) === 0);
-  const autoNotes = freeItems.map(it => `Article ${it.description} offert (remise 100%)`).join(' | ');
+  const autoNotes = freeItems.map(it => `Article ${it.description} offert`).join(' | ');
   const finalNote = invoice.invoiceNote ? `${invoice.invoiceNote}${autoNotes ? ' | ' + autoNotes : ''}` : autoNotes;
 
   let taxSegments = '';
